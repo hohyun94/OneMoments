@@ -216,6 +216,72 @@ describe("encrypted direct messages", () => {
     );
     expect(outsider.status).toBe(404);
   });
+  it("tracks unread counts and marks messages read", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const eve = await registerAccount("eve");
+    const conversationId = await createConversation(alice, bob);
+    const devices = await activeDevices(alice.client, conversationId);
+
+    const sent = await sendMessage(alice, conversationId, devices, "unread-1", "안 읽은 메시지");
+    expect(sent.status).toBe(201);
+
+    const bobList = await bob.client.request("GET", "/api/conversations");
+    const bobSummary = bobList.body.conversations.find(
+      (item: { id: string }) => item.id === conversationId,
+    );
+    expect(bobSummary?.unreadCount).toBe(1);
+
+    const aliceList = await alice.client.request("GET", "/api/conversations");
+    const aliceSummary = aliceList.body.conversations.find(
+      (item: { id: string }) => item.id === conversationId,
+    );
+    expect(aliceSummary?.unreadCount).toBe(0);
+
+    const historyResponse = await bob.client.request(
+      "GET",
+      `/api/conversations/${conversationId}/messages`,
+    );
+    const latest = historyResponse.body.messages[0];
+    if (!latest) throw new Error("missing message");
+    const read = await bob.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/read`,
+      { body: { messageId: latest.id } },
+    );
+    expect(read.status).toBe(200);
+
+    const afterRead = await bob.client.request("GET", "/api/conversations");
+    expect(
+      afterRead.body.conversations.find(
+        (item: { id: string }) => item.id === conversationId,
+      )?.unreadCount,
+    ).toBe(0);
+
+    await sendMessage(alice, conversationId, devices, "unread-2", "두 번째");
+    const again = await bob.client.request("GET", "/api/conversations");
+    expect(
+      again.body.conversations.find(
+        (item: { id: string }) => item.id === conversationId,
+      )?.unreadCount,
+    ).toBe(1);
+
+    const invalid = await bob.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/read`,
+      { body: { messageId: randomUUID() } },
+    );
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error.code).toBe("INVALID_MESSAGE");
+
+    const outsider = await eve.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/read`,
+      { body: { messageId: latest.id } },
+    );
+    expect(outsider.status).toBe(404);
+  });
+
   it("hides conversations and keys from non-participants", async () => {
 
     const alice = await registerAccount("alice");

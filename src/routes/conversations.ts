@@ -9,6 +9,7 @@ import {
   conversationIdParamsSchema,
   createConversationBodySchema,
   listMessagesQuerySchema,
+  markReadBodySchema,
   sendMessageBodySchema,
   updateConversationNotificationBodySchema,
   updateGroupBodySchema,
@@ -22,6 +23,7 @@ import {
   hideConversation,
   listActiveDeviceKeys,
   listConversations,
+  markConversationRead,
   leaveGroup,
   renameGroup,
   requireParticipant,
@@ -123,6 +125,24 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
       const { conversationId } = conversationIdParamsSchema.parse(req.params);
       await leaveGroup(db, { conversationId, userId: auth.userId });
       res.status(204).end();
+    }),
+  );
+
+  router.put(
+    "/:conversationId/read",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const body = markReadBodySchema.parse(req.body);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      await markConversationRead(db, {
+        conversationId,
+        userId: auth.userId,
+        messageId: body.messageId,
+      });
+      res.json({ unreadCount: 0 });
     }),
   );
 

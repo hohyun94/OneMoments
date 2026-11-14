@@ -76,8 +76,10 @@ test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 �
     const bobList = bob.getByRole("navigation", { name: "대화 목록" });
     const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
     await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await expect(bob.getByLabel(/읽지 않은 메시지/)).toBeVisible();
     await bobConversation.click();
     await expect(bob.getByText(first)).toBeVisible();
+    await expect(bob.getByLabel(/읽지 않은 메시지/)).toHaveCount(0);
 
     const reply = "잘 도착했어요!";
     await sendMessage(bob, reply);

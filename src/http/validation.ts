@@ -135,6 +135,10 @@ export const pushUnsubscribeBodySchema = z.object({
   endpoint: z.string().url().max(2048),
 });
 
+export const markReadBodySchema = z.object({
+  messageId: z.string().uuid(),
+});
+
 export const listMessagesQuerySchema = z.object({
   before: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

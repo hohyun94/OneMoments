@@ -100,7 +100,7 @@
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
 | `push_subscriptions` | id, user_id, device_id, endpoint(unique), p256dh, auth, failure_count, last_success_at | Web Push 구독(기기별, 로그아웃/폐기 시 삭제) |
-| `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at | 읽음 표시(P1) |
+| `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at (PK: conversation_id+user_id) | 사용자별 읽음 커서(읽지 않은 수 계산) |
 
 - 인덱스: `messages(conversation_id, created_at desc)`, `message_keys(recipient_device_id)`.
 - 대화 이력 조회는 `messages ⋈ message_keys ON recipient_device_id = 내 기기`로 필요한 봉투만 가져온다.
@@ -180,6 +180,7 @@
 | DELETE | `/api/conversations/:id/members/me` | 그룹 나가기(마지막 참여자면 대화 삭제) |
 | PUT | `/api/conversations/:id/group` | 그룹 이름 변경(참여자) |
 | PUT | `/api/conversations/:id/notification` | `{muted}` 대화별 푸시 음소거 |
+| PUT | `/api/conversations/:id/read` | `{messageId}` 읽음 커서 전진, `unreadCount` 계산 |
 | GET | `/api/conversations/:id/devices` | **대화 참여자 전체** 활성 기기 공개키(암호화 대상 목록) |
 | POST | `/api/conversations/:id/attachments` | 암호화된 파일 업로드(`application/octet-stream`) |
 | GET | `/api/attachments/:attachmentId` | 참여자만 첨부 암호문 다운로드 |

@@ -65,6 +65,7 @@ export function ConversationSidebar({
                 : (conversation.peer?.username ?? "삭제된 사용자");
               const deleted = !isGroup && Boolean(conversation.peer?.deleted);
               const active = conversation.id === selectedId;
+              const unread = conversation.unreadCount;
               return (
                 <li key={conversation.id}>
                   <button
@@ -87,8 +88,18 @@ export function ConversationSidebar({
                         >
                           {name}
                         </span>
-                        <span className="shrink-0 text-[11px] text-zinc-400">
-                          {formatListTime(conversation.lastMessageAt)}
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {unread > 0 && !active ? (
+                            <span
+                              aria-label={`읽지 않은 메시지 ${unread}개`}
+                              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-600 px-1.5 text-[10px] font-semibold text-white"
+                            >
+                              {unread > 99 ? "99+" : unread}
+                            </span>
+                          ) : null}
+                          <span className="text-[11px] text-zinc-400">
+                            {formatListTime(conversation.lastMessageAt)}
+                          </span>
                         </span>
                       </span>
                       <span className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">

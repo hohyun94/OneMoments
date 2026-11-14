@@ -253,6 +253,26 @@ export const pushSubscriptions = pgTable(
   ],
 );
 
+export const conversationReads = pgTable(
+  "conversation_reads",
+  {
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    lastReadMessageId: uuid("last_read_message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.conversationId, table.userId] }),
+    index("conversation_reads_user_idx").on(table.userId),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;

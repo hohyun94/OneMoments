@@ -30,6 +30,7 @@ export interface ConversationSummary {
   members: PeerUser[];
   memberCount: number;
   muted: boolean;
+  unreadCount: number;
   lastMessageAt: string | null;
 }
 

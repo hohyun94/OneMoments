@@ -1,8 +1,9 @@
-import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
   conversationParticipants,
+  conversationReads,
   conversations,
   devices,
   messages,
@@ -266,6 +267,108 @@ export async function addGroupMembers(
   return { conversation: context.conversation, added: toAdd.length };
 }
 
+async function unreadCountFor(
+  db: Database,
+  input: { conversationId: string; userId: string; joinedAt: Date },
+): Promise<number> {
+  const [read] = await db
+    .select({
+      messageId: conversationReads.lastReadMessageId,
+      updatedAt: conversationReads.updatedAt,
+    })
+    .from(conversationReads)
+    .where(
+      and(
+        eq(conversationReads.conversationId, input.conversationId),
+        eq(conversationReads.userId, input.userId),
+      ),
+    )
+    .limit(1);
+
+  const conditions = [
+    eq(messages.conversationId, input.conversationId),
+    ne(messages.senderUserId, input.userId),
+  ];
+  let hasCursor = false;
+  if (read) {
+    const cursorCreatedAt = db
+      .select({ createdAt: messages.createdAt })
+      .from(messages)
+      .where(eq(messages.id, read.messageId));
+    conditions.push(
+      sql`(${messages.createdAt} > (${cursorCreatedAt}) or (${messages.createdAt} = (${cursorCreatedAt}) and ${messages.id} > ${read.messageId}))`,
+    );
+    hasCursor = true;
+  }
+  if (!hasCursor) {
+    conditions.push(gte(messages.createdAt, input.joinedAt));
+  }
+
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(messages)
+    .where(and(...conditions));
+  return row?.count ?? 0;
+}
+
+export async function markConversationRead(
+  db: Database,
+  input: { conversationId: string; userId: string; messageId: string },
+): Promise<void> {
+  const [message] = await db
+    .select({ id: messages.id, createdAt: messages.createdAt })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.id, input.messageId),
+        eq(messages.conversationId, input.conversationId),
+      ),
+    )
+    .limit(1);
+  if (!message) {
+    throw AppError.badRequest("INVALID_MESSAGE", "Message does not belong to this conversation");
+  }
+
+  const [existing] = await db
+    .select({ messageId: conversationReads.lastReadMessageId })
+    .from(conversationReads)
+    .where(
+      and(
+        eq(conversationReads.conversationId, input.conversationId),
+        eq(conversationReads.userId, input.userId),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    const [cursor] = await db
+      .select({ id: messages.id, createdAt: messages.createdAt })
+      .from(messages)
+      .where(eq(messages.id, existing.messageId))
+      .limit(1);
+    if (
+      cursor &&
+      (cursor.createdAt > message.createdAt ||
+        (cursor.createdAt.getTime() === message.createdAt.getTime() &&
+          cursor.id >= message.id))
+    ) {
+      return;
+    }
+  }
+
+  await db
+    .insert(conversationReads)
+    .values({
+      conversationId: input.conversationId,
+      userId: input.userId,
+      lastReadMessageId: input.messageId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [conversationReads.conversationId, conversationReads.userId],
+      set: { lastReadMessageId: input.messageId, updatedAt: new Date() },
+    });
+}
+
 async function lastMessageAt(
   db: Database,
   conversationId: string,
@@ -292,6 +395,11 @@ export async function getConversationSummary(
     context.peer,
     members.length + 1,
     context.participant.mutedAt !== null,
+    await unreadCountFor(db, {
+      conversationId: context.conversation.id,
+      userId: context.participant.userId,
+      joinedAt: context.participant.joinedAt,
+    }),
     await lastMessageAt(db, context.conversation.id),
   );
 }
@@ -365,6 +473,11 @@ export async function listConversations(
         peer,
         members.length + 1,
         row.participant.mutedAt !== null,
+        await unreadCountFor(db, {
+          conversationId: row.conversation.id,
+          userId,
+          joinedAt: row.participant.joinedAt,
+        }),
         lastByConversation.get(row.conversation.id) ?? null,
       ),
     );

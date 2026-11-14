@@ -135,6 +135,7 @@ export function ChatView({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const pendingRef = useRef<PendingMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastMarkedReadRef = useRef<string | null>(null);
   const typingTimerRef = useRef<number | undefined>(undefined);
   const lastTypingAtRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -174,12 +175,26 @@ export function ChatView({
     setAttachmentError(null);
     setSendError(null);
     pendingRef.current = null;
+    lastMarkedReadRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [conversation.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [conversation.id, latestId]);
+
+  useEffect(() => {
+    if (!latestId || lastMarkedReadRef.current === latestId) return;
+    lastMarkedReadRef.current = latestId;
+    void api(`/api/conversations/${conversation.id}/read`, {
+      method: "PUT",
+      body: { messageId: latestId },
+    })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["conversations"] }))
+      .catch(() => {
+        lastMarkedReadRef.current = null;
+      });
+  }, [conversation.id, latestId, queryClient]);
 
   useEffect(() => {
     const devices = devicesQuery.data;

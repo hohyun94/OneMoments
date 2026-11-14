@@ -63,6 +63,8 @@ export type DeviceKeyEnvelope =
       ratchetPublicKey: string;
       previousChainLength: number;
       messageNumber: number;
+      senderIdentityPublicKey?: string;
+      signedPreKeyId?: string;
       wrappedKey: string;
       wrapNonce: string;
       distribution?: { ciphertext: string; nonce: string };
@@ -91,6 +93,9 @@ export interface DeviceKeySet {
     userId: string;
     identityPublicKey: string;
     signingPublicKey: string;
+    signedPreKeyId?: string | null;
+    signedPreKeyPublicKey?: string | null;
+    signedPreKeySignature?: string | null;
   }>;
 }
 

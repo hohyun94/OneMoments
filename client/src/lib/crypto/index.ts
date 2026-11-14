@@ -2,6 +2,7 @@ export {
   createIdentity,
   createIdentityWithBackend,
   detectBackend,
+  ensureSignedPreKey,
   signPayload,
   verifyPayload,
   type DeviceIdentity,

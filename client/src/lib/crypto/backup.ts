@@ -39,6 +39,10 @@ interface BackupPayload {
   signingPublicKey: string;
   identityPrivate: string;
   signingPrivate: string;
+  signedPreKeyPrivate?: string;
+  signedPreKeyPublicKey?: string;
+  signedPreKeyId?: string;
+  signedPreKeySignature?: string;
   /** Double Ratchet 세션 + 이력 키. 복구 후 기존 DR 이력을 읽기 위해 필요하다. */
   state?: LocalCryptoState;
   createdAt: string;
@@ -79,15 +83,15 @@ async function exportPrivateKey(key: CryptoKey | string): Promise<string> {
 async function importPrivateKey(
   backend: IdentityBackend,
   value: string,
-  kind: "identity" | "signing",
+  kind: "identity" | "signing" | "signedPreKey",
 ): Promise<CryptoKey | string> {
   if (backend === "noble") return value;
   return subtle().importKey(
     "pkcs8",
     fromBase64(value),
-    { name: kind === "identity" ? "X25519" : "Ed25519" },
+    { name: kind === "signing" ? "Ed25519" : "X25519" },
     true,
-    kind === "identity" ? ["deriveBits"] : ["sign"],
+    kind === "signing" ? ["sign"] : ["deriveBits"],
   );
 }
 
@@ -108,6 +112,17 @@ export async function exportKeyBackup(
     signingPublicKey: identity.signingPublicKey,
     identityPrivate: await exportPrivateKey(identity.identityPrivate),
     signingPrivate: await exportPrivateKey(identity.signingPrivate),
+    ...(identity.signedPreKeyPrivate &&
+    identity.signedPreKeyPublicKey &&
+    identity.signedPreKeyId &&
+    identity.signedPreKeySignature
+      ? {
+          signedPreKeyPrivate: await exportPrivateKey(identity.signedPreKeyPrivate),
+          signedPreKeyPublicKey: identity.signedPreKeyPublicKey,
+          signedPreKeyId: identity.signedPreKeyId,
+          signedPreKeySignature: identity.signedPreKeySignature,
+        }
+      : {}),
     ...(state ? { state } : {}),
     createdAt: new Date().toISOString(),
   };
@@ -181,7 +196,12 @@ export async function importKeyBackup(
     typeof payload.identityPublicKey !== "string" ||
     typeof payload.signingPublicKey !== "string" ||
     typeof payload.identityPrivate !== "string" ||
-    typeof payload.signingPrivate !== "string"
+    typeof payload.signingPrivate !== "string" ||
+    (payload.signedPreKeyPrivate !== undefined &&
+      (typeof payload.signedPreKeyPrivate !== "string" ||
+        typeof payload.signedPreKeyPublicKey !== "string" ||
+        typeof payload.signedPreKeyId !== "string" ||
+        typeof payload.signedPreKeySignature !== "string"))
   ) {
     throw new BackupError("format");
   }
@@ -235,5 +255,20 @@ export async function importKeyBackup(
     identityPublicKey: payload.identityPublicKey,
     signingPublicKey: payload.signingPublicKey,
     deviceId: payload.deviceId,
+    ...(payload.signedPreKeyPrivate &&
+    payload.signedPreKeyPublicKey &&
+    payload.signedPreKeyId &&
+    payload.signedPreKeySignature
+      ? {
+          signedPreKeyPrivate: await importPrivateKey(
+            payload.backend,
+            payload.signedPreKeyPrivate,
+            "signedPreKey",
+          ),
+          signedPreKeyPublicKey: payload.signedPreKeyPublicKey,
+          signedPreKeyId: payload.signedPreKeyId,
+          signedPreKeySignature: payload.signedPreKeySignature,
+        }
+      : {}),
   };
 }

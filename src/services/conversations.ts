@@ -511,6 +511,9 @@ export interface ActiveDeviceKey {
   userId: string;
   identityPublicKey: string;
   signingPublicKey: string;
+  signedPreKeyId: string | null;
+  signedPreKeyPublicKey: string | null;
+  signedPreKeySignature: string | null;
 }
 
 export async function listParticipantUserIds(
@@ -542,6 +545,9 @@ export async function listActiveDeviceKeys(
       userId: devices.userId,
       identityPublicKey: devices.identityPublicKey,
       signingPublicKey: devices.signingPublicKey,
+      signedPreKeyId: devices.signedPreKeyId,
+      signedPreKeyPublicKey: devices.signedPreKeyPublicKey,
+      signedPreKeySignature: devices.signedPreKeySignature,
     })
     .from(devices)
     .where(and(inArray(devices.userId, userIds), isNull(devices.revokedAt)))

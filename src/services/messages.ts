@@ -93,6 +93,10 @@ export async function createMessage(
                 previousChainLength:
                   key.version === 2 ? key.previousChainLength : null,
                 messageNumber: key.version === 2 ? key.messageNumber : null,
+                senderIdentityPublicKey:
+                  key.version === 2 ? (key.senderIdentityPublicKey ?? null) : null,
+                signedPreKeyId:
+                  key.version === 2 ? (key.signedPreKeyId ?? null) : null,
                 distributionCiphertext:
                   key.distribution !== undefined ? key.distribution.ciphertext : null,
                 distributionNonce: key.distribution !== undefined ? key.distribution.nonce : null,

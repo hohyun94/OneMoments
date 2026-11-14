@@ -11,6 +11,7 @@ import {
 import { ApiError, api, setCsrfToken } from "./lib/api.ts";
 import {
   createIdentity,
+  ensureSignedPreKey,
   importKeyBackup,
   importLocalCryptoState,
   signPayload,
@@ -56,6 +57,46 @@ function deviceName(): string {
   return "Web browser";
 }
 
+function signedPreKeyBody(identity: StoredIdentity): {
+  signedPreKey?: { id: string; publicKey: string; signature: string };
+} {
+  if (
+    identity.signedPreKeyId &&
+    identity.signedPreKeyPublicKey &&
+    identity.signedPreKeySignature
+  ) {
+    return {
+      signedPreKey: {
+        id: identity.signedPreKeyId,
+        publicKey: identity.signedPreKeyPublicKey,
+        signature: identity.signedPreKeySignature,
+      },
+    };
+  }
+  return {};
+}
+
+async function uploadSignedPreKey(identity: StoredIdentity): Promise<void> {
+  if (
+    !identity.signedPreKeyId ||
+    !identity.signedPreKeyPublicKey ||
+    !identity.signedPreKeySignature
+  ) {
+    return;
+  }
+  await api("/api/auth/device/prekey", {
+    method: "PUT",
+    csrf: false,
+    body: {
+      signedPreKey: {
+        id: identity.signedPreKeyId,
+        publicKey: identity.signedPreKeyPublicKey,
+        signature: identity.signedPreKeySignature,
+      },
+    },
+  }).catch(() => undefined);
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [session, setSession] = useState<Session | null>(null);
@@ -75,17 +116,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setStatus("missing-keys");
           return;
         }
-        if (stored.deviceId !== me.deviceId || stored.userId !== me.user.id) {
-          const updated: StoredIdentity = {
-            ...stored,
-            deviceId: me.deviceId,
-            userId: me.user.id,
-          };
+        const ensured: StoredIdentity = {
+          ...(await ensureSignedPreKey(stored)),
+          username: stored.username,
+        };
+        const updated: StoredIdentity = {
+          ...ensured,
+          deviceId: me.deviceId,
+          userId: me.user.id,
+        };
+        if (
+          updated.signedPreKeyId !== stored.signedPreKeyId ||
+          stored.deviceId !== me.deviceId ||
+          stored.userId !== me.user.id
+        ) {
           await saveIdentity(updated);
-          setIdentity(updated);
-        } else {
-          setIdentity(stored);
         }
+        if (updated.signedPreKeyId !== stored.signedPreKeyId) {
+          void uploadSignedPreKey(updated);
+        }
+        setIdentity(updated);
         setSession({ user: me.user, deviceId: me.deviceId });
         setStatus("authenticated");
       })
@@ -109,6 +159,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           name: deviceName(),
           identityPublicKey: generated.identityPublicKey,
           signingPublicKey: generated.signingPublicKey,
+          ...signedPreKeyBody({ ...generated, username }),
         },
       },
     });
@@ -149,6 +200,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
                 name: deviceName(),
                 identityPublicKey: current.identityPublicKey,
                 signingPublicKey: current.signingPublicKey,
+                ...signedPreKeyBody(current),
               },
             },
       });

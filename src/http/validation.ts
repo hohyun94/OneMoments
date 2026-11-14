@@ -24,16 +24,27 @@ export const deviceNameSchema = z
 
 export const publicKeySchema = z.string().min(1, "Public key is required").max(256);
 
+export const signedPreKeySchema = z.object({
+  id: z.string().uuid(),
+  publicKey: publicKeySchema,
+  signature: publicKeySchema,
+});
+
 export const deviceKeysSchema = z.object({
   name: deviceNameSchema,
   identityPublicKey: publicKeySchema,
   signingPublicKey: publicKeySchema,
+  signedPreKey: signedPreKeySchema.optional(),
 });
 
 export const registerBodySchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
   device: deviceKeysSchema,
+});
+
+export const signedPreKeyBodySchema = z.object({
+  signedPreKey: signedPreKeySchema,
 });
 
 export const loginBodySchema = z.object({
@@ -92,6 +103,8 @@ export const sendMessageBodySchema = z.object({
         ratchetPublicKey: z.string().min(1).optional(),
         previousChainLength: z.number().int().min(0).optional(),
         messageNumber: z.number().int().min(0).optional(),
+        senderIdentityPublicKey: z.string().min(1).optional(),
+        signedPreKeyId: z.string().uuid().optional(),
         wrappedKey: z.string().min(1),
         wrapNonce: z.string().min(1),
         distributionCiphertext: z.string().min(1).optional(),

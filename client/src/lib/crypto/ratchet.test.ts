@@ -218,5 +218,81 @@ describe("double ratchet", () => {
       }),
     ).resolves.toBe("변조 테스트");
   });
+
+  it("initializes v2 with X3DH when a signed prekey is available", async () => {
+    for (const backend of await backends()) {
+      const suffix = backend;
+      const alice = withDevice(
+        await createIdentityWithBackend(backend),
+        `x3dh-alice-${suffix}`,
+      );
+      const bob = withDevice(await createIdentityWithBackend(backend), `x3dh-bob-${suffix}`);
+      const conversationId = crypto.randomUUID();
+      const recipients = [
+        {
+          deviceId: `x3dh-bob-${suffix}`,
+          identityPublicKey: bob.identityPublicKey,
+          signedPreKeyId: bob.signedPreKeyId,
+          signedPreKeyPublicKey: bob.signedPreKeyPublicKey,
+        },
+      ];
+
+      const payload = await encryptMessage({
+        identity: alice,
+        conversationId,
+        clientMessageId: "x3dh-first",
+        plaintext: "X3DH 메시지",
+        recipients,
+      });
+      const bobKey = keyFor(payload, `x3dh-bob-${suffix}`);
+      expect(bobKey.version).toBe(2);
+      if (bobKey.version !== 2) throw new Error("expected v2 envelope");
+      expect(bobKey.senderIdentityPublicKey).toBe(alice.identityPublicKey);
+      expect(bobKey.signedPreKeyId).toBe(bob.signedPreKeyId);
+
+      await expect(
+        decryptMessage({
+          identity: bob,
+          message: message({
+            payload,
+            key: bobKey,
+            conversationId,
+            senderSigningPublicKey: alice.signingPublicKey,
+            senderDeviceId: `x3dh-alice-${suffix}`,
+            messageId: `x3dh-m1-${suffix}`,
+          }),
+        }),
+      ).resolves.toBe("X3DH 메시지");
+
+      const reply = await encryptMessage({
+        identity: bob,
+        conversationId,
+        clientMessageId: "x3dh-reply",
+        plaintext: "X3DH 답장",
+        recipients: [
+          {
+            deviceId: `x3dh-alice-${suffix}`,
+            identityPublicKey: alice.identityPublicKey,
+            signedPreKeyId: alice.signedPreKeyId,
+            signedPreKeyPublicKey: alice.signedPreKeyPublicKey,
+          },
+        ],
+      });
+      await expect(
+        decryptMessage({
+          identity: alice,
+          message: message({
+            payload: reply,
+            key: keyFor(reply, `x3dh-alice-${suffix}`),
+            conversationId,
+            senderSigningPublicKey: bob.signingPublicKey,
+            senderDeviceId: `x3dh-bob-${suffix}`,
+            messageId: `x3dh-m2-${suffix}`,
+          }),
+        }),
+      ).resolves.toBe("X3DH 답장");
+    }
+  });
+
 });
 

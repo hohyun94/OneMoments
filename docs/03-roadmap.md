@@ -92,8 +92,10 @@ MVP 이후 과제를 순차 진행한다.
    - 파일 첨부(파일별 AES-GCM, 암호문만 저장) · `docs/10-attachments.md`
    - Sender Keys 최적화 — 완료 · `docs/14-sender-keys.md`
 3. **Double Ratchet(v2)** — 완료
-   - 대화×기기 세션, DH ratchet, 순서 뒤바뀜(최대 1000), 이력 키
-   - 백업에 DR 세션·이력 키 포함 · `docs/11-double-ratchet.md`
+   - **X3DH**: 최초 v2 세션은 상대 signed prekey가 있으면 X3DH(3-DH)로 초기화한다. SPK private는 백업에 포함한다.
+   - **X3DH signed prekey** 최초 세션 — 완료 · `docs/15-x3dh.md`
+   - 원타임 프리키(OPK)·SPK 주기 회전 — 대기
+   - 백업에 DR 세션·이력 키·SPK private 포함 · `docs/11-double-ratchet.md`
 4. 푸시 알림, 모바일 앱
    - **Web Push(VAPID)·PWA(오프라인 앱 셸, PNG 아이콘)·대화별 음소거 — 완료** · `docs/12-push-mobile.md`
    - 네이티브 앱(React Native/Flutter) — 대기

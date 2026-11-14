@@ -90,6 +90,12 @@ export function toDeviceKeyEnvelope(row: MessageKeyRow): DeviceKeyEnvelope {
       ratchetPublicKey: row.ratchetPublicKey,
       previousChainLength: row.previousChainLength ?? 0,
       messageNumber: row.messageNumber ?? 0,
+      ...(row.senderIdentityPublicKey && row.signedPreKeyId
+        ? {
+            senderIdentityPublicKey: row.senderIdentityPublicKey,
+            signedPreKeyId: row.signedPreKeyId,
+          }
+        : {}),
       wrappedKey: row.wrappedKey,
       wrapNonce: row.wrapNonce,
       ...(distribution ? { distribution } : {}),

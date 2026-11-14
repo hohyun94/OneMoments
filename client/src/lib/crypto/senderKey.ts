@@ -74,6 +74,8 @@ export interface PreparedSenderKeyMessage {
 export interface SenderKeyDevice {
   deviceId: string;
   identityPublicKey: string;
+  signedPreKeyId?: string | null;
+  signedPreKeyPublicKey?: string | null;
 }
 
 function storageKey(
@@ -216,6 +218,8 @@ export async function prepareSenderKeyMessage(input: {
           conversationId: input.conversationId,
           remoteDeviceId: device.deviceId,
           remoteIdentityPublicKey: device.identityPublicKey,
+          remoteSignedPreKeyId: device.signedPreKeyId,
+          remoteSignedPreKeyPublicKey: device.signedPreKeyPublicKey,
           contentKey: distributionContentKey,
         });
         keys.push({
@@ -309,6 +313,12 @@ async function unwrapDistribution(
           ratchetPublicKey: key.ratchetPublicKey,
           previousChainLength: key.previousChainLength,
           messageNumber: key.messageNumber,
+          ...(key.senderIdentityPublicKey && key.signedPreKeyId
+            ? {
+                senderIdentityPublicKey: key.senderIdentityPublicKey,
+                signedPreKeyId: key.signedPreKeyId,
+              }
+            : {}),
         },
         wrappedKey: key.wrappedKey,
         wrapNonce: key.wrapNonce,

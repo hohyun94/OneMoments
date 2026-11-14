@@ -21,6 +21,11 @@ import { AppError } from "../http/errors.js";
 export interface DeviceKeys {
   identityPublicKey: string;
   signingPublicKey: string;
+  signedPreKey?: {
+    id: string;
+    publicKey: string;
+    signature: string;
+  } | null;
 }
 
 export interface RegisterAccountInput extends DeviceKeys {
@@ -72,6 +77,9 @@ export async function registerAccount(
           name: input.deviceName,
           identityPublicKey: input.identityPublicKey,
           signingPublicKey: input.signingPublicKey,
+          signedPreKeyId: input.signedPreKey?.id ?? null,
+          signedPreKeyPublicKey: input.signedPreKey?.publicKey ?? null,
+          signedPreKeySignature: input.signedPreKey?.signature ?? null,
         })
         .returning();
       if (!device) throw new Error("Failed to insert device");
@@ -206,9 +214,40 @@ export async function registerDevice(
       name: input.name,
       identityPublicKey: input.identityPublicKey,
       signingPublicKey: input.signingPublicKey,
+      signedPreKeyId: input.signedPreKey?.id ?? null,
+      signedPreKeyPublicKey: input.signedPreKey?.publicKey ?? null,
+      signedPreKeySignature: input.signedPreKey?.signature ?? null,
     })
     .returning();
   if (!device) throw new Error("Failed to insert device");
+  return device;
+}
+
+/** 기존 기기의 signed prekey만 갱신한다(키 백업/업그레이드 경로). */
+export async function updateDeviceSignedPreKey(
+  db: Database,
+  input: {
+    userId: string;
+    deviceId: string;
+    signedPreKey: NonNullable<DeviceKeys["signedPreKey"]>;
+  },
+): Promise<DeviceRow> {
+  const [device] = await db
+    .update(devices)
+    .set({
+      signedPreKeyId: input.signedPreKey.id,
+      signedPreKeyPublicKey: input.signedPreKey.publicKey,
+      signedPreKeySignature: input.signedPreKey.signature,
+    })
+    .where(
+      and(
+        eq(devices.id, input.deviceId),
+        eq(devices.userId, input.userId),
+        isNull(devices.revokedAt),
+      ),
+    )
+    .returning();
+  if (!device) throw AppError.unauthorized("Device revoked or unknown");
   return device;
 }
 

@@ -64,6 +64,10 @@ export const devices = pgTable(
     identityPublicKey: text("identity_public_key").notNull(),
     // Ed25519 공개키(base64, 32바이트)
     signingPublicKey: text("signing_public_key").notNull(),
+    // X3DH signed prekey. 구버전 기기는 null → v2 정적 초기화 fallback.
+    signedPreKeyId: text("signed_pre_key_id"),
+    signedPreKeyPublicKey: text("signed_pre_key_public_key"),
+    signedPreKeySignature: text("signed_pre_key_signature"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
@@ -170,6 +174,9 @@ export const messageKeys = pgTable(
     ratchetPublicKey: text("ratchet_public_key"),
     previousChainLength: integer("previous_chain_length"),
     messageNumber: integer("message_number"),
+    // X3DH 초기 봉투: 발신자 IK와 사용한 signed prekey ID(둘 다 없으면 legacy v2)
+    senderIdentityPublicKey: text("sender_identity_public_key"),
+    signedPreKeyId: text("signed_pre_key_id"),
     // Sender Keys 최초 배포: sender key 체인 상태를 암호화한 블롭(수신 기기별 복호화)
     distributionCiphertext: text("distribution_ciphertext"),
     distributionNonce: text("distribution_nonce"),
@@ -190,6 +197,10 @@ export const messageKeys = pgTable(
     check(
       "message_keys_distribution_chk",
       sql`(${table.distributionCiphertext} is null and ${table.distributionNonce} is null) or (${table.distributionCiphertext} is not null and ${table.distributionNonce} is not null)`,
+    ),
+    check(
+      "message_keys_x3dh_chk",
+      sql`(${table.senderIdentityPublicKey} is null and ${table.signedPreKeyId} is null) or (${table.senderIdentityPublicKey} is not null and ${table.signedPreKeyId} is not null)`,
     ),
   ],
 );

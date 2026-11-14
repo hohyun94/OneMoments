@@ -43,6 +43,9 @@ export interface RatchetHeader {
   ratchetPublicKey: string;
   previousChainLength: number;
   messageNumber: number;
+  /** X3DH 최초 봉투에서만 존재한다. */
+  senderIdentityPublicKey?: string;
+  signedPreKeyId?: string;
 }
 
 export interface RatchetSession {
@@ -146,31 +149,71 @@ function localDeviceId(identity: DeviceIdentity): string {
   return identity.deviceId ?? "local";
 }
 
+function concatBytes(parts: Uint8Array<ArrayBuffer>[]): Uint8Array<ArrayBuffer> {
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(new ArrayBuffer(total));
+  let offset = 0;
+  for (const part of parts) {
+    output.set(part, offset);
+    offset += part.length;
+  }
+  return output;
+}
+
 async function createInitiatorSession(
   identity: DeviceIdentity,
   conversationId: string,
   remoteDeviceId: string,
   remoteIdentityPublicKey: string,
-): Promise<RatchetSession> {
+  remoteSignedPreKey?: { id: string; publicKey: string },
+): Promise<{
+  session: RatchetSession;
+  x3dh?: { senderIdentityPublicKey: string; signedPreKeyId: string };
+}> {
   const ephemeral = await generateEphemeral(identity.backend);
   const dhSelfPrivate = await serializeX25519Private(identity.backend, ephemeral.privateKey);
-  const shared = await dh(identity, dhSelfPrivate, remoteIdentityPublicKey);
+  let shared: Uint8Array<ArrayBuffer>;
+  let dhRemote = remoteIdentityPublicKey;
+  let x3dh: { senderIdentityPublicKey: string; signedPreKeyId: string } | undefined;
+
+  if (remoteSignedPreKey) {
+    const identityPrivate = await serializeX25519Private(
+      identity.backend,
+      identity.identityPrivate,
+    );
+    shared = concatBytes([
+      await dh(identity, dhSelfPrivate, remoteSignedPreKey.publicKey),
+      await dh(identity, dhSelfPrivate, remoteIdentityPublicKey),
+      await dh(identity, identityPrivate, remoteSignedPreKey.publicKey),
+    ]);
+    dhRemote = remoteSignedPreKey.publicKey;
+    x3dh = {
+      senderIdentityPublicKey: identity.identityPublicKey,
+      signedPreKeyId: remoteSignedPreKey.id,
+    };
+  } else {
+    shared = await dh(identity, dhSelfPrivate, remoteIdentityPublicKey);
+  }
+
   const root = await kdfRoot(ZERO_ROOT, shared);
   return {
-    version: SESSION_VERSION,
-    conversationId,
-    localDeviceId: localDeviceId(identity),
-    remoteDeviceId,
-    dhSelfPrivate,
-    dhSelfPublic: ephemeral.publicKey,
-    dhRemote: remoteIdentityPublicKey,
-    rootKey: toBase64(root.rootKey),
-    sendChainKey: toBase64(root.chainKey),
-    recvChainKey: null,
-    sendCount: 0,
-    recvCount: 0,
-    previousSendCount: 0,
-    skipped: {},
+    session: {
+      version: SESSION_VERSION,
+      conversationId,
+      localDeviceId: localDeviceId(identity),
+      remoteDeviceId,
+      dhSelfPrivate,
+      dhSelfPublic: ephemeral.publicKey,
+      dhRemote,
+      rootKey: toBase64(root.rootKey),
+      sendChainKey: toBase64(root.chainKey),
+      recvChainKey: null,
+      sendCount: 0,
+      recvCount: 0,
+      previousSendCount: 0,
+      skipped: {},
+    },
+    ...(x3dh ? { x3dh } : {}),
   };
 }
 
@@ -180,8 +223,38 @@ async function createResponderSession(
   senderDeviceId: string,
   header: RatchetHeader,
 ): Promise<RatchetSession> {
-  const dhSelfPrivate = await serializeX25519Private(identity.backend, identity.identityPrivate);
-  const shared = await dh(identity, dhSelfPrivate, header.ratchetPublicKey);
+  let dhSelfPrivate: string;
+  let dhSelfPublic: string;
+  let shared: Uint8Array<ArrayBuffer>;
+
+  if (header.senderIdentityPublicKey && header.signedPreKeyId) {
+    if (
+      !identity.signedPreKeyPrivate ||
+      !identity.signedPreKeyPublicKey ||
+      identity.signedPreKeyId !== header.signedPreKeyId
+    ) {
+      throw new RatchetError("key");
+    }
+    dhSelfPrivate = await serializeX25519Private(
+      identity.backend,
+      identity.signedPreKeyPrivate,
+    );
+    dhSelfPublic = identity.signedPreKeyPublicKey;
+    const identityPrivate = await serializeX25519Private(
+      identity.backend,
+      identity.identityPrivate,
+    );
+    shared = concatBytes([
+      await dh(identity, dhSelfPrivate, header.ratchetPublicKey),
+      await dh(identity, identityPrivate, header.ratchetPublicKey),
+      await dh(identity, dhSelfPrivate, header.senderIdentityPublicKey),
+    ]);
+  } else {
+    dhSelfPrivate = await serializeX25519Private(identity.backend, identity.identityPrivate);
+    dhSelfPublic = identity.identityPublicKey;
+    shared = await dh(identity, dhSelfPrivate, header.ratchetPublicKey);
+  }
+
   const root = await kdfRoot(ZERO_ROOT, shared);
   return {
     version: SESSION_VERSION,
@@ -189,7 +262,7 @@ async function createResponderSession(
     localDeviceId: localDeviceId(identity),
     remoteDeviceId: senderDeviceId,
     dhSelfPrivate,
-    dhSelfPublic: identity.identityPublicKey,
+    dhSelfPublic,
     dhRemote: header.ratchetPublicKey,
     rootKey: toBase64(root.rootKey),
     sendChainKey: null,
@@ -235,19 +308,30 @@ export async function wrapContentKey(input: {
   conversationId: string;
   remoteDeviceId: string;
   remoteIdentityPublicKey: string;
+  remoteSignedPreKeyId?: string | null;
+  remoteSignedPreKeyPublicKey?: string | null;
   contentKey: Uint8Array<ArrayBuffer>;
 }): Promise<WrappedContentKey> {
   return withLock(
     sessionLockKey(input.conversationId, input.remoteDeviceId),
     async () => {
       let session = await loadRatchetSession(input.conversationId, input.remoteDeviceId);
+      let initialHeader: { senderIdentityPublicKey: string; signedPreKeyId: string } | undefined;
       if (!session) {
-        session = await createInitiatorSession(
+        const created = await createInitiatorSession(
           input.identity,
           input.conversationId,
           input.remoteDeviceId,
           input.remoteIdentityPublicKey,
+          input.remoteSignedPreKeyId && input.remoteSignedPreKeyPublicKey
+            ? {
+                id: input.remoteSignedPreKeyId,
+                publicKey: input.remoteSignedPreKeyPublicKey,
+              }
+            : undefined,
         );
+        session = created.session;
+        initialHeader = created.x3dh;
       }
       if (!session.sendChainKey) {
         session = await advanceSendRatchet(input.identity, session);
@@ -275,6 +359,7 @@ export async function wrapContentKey(input: {
         messageNumber,
         wrappedKey: toBase64(wrapped),
         wrapNonce: toBase64(nonce),
+        ...(initialHeader ?? {}),
       };
     },
   );

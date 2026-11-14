@@ -28,6 +28,7 @@ import {
   recoveryChallengeBodySchema,
   recoveryLookupBodySchema,
   registerBodySchema,
+  signedPreKeyBodySchema,
 } from "../http/validation.js";
 import {
   deleteAccount,
@@ -38,6 +39,7 @@ import {
   listDevices,
   registerAccount,
   registerDevice,
+  updateDeviceSignedPreKey,
   verifyCredentials,
 } from "../services/accounts.js";
 import {
@@ -142,6 +144,34 @@ export function createAuthRouter(db: Database, config: Config): Router {
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
       });
+    }),
+  );
+
+  router.put(
+    "/device/prekey",
+    session,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = signedPreKeyBodySchema.parse(req.body);
+      const current = await findActiveDevice(db, {
+        userId: auth.userId,
+        deviceId: auth.deviceId,
+      });
+      if (!current) throw AppError.unauthorized("Device revoked or unknown");
+      const keys = normalizeDeviceKeys({
+        identityPublicKey: current.identityPublicKey,
+        signingPublicKey: current.signingPublicKey,
+        signedPreKey: body.signedPreKey,
+      });
+      if (!keys.signedPreKey) {
+        throw AppError.badRequest("INVALID_ENVELOPE", "signedPreKey is required");
+      }
+      const device = await updateDeviceSignedPreKey(db, {
+        userId: auth.userId,
+        deviceId: auth.deviceId,
+        signedPreKey: keys.signedPreKey,
+      });
+      res.json({ device: toPublicDevice(device) });
     }),
   );
 

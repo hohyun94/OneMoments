@@ -46,6 +46,8 @@ describe("sender keys", () => {
     const devices = [bob, carol].map((identity) => ({
       deviceId: identity.deviceId as string,
       identityPublicKey: identity.identityPublicKey,
+      signedPreKeyId: identity.signedPreKeyId,
+      signedPreKeyPublicKey: identity.signedPreKeyPublicKey,
     }));
 
     const first = await prepareSenderKeyMessage({

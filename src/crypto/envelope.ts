@@ -1,4 +1,5 @@
 import { AppError } from "../http/errors.js";
+import { verifyEd25519Signature } from "./ed25519.js";
 
 /**
  * 암호문 봉투 검증. 서버는 복호화하지 않고 형식·크기만 확인한다.
@@ -66,13 +67,76 @@ export function requireBytesInRange(
   return bytes.toString("base64");
 }
 
+export interface SignedPreKeyInput {
+  id: string;
+  publicKey: string;
+  signature: string;
+}
+
+export interface NormalizedDeviceKeys {
+  identityPublicKey: string;
+  signingPublicKey: string;
+  signedPreKey: {
+    id: string;
+    publicKey: string;
+    signature: string;
+  } | null;
+}
+
+const SIGNED_PREKEY_UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function signedPreKeyMessage(id: string, publicKey: string): Buffer {
+  return Buffer.from(`onemoments-signed-prekey:${id}:${publicKey}`, "utf8");
+}
+
 export function normalizeDeviceKeys(input: {
   identityPublicKey: string;
   signingPublicKey: string;
-}): { identityPublicKey: string; signingPublicKey: string } {
+  signedPreKey?: SignedPreKeyInput | undefined;
+}): NormalizedDeviceKeys {
+  const identityPublicKey = requireBytes(
+    input.identityPublicKey,
+    "identityPublicKey",
+    X25519_KEY_BYTES,
+  );
+  const signingPublicKey = requireBytes(
+    input.signingPublicKey,
+    "signingPublicKey",
+    ED25519_KEY_BYTES,
+  );
+  if (!input.signedPreKey) {
+    return { identityPublicKey, signingPublicKey, signedPreKey: null };
+  }
+  if (!SIGNED_PREKEY_UUID_PATTERN.test(input.signedPreKey.id)) {
+    throw AppError.badRequest("INVALID_ENVELOPE", "signedPreKey.id must be a UUID");
+  }
+  const publicKey = requireBytes(
+    input.signedPreKey.publicKey,
+    "signedPreKey.publicKey",
+    X25519_KEY_BYTES,
+  );
+  const signature = requireBytes(
+    input.signedPreKey.signature,
+    "signedPreKey.signature",
+    ED25519_SIGNATURE_BYTES,
+  );
+  if (
+    !verifyEd25519Signature(
+      signingPublicKey,
+      signedPreKeyMessage(input.signedPreKey.id, publicKey),
+      signature,
+    )
+  ) {
+    throw AppError.badRequest(
+      "INVALID_ENVELOPE",
+      "signedPreKey signature does not match the device signing key",
+    );
+  }
   return {
-    identityPublicKey: requireBytes(input.identityPublicKey, "identityPublicKey", X25519_KEY_BYTES),
-    signingPublicKey: requireBytes(input.signingPublicKey, "signingPublicKey", ED25519_KEY_BYTES),
+    identityPublicKey,
+    signingPublicKey,
+    signedPreKey: { id: input.signedPreKey.id, publicKey, signature },
   };
 }
 
@@ -82,6 +146,8 @@ export interface MessageKeyInput {
   ratchetPublicKey?: string | undefined;
   previousChainLength?: number | undefined;
   messageNumber?: number | undefined;
+  senderIdentityPublicKey?: string | undefined;
+  signedPreKeyId?: string | undefined;
   distributionCiphertext?: string | undefined;
   distributionNonce?: string | undefined;
   distribution?: { ciphertext: string; nonce: string } | undefined;
@@ -120,6 +186,8 @@ export type NormalizedMessageKey =
       ratchetPublicKey: string;
       previousChainLength: number;
       messageNumber: number;
+      senderIdentityPublicKey?: string;
+      signedPreKeyId?: string;
       wrappedKey: string;
       wrapNonce: string;
       distribution?: NormalizedDeviceDistribution;
@@ -250,6 +318,43 @@ export function normalizeMessagePayload(
         }
       : undefined;
 
+    const x3dhSenderIdentity =
+      key.senderIdentityPublicKey !== undefined || key.signedPreKeyId !== undefined;
+    if (
+      x3dhSenderIdentity &&
+      (key.senderIdentityPublicKey === undefined || key.signedPreKeyId === undefined)
+    ) {
+      throw AppError.badRequest(
+        "INVALID_ENVELOPE",
+        "senderIdentityPublicKey and signedPreKeyId must be provided together",
+      );
+    }
+    if (version === ENVELOPE_VERSION && x3dhSenderIdentity) {
+      throw AppError.badRequest(
+        "INVALID_ENVELOPE",
+        "X3DH headers are only supported on ratchet envelopes",
+      );
+    }
+    const x3dhHeader = x3dhSenderIdentity
+      ? {
+          senderIdentityPublicKey: requireBytes(
+            key.senderIdentityPublicKey ?? "",
+            "senderIdentityPublicKey",
+            X25519_KEY_BYTES,
+          ),
+          signedPreKeyId: (() => {
+            const id = key.signedPreKeyId ?? "";
+            if (!UUID_PATTERN.test(id)) {
+              throw AppError.badRequest(
+                "INVALID_ENVELOPE",
+                "signedPreKeyId must be a UUID",
+              );
+            }
+            return id;
+          })(),
+        }
+      : undefined;
+
     if (version === ENVELOPE_VERSION) {
       keys.push({
         deviceId: key.deviceId,
@@ -282,6 +387,7 @@ export function normalizeMessagePayload(
         messageNumber: requireRatchetIndex(key.messageNumber, "messageNumber"),
         wrappedKey,
         wrapNonce,
+        ...(x3dhHeader ?? {}),
         ...(distribution ? { distribution } : {}),
       });
       continue;

@@ -10,6 +10,10 @@ export interface DeviceIdentity {
   signingPrivate: CryptoKey | string;
   identityPublicKey: string;
   signingPublicKey: string;
+  signedPreKeyPrivate?: CryptoKey | string;
+  signedPreKeyPublicKey?: string;
+  signedPreKeyId?: string;
+  signedPreKeySignature?: string;
   deviceId?: string;
   userId?: string;
 }
@@ -79,17 +83,68 @@ function createNobleIdentity(): DeviceIdentity {
   };
 }
 
+export function signedPreKeyMessage(
+  id: string,
+  publicKey: string,
+): Uint8Array<ArrayBuffer> {
+  return encoder.encode(`onemoments-signed-prekey:${id}:${publicKey}`);
+}
+
+/** X3DH signed prekey를 만들고 기기 서명키로 서명한다. */
+export async function ensureSignedPreKey(
+  identity: DeviceIdentity,
+): Promise<DeviceIdentity> {
+  if (
+    identity.signedPreKeyPrivate &&
+    identity.signedPreKeyPublicKey &&
+    identity.signedPreKeyId &&
+    identity.signedPreKeySignature
+  ) {
+    return identity;
+  }
+  const id = crypto.randomUUID();
+  let privateKey: CryptoKey | string;
+  let publicKey: string;
+  if (identity.backend === "webcrypto") {
+    const pair = (await subtle().generateKey({ name: "X25519" }, true, [
+      "deriveBits",
+    ])) as CryptoKeyPair;
+    privateKey = pair.privateKey;
+    publicKey = toBase64(new Uint8Array(await subtle().exportKey("raw", pair.publicKey)));
+  } else {
+    const raw = x25519.utils.randomPrivateKey();
+    privateKey = toBase64(raw);
+    publicKey = toBase64(x25519.getPublicKey(raw));
+  }
+  const signature = await signPayload(
+    identity.backend,
+    identity.signingPrivate,
+    signedPreKeyMessage(id, publicKey),
+  );
+  return {
+    ...identity,
+    signedPreKeyPrivate: privateKey,
+    signedPreKeyPublicKey: publicKey,
+    signedPreKeyId: id,
+    signedPreKeySignature: toBase64(signature),
+  };
+}
+
 export async function createIdentity(): Promise<DeviceIdentity> {
-  if ((await detectBackend()) === "webcrypto") return createWebCryptoIdentity();
-  return createNobleIdentity();
+  if ((await detectBackend()) === "webcrypto") {
+    return ensureSignedPreKey(await createWebCryptoIdentity());
+  }
+  return ensureSignedPreKey(createNobleIdentity());
 }
 
 /** 테스트·진단용: 백엔드를 명시해 키를 만든다. */
 export async function createIdentityWithBackend(
   backend: IdentityBackend,
 ): Promise<DeviceIdentity> {
-  if (backend === "webcrypto") return createWebCryptoIdentity();
-  return createNobleIdentity();
+  if (backend === "webcrypto") {
+    return ensureSignedPreKey(await createWebCryptoIdentity());
+  }
+  return ensureSignedPreKey(createNobleIdentity());
 }
 
 export async function generateEphemeral(

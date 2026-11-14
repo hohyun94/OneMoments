@@ -29,6 +29,8 @@ import {
 export interface RecipientDevice {
   deviceId: string;
   identityPublicKey: string;
+  signedPreKeyId?: string | null;
+  signedPreKeyPublicKey?: string | null;
 }
 
 export type DeviceKeyEnvelope =
@@ -45,6 +47,8 @@ export type DeviceKeyEnvelope =
       ratchetPublicKey: string;
       previousChainLength: number;
       messageNumber: number;
+      senderIdentityPublicKey?: string;
+      signedPreKeyId?: string;
       wrappedKey: string;
       wrapNonce: string;
       version: 2;
@@ -153,6 +157,8 @@ export async function encryptMessage(input: {
       conversationId: input.conversationId,
       remoteDeviceId: recipient.deviceId,
       remoteIdentityPublicKey: recipient.identityPublicKey,
+      remoteSignedPreKeyId: recipient.signedPreKeyId,
+      remoteSignedPreKeyPublicKey: recipient.signedPreKeyPublicKey,
       contentKey: contentKeyRaw,
     });
     keys.push({ deviceId: recipient.deviceId, ...wrapped });
@@ -249,6 +255,12 @@ export async function decryptMessage(input: {
             ratchetPublicKey: key.ratchetPublicKey,
             previousChainLength: key.previousChainLength,
             messageNumber: key.messageNumber,
+            ...(key.senderIdentityPublicKey && key.signedPreKeyId
+              ? {
+                  senderIdentityPublicKey: key.senderIdentityPublicKey,
+                  signedPreKeyId: key.signedPreKeyId,
+                }
+              : {}),
           },
           wrappedKey: key.wrappedKey,
           wrapNonce: key.wrapNonce,

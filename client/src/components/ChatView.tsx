@@ -265,6 +265,8 @@ export function ChatView({
           devices: devices.map((device) => ({
             deviceId: device.id,
             identityPublicKey: device.identityPublicKey,
+            signedPreKeyId: device.signedPreKeyId,
+            signedPreKeyPublicKey: device.signedPreKeyPublicKey,
           })),
           memberCount: conversation.memberCount,
         });
@@ -283,6 +285,8 @@ export function ChatView({
         recipients: devices.map((device) => ({
           deviceId: device.id,
           identityPublicKey: device.identityPublicKey,
+          signedPreKeyId: device.signedPreKeyId,
+          signedPreKeyPublicKey: device.signedPreKeyPublicKey,
         })),
       });
       const response = await api<{ message: MessageView }>(

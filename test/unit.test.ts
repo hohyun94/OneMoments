@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes, randomUUID, sign } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
@@ -12,9 +12,11 @@ import {
 import {
   normalizeDeviceKeys,
   normalizeMessagePayload,
+  signedPreKeyMessage,
   type MessagePayloadInput,
 } from "../src/crypto/envelope.js";
 import { AppError } from "../src/http/errors.js";
+import { createIdentity as createTestIdentity } from "./support/crypto.js";
 
 const b64 = (bytes: number) => randomBytes(bytes).toString("base64");
 
@@ -78,7 +80,7 @@ describe("sessions and CSRF", () => {
 describe("device keys and message envelopes", () => {
   it("accepts 32-byte X25519/Ed25519 public keys", () => {
     const keys = { identityPublicKey: b64(32), signingPublicKey: b64(32) };
-    expect(normalizeDeviceKeys(keys)).toEqual(keys);
+    expect(normalizeDeviceKeys(keys)).toEqual({ ...keys, signedPreKey: null });
   });
 
   it("rejects wrong device key sizes", () => {
@@ -163,3 +165,57 @@ describe("device keys and message envelopes", () => {
     ).toThrow(/At most 1/);
   });
 });
+
+describe("signed prekeys", () => {
+  it("verifies a signed prekey and accepts X3DH envelope headers", async () => {
+    const identity = createTestIdentity();
+    const signed = generateKeyPairSync("x25519");
+    const signedPreKeyPublicKey = signed.publicKey
+      .export({ format: "jwk" })
+      .x;
+    if (!signedPreKeyPublicKey) throw new Error("missing signed prekey");
+    const publicKey = Buffer.from(signedPreKeyPublicKey, "base64url").toString("base64");
+    const id = randomUUID();
+    const signature = sign(
+      null,
+      signedPreKeyMessage(id, publicKey),
+      identity.signing.privateKey,
+    ).toString("base64");
+
+    const keys = normalizeDeviceKeys({
+      identityPublicKey: identity.identity.publicKeyBase64,
+      signingPublicKey: identity.signing.publicKeyBase64,
+      signedPreKey: { id, publicKey, signature },
+    });
+    expect(keys.signedPreKey).toEqual({ id, publicKey, signature });
+
+    expect(() =>
+      normalizeDeviceKeys({
+        identityPublicKey: identity.identity.publicKeyBase64,
+        signingPublicKey: identity.signing.publicKeyBase64,
+        signedPreKey: { id, publicKey, signature: b64(64) },
+      }),
+    ).toThrow(AppError);
+
+    const payload = validPayload();
+    payload.keys = [
+      {
+        deviceId: "11111111-1111-4111-8111-111111111111",
+        ratchetPublicKey: b64(32),
+        previousChainLength: 0,
+        messageNumber: 0,
+        senderIdentityPublicKey: identity.identity.publicKeyBase64,
+        signedPreKeyId: id,
+        wrappedKey: b64(48),
+        wrapNonce: b64(12),
+        version: 2,
+      },
+    ];
+    const normalized = normalizeMessagePayload(payload, options);
+    expect(normalized.keys[0]).toMatchObject({
+      senderIdentityPublicKey: identity.identity.publicKeyBase64,
+      signedPreKeyId: id,
+    });
+  });
+});
+

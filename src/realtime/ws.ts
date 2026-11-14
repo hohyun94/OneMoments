@@ -28,6 +28,8 @@ const envelopeKey = z.object({
   ratchetPublicKey: z.string().min(1).optional(),
   previousChainLength: z.number().int().min(0).optional(),
   messageNumber: z.number().int().min(0).optional(),
+  senderIdentityPublicKey: z.string().min(1).optional(),
+  signedPreKeyId: z.string().uuid().optional(),
   wrappedKey: z.string().min(1),
   wrapNonce: z.string().min(1),
   distributionCiphertext: z.string().min(1).optional(),

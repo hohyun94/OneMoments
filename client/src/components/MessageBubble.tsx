@@ -13,6 +13,27 @@ import { formatBytes, formatClock } from "../lib/format.ts";
 import type { MessageView } from "../types.ts";
 import { cn } from "./ui.tsx";
 
+async function decryptAttachmentBlob(attachment: AttachmentPayload): Promise<Blob> {
+  const response = await fetch(`/api/attachments/${attachment.id}`, {
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    throw new Error(
+      response.status === 404
+        ? "첨부 파일을 찾을 수 없습니다."
+        : "첨부 파일을 내려받지 못했습니다.",
+    );
+  }
+  const plaintext = await decryptAttachment(
+    await response.arrayBuffer(),
+    attachment.key,
+    attachment.iv,
+  );
+  return new Blob([plaintext], {
+    type: attachment.mime || "application/octet-stream",
+  });
+}
+
 function AttachmentCard({
   attachment,
   own,
@@ -20,31 +41,42 @@ function AttachmentCard({
   attachment: AttachmentPayload;
   own: boolean;
 }) {
+  const isImage = attachment.mime.toLowerCase().startsWith("image/");
   const [downloading, setDownloading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(isImage);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isImage) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    setPreviewLoading(true);
+    decryptAttachmentBlob(attachment)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewUrl(objectUrl);
+      })
+      .catch((caught) => {
+        if (!cancelled) {
+          setError(caught instanceof Error ? caught.message : "이미지를 열 수 없습니다.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPreviewLoading(false);
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [attachment.id, attachment.iv, attachment.key, attachment.mime, isImage]);
 
   async function download(): Promise<void> {
     setDownloading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/attachments/${attachment.id}`, {
-        credentials: "same-origin",
-      });
-      if (!response.ok) {
-        throw new Error(
-          response.status === 404
-            ? "첨부 파일을 찾을 수 없습니다."
-            : "첨부 파일을 내려받지 못했습니다.",
-        );
-      }
-      const plaintext = await decryptAttachment(
-        await response.arrayBuffer(),
-        attachment.key,
-        attachment.iv,
-      );
-      const blob = new Blob([plaintext], {
-        type: attachment.mime || "application/octet-stream",
-      });
+      const blob = await decryptAttachmentBlob(attachment);
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -69,6 +101,29 @@ function AttachmentCard({
         own ? "border-violet-400/40 bg-violet-500/20" : "border-zinc-200 bg-zinc-50",
       )}
     >
+      {isImage ? (
+        <div className="mb-2 overflow-hidden rounded-lg bg-black/5">
+          {previewUrl ? (
+            <button
+              type="button"
+              className="block w-full"
+              onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+              aria-label={`${attachment.name} 크게 보기`}
+            >
+              <img
+                src={previewUrl}
+                alt={attachment.name}
+                className="max-h-72 w-full object-contain"
+                loading="lazy"
+              />
+            </button>
+          ) : previewLoading ? (
+            <div className="flex h-32 items-center justify-center text-xs text-zinc-500">
+              이미지 복호화 중…
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex items-center gap-2">
         <span
           className={cn(

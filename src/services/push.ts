@@ -114,16 +114,20 @@ export async function sendMessagePushes(
   input: {
     message: MessageRow;
     participantUserIds: string[];
+    mutedUserIds?: string[];
     senderDeviceId: string;
   },
 ): Promise<void> {
   const vapid = createVapidKeys(config);
   if (!vapid) return;
 
-  const subscriptions = await listActiveSubscriptions(db, {
-    userIds: input.participantUserIds,
-    excludeDeviceId: input.senderDeviceId,
-  });
+  const muted = new Set(input.mutedUserIds ?? []);
+  const subscriptions = (
+    await listActiveSubscriptions(db, {
+      userIds: input.participantUserIds,
+      excludeDeviceId: input.senderDeviceId,
+    })
+  ).filter((subscription) => !muted.has(subscription.userId));
   if (subscriptions.length === 0) return;
 
   const payload = messagePushPayload(input.message);

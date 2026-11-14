@@ -67,10 +67,11 @@ pnpm push:keys
 
 ## 6. PWA·모바일
 
-- `manifest.webmanifest` + `display: standalone` + SVG 아이콘으로 홈 화면 설치를 지원한다.
+- `manifest.webmanifest` + `display: standalone` + **PNG 192/512·Apple 180 아이콘**으로 홈 화면 설치를 지원한다.
+- 서비스 워커가 정적 앱 셸(`/`, `/assets/*`, 아이콘·매니페스트)을 캐시한다. API·첨부 암호문은 캐시하지 않는다.
 - iOS Safari는 **홈 화면에 추가한 PWA에서만** Web Push를 지원한다. 일반 탭에서는 알림을 켤 수 없다.
 - Android Chrome은 일반 탭에서도 Web Push를 지원한다.
-- 현재 아이콘은 SVG라 일부 설치 심사/스토어 요구사항을 충족하지 않을 수 있다. PNG 192/512 아이콘은 후속.
+- 현재 아이콘은 PNG 192/512·Apple 180을 생성해 포함한다(`pnpm icons:pwa`). 스토어용 추가 사이즈는 후속.
 - **네이티브 앱은 아직 없다.** 다음 단계 후보:
   - React Native/Flutter 클라이언트에서 기존 프로토콜(v1/v2 봉투, DR 세션) 재사용
   - 푸시는 APNs/FCM 토큰을 `push_subscriptions`와 유사한 테이블로 저장

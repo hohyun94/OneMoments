@@ -10,6 +10,8 @@ import {
   createConversationBodySchema,
   listMessagesQuerySchema,
   sendMessageBodySchema,
+  updateConversationNotificationBodySchema,
+  updateGroupBodySchema,
 } from "../http/validation.js";
 import type { MessageBus } from "../realtime/bus.js";
 import {
@@ -20,7 +22,10 @@ import {
   hideConversation,
   listActiveDeviceKeys,
   listConversations,
+  leaveGroup,
+  renameGroup,
   requireParticipant,
+  setConversationMuted,
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
 import { listMessages } from "../services/messages.js";
@@ -88,6 +93,54 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       res.json({ conversations: await listConversations(db, auth.userId) });
+    }),
+  );
+
+  router.put(
+    "/:conversationId/group",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const body = updateGroupBodySchema.parse(req.body);
+      await renameGroup(db, {
+        conversationId,
+        userId: auth.userId,
+        name: body.name,
+      });
+      const context = await requireParticipant(db, { conversationId, userId: auth.userId });
+      res.json({ conversation: await getConversationSummary(db, context) });
+    }),
+  );
+
+  router.delete(
+    "/:conversationId/members/me",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      await leaveGroup(db, { conversationId, userId: auth.userId });
+      res.status(204).end();
+    }),
+  );
+
+  router.put(
+    "/:conversationId/notification",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const body = updateConversationNotificationBodySchema.parse(req.body);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      const muted = await setConversationMuted(db, {
+        conversationId,
+        userId: auth.userId,
+        muted: body.muted,
+      });
+      res.json({ muted });
     }),
   );
 

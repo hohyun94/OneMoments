@@ -1,10 +1,22 @@
 import {
   useInfiniteQuery,
+  useMutation,
   useQuery,
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Paperclip, Send, ShieldCheck, UserPlus, X } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Bell,
+  BellOff,
+  Paperclip,
+  Send,
+  Settings,
+  ShieldCheck,
+  UserPlus,
+  X,
+} from "lucide-react";
 import {
   useEffect,
   useMemo,
@@ -35,6 +47,7 @@ import type {
 import { Alert, Avatar, Button, Dialog, Spinner, Textarea, cn } from "./ui.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
 import { GroupMembersDialog } from "./GroupMembersDialog.tsx";
+import { GroupSettingsDialog } from "./GroupSettingsDialog.tsx";
 import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
 
 interface PendingMessage {
@@ -68,11 +81,13 @@ export function ChatView({
   identity,
   currentUserId,
   onBack,
+  onLeft,
 }: {
   conversation: ConversationSummary;
   identity: StoredIdentity;
   currentUserId: string;
   onBack: () => void;
+  onLeft: () => void;
 }) {
   const queryClient = useQueryClient();
   const { status: connection, sendTyping, typingUsers, onlineUsers } = useRealtime();
@@ -97,6 +112,17 @@ export function ChatView({
     refetchInterval: 60_000,
   });
 
+  const muteMutation = useMutation({
+    mutationFn: (muted: boolean) =>
+      api<{ muted: boolean }>(`/api/conversations/${conversation.id}/notification`, {
+        method: "PUT",
+        body: { muted },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+    },
+  });
+
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -106,6 +132,7 @@ export function ChatView({
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [safetyChanged, setSafetyChanged] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const pendingRef = useRef<PendingMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimerRef = useRef<number | undefined>(undefined);
@@ -423,6 +450,33 @@ export function ChatView({
             )}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => muteMutation.mutate(!conversation.muted)}
+          aria-label={conversation.muted ? "대화 알림 켜기" : "대화 알림 끄기"}
+          disabled={muteMutation.isPending}
+        >
+          {conversation.muted ? (
+            <BellOff className="h-4 w-4" aria-hidden />
+          ) : (
+            <Bell className="h-4 w-4" aria-hidden />
+          )}
+          <span className="hidden sm:inline">
+            {conversation.muted ? "알림 꺼짐" : "알림 켜짐"}
+          </span>
+        </Button>
+        {isGroup ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="그룹 설정"
+          >
+            <Settings className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">그룹 설정</span>
+          </Button>
+        ) : null}
         {isGroup ? (
           <Button
             variant="ghost"
@@ -657,6 +711,23 @@ export function ChatView({
           번호가 예상과 다르면 대화를 중단하고 상대에게 직접 확인하세요.
         </p>
       </Dialog>
+
+      {isGroup ? (
+        <GroupSettingsDialog
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          conversationId={conversation.id}
+          currentName={conversation.name ?? "그룹"}
+          onUpdated={() => {
+            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          }}
+          onLeft={() => {
+            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            setSettingsOpen(false);
+            onLeft();
+          }}
+        />
+      ) : null}
 
       {isGroup ? (
         <GroupMembersDialog

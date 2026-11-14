@@ -1,10 +1,85 @@
-/* OneMoments 서비스 워커 — Web Push 알림 표시와 클릭 이동만 담당한다. */
-self.addEventListener("install", () => {
-  self.skipWaiting();
+/* OneMoments 서비스 워커 — 정적 앱 셸 캐시와 Web Push 알림을 담당한다. */
+const CACHE_NAME = "onemoments-static-v2";
+const PRECACHE = [
+  "/",
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/icon-192.png",
+  "/icon-512.png",
+  "/apple-touch-icon.png",
+];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.addAll(PRECACHE))
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) =>
+        Promise.all(
+          keys
+            .filter((key) => key.startsWith("onemoments-static-") && key !== CACHE_NAME)
+            .map((key) => caches.delete(key)),
+        ),
+      )
+      .then(() => self.clients.claim()),
+  );
+});
+
+async function cacheFirst(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response.ok) await cache.put(request, response.clone());
+  return response;
+}
+
+async function networkFirstNavigation(request) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const response = await fetch(request);
+    if (response.ok) await cache.put("/", response.clone());
+    return response;
+  } catch {
+    const cached = await cache.match("/");
+    if (cached) return cached;
+    return new Response("오프라인 상태입니다. 네트워크에 연결한 뒤 다시 시도해 주세요.", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8" },
+    });
+  }
+}
+
+self.addEventListener("fetch", (event) => {
+  const request = event.request;
+  if (request.method !== "GET") return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  // API·첨부(암호문)는 캐시하지 않는다.
+  if (url.pathname.startsWith("/api/") || url.pathname === "/ws") return;
+
+  if (request.mode === "navigate") {
+    event.respondWith(networkFirstNavigation(request));
+    return;
+  }
+
+  if (
+    url.pathname.startsWith("/assets/") ||
+    url.pathname.startsWith("/icon") ||
+    url.pathname === "/manifest.webmanifest" ||
+    url.pathname === "/apple-touch-icon.png"
+  ) {
+    event.respondWith(cacheFirst(request));
+  }
 });
 
 self.addEventListener("push", (event) => {

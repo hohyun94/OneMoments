@@ -39,6 +39,8 @@ export interface ConversationSummary {
   members: PeerUser[];
   /** 나를 포함한 전체 인원 */
   memberCount: number;
+  /** 이 대화의 푸시 알림을 끈 상태 */
+  muted: boolean;
   lastMessageAt: string | null;
 }
 

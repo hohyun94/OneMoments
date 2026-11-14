@@ -14,6 +14,7 @@ import type { MessageView } from "../types/protocol.js";
 import type { MessageEvent } from "../realtime/bus.js";
 import {
   listActiveDeviceKeys,
+  listMutedParticipantUserIds,
   listParticipantUserIds,
   requireParticipant,
   unhideConversation,
@@ -131,10 +132,12 @@ export async function sendEncryptedMessage(
   const participantUserIds = await listParticipantUserIds(db, input.conversationId);
 
   if (result.created) {
+    const mutedUserIds = await listMutedParticipantUserIds(db, input.conversationId);
     // 알림은 응답을 막지 않는다. 실패해도 메시지 전달에는 영향을 주지 않는다.
     void sendMessagePushes(db, config, {
       message: result.message,
       participantUserIds,
+      mutedUserIds,
       senderDeviceId: input.senderDeviceId,
     }).catch((error: unknown) => {
       console.error(

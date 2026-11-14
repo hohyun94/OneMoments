@@ -101,6 +101,8 @@ export const conversationParticipants = pgTable(
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
     // 대화 삭제는 내 화면에서만 숨긴다(상대 이력 유지).
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
+    // 이 대화의 푸시 알림을 끈 시각(사용자별).
+    mutedAt: timestamp("muted_at", { withTimezone: true }),
   },
   (table) => [
     primaryKey({ columns: [table.conversationId, table.userId] }),

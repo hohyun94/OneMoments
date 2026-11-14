@@ -124,6 +124,7 @@ function ChatShell({
             identity={identity}
             currentUserId={currentUserId}
             onBack={onBack}
+            onLeft={onBack}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">

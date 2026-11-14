@@ -340,6 +340,16 @@ describe("web push", () => {
       expect(payload.conversationId).toBe(conversationId);
       expect(payload.body).toBe("새 메시지가 도착했습니다.");
       expect(JSON.stringify(payload)).not.toContain("ciphertext");
+
+      // 음소거한 사용자에게는 보내지 않는다.
+      received = null;
+      await sendMessagePushes(ctx.db, vapidTestConfig(), {
+        message,
+        participantUserIds: [userId],
+        mutedUserIds: [userId],
+        senderDeviceId: randomUUID(),
+      });
+      expect(received).toBeNull();
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

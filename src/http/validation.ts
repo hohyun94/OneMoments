@@ -63,6 +63,14 @@ export const createConversationBodySchema = z.union([
   }),
 ]);
 
+export const updateConversationNotificationBodySchema = z.object({
+  muted: z.boolean(),
+});
+
+export const updateGroupBodySchema = z.object({
+  name: groupNameSchema,
+});
+
 export const addConversationMembersBodySchema = z.object({
   userIds: z.array(z.string().uuid()).min(1).max(19),
 });

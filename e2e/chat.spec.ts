@@ -83,6 +83,12 @@ test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 �
     await sendMessage(bob, reply);
     await expect(alice.getByText(reply)).toBeVisible();
 
+    // 대화별 알림 음소거 토글
+    await alice.getByRole("button", { name: "대화 알림 끄기" }).click();
+    await expect(alice.getByRole("button", { name: "대화 알림 켜기" })).toBeVisible();
+    await alice.getByRole("button", { name: "대화 알림 켜기" }).click();
+    await expect(alice.getByRole("button", { name: "대화 알림 끄기" })).toBeVisible();
+
     // 안전번호: 60자리(5자리 × 12그룹)
     await alice.getByRole("button", { name: "안전번호" }).click();
     const safetyDialog = alice.getByRole("dialog", { name: "안전번호" });
@@ -251,7 +257,7 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
   const bobName = uniqueName("bob");
   const carolName = uniqueName("carol");
   const daveName = uniqueName("dave");
-  const groupName = `group-${Date.now().toString(36)}`;
+  let groupName = `group-${Date.now().toString(36)}`;
 
   try {
     await register(alice, aliceName);
@@ -263,6 +269,15 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
     await startGroup(alice, groupName, [bobName, carolName]);
     await expect(alice.getByRole("heading", { name: groupName })).toBeVisible();
     await expect(alice.getByText("3명 · 종단간 암호화").first()).toBeVisible();
+
+    // 그룹 이름 변경
+    await alice.getByRole("button", { name: "그룹 설정" }).click();
+    const settingsDialog = alice.getByRole("dialog", { name: "그룹 설정" });
+    const renamedGroup = `${groupName}-renamed`;
+    await settingsDialog.getByLabel("그룹 이름").fill(renamedGroup);
+    await settingsDialog.getByRole("button", { name: "이름 저장" }).click();
+    await expect(alice.getByRole("heading", { name: renamedGroup })).toBeVisible();
+    groupName = renamedGroup;
 
     const first = "그룹 첫 메시지";
     await sendMessage(alice, first);
@@ -325,6 +340,17 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
     const welcome = "새 참여자 환영";
     await sendMessage(alice, welcome);
     await expect(dave.getByText(welcome)).toBeVisible();
+
+    // 새 참여자가 그룹을 나가면 목록에서 사라진다.
+    await dave.getByRole("button", { name: "그룹 설정" }).click();
+    const daveSettings = dave.getByRole("dialog", { name: "그룹 설정" });
+    await daveSettings.getByRole("button", { name: "그룹 나가기" }).click();
+    await daveSettings.getByRole("button", { name: "정말 나가기" }).click();
+    await expect(
+      dave
+        .getByRole("navigation", { name: "대화 목록" })
+        .getByRole("button", { name: new RegExp(groupName) }),
+    ).toHaveCount(0);
   } finally {
     await aliceContext.close();
     await bobContext.close();

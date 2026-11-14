@@ -1,4 +1,4 @@
-import { LogOut, MessageSquarePlus, ShieldCheck, Smartphone, Users } from "lucide-react";
+import { BellOff, LogOut, MessageSquarePlus, ShieldCheck, Smartphone, Users } from "lucide-react";
 
 import { formatListTime } from "../lib/format.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
@@ -92,6 +92,11 @@ export function ConversationSidebar({
                         </span>
                       </span>
                       <span className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
+                        {conversation.muted ? (
+                          <span title="알림 꺼짐">
+                            <BellOff className="h-3 w-3" aria-hidden />
+                          </span>
+                        ) : null}
                         {isGroup ? (
                           <Users className="h-3 w-3" aria-hidden />
                         ) : (

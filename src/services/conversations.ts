@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
@@ -291,6 +291,7 @@ export async function getConversationSummary(
     members,
     context.peer,
     members.length + 1,
+    context.participant.mutedAt !== null,
     await lastMessageAt(db, context.conversation.id),
   );
 }
@@ -300,7 +301,7 @@ export async function listConversations(
   userId: string,
 ): Promise<ConversationSummary[]> {
   const rows = await db
-    .select({ conversation: conversations })
+    .select({ conversation: conversations, participant: conversationParticipants })
     .from(conversationParticipants)
     .innerJoin(
       conversations,
@@ -354,7 +355,7 @@ export async function listConversations(
   const summaries: ConversationSummary[] = [];
   for (const row of rows) {
     const members = membersByConversation.get(row.conversation.id) ?? [];
-    if (members.length === 0) continue;
+    if (members.length === 0 && row.conversation.kind === "direct") continue;
     const peer = row.conversation.kind === "direct" ? (members[0] ?? null) : null;
     if (row.conversation.kind === "direct" && !peer) continue;
     summaries.push(
@@ -363,6 +364,7 @@ export async function listConversations(
         members,
         peer,
         members.length + 1,
+        row.participant.mutedAt !== null,
         lastByConversation.get(row.conversation.id) ?? null,
       ),
     );
@@ -432,6 +434,95 @@ export async function isParticipant(
     )
     .limit(1);
   return Boolean(row);
+}
+
+export async function setConversationMuted(
+  db: Database,
+  input: { conversationId: string; userId: string; muted: boolean },
+): Promise<boolean> {
+  const [row] = await db
+    .update(conversationParticipants)
+    .set({ mutedAt: input.muted ? new Date() : null })
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, input.conversationId),
+        eq(conversationParticipants.userId, input.userId),
+      ),
+    )
+    .returning({ mutedAt: conversationParticipants.mutedAt });
+  if (!row) throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+  return row.mutedAt !== null;
+}
+
+export async function listMutedParticipantUserIds(
+  db: Database,
+  conversationId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        isNotNull(conversationParticipants.mutedAt),
+      ),
+    );
+  return rows.map((row) => row.userId);
+}
+
+/** 그룹 이름 변경. 참여자만 가능하다. */
+export async function renameGroup(
+  db: Database,
+  input: { conversationId: string; userId: string; name: string },
+): Promise<ConversationRow> {
+  const context = await requireParticipant(db, {
+    conversationId: input.conversationId,
+    userId: input.userId,
+  });
+  if (context.conversation.kind !== "group") {
+    throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations can be renamed");
+  }
+  const [updated] = await db
+    .update(conversations)
+    .set({ name: normalizeGroupName(input.name) })
+    .where(eq(conversations.id, input.conversationId))
+    .returning();
+  if (!updated) throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+  return updated;
+}
+
+/** 그룹 나가기. 마지막 참여자가 나가면 대화와 메시지를 삭제한다. */
+export async function leaveGroup(
+  db: Database,
+  input: { conversationId: string; userId: string },
+): Promise<{ deleted: boolean }> {
+  const context = await requireParticipant(db, {
+    conversationId: input.conversationId,
+    userId: input.userId,
+  });
+  if (context.conversation.kind !== "group") {
+    throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations can be left");
+  }
+
+  return db.transaction(async (tx) => {
+    await tx
+      .delete(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, input.conversationId),
+          eq(conversationParticipants.userId, input.userId),
+        ),
+      );
+    const [row] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(conversationParticipants)
+      .where(eq(conversationParticipants.conversationId, input.conversationId));
+    if ((row?.count ?? 0) === 0) {
+      await tx.delete(conversations).where(eq(conversations.id, input.conversationId));
+      return { deleted: true };
+    }
+    return { deleted: false };
+  });
 }
 
 export async function hideConversation(

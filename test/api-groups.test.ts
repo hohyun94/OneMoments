@@ -285,6 +285,55 @@ describe("group conversations", () => {
   });
 
 
+  it("renames a group and lets members leave", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const carol = await registerAccount("carol");
+    const conversationId = await createGroup(alice, "변경 전", [bob, carol]);
+
+    const renamed = await bob.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/group`,
+      { body: { name: "변경 후" } },
+    );
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.conversation.name).toBe("변경 후");
+
+    const left = await carol.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/members/me`,
+    );
+    expect(left.status).toBe(204);
+    const carolList = await carol.client.request("GET", "/api/conversations");
+    expect(
+      carolList.body.conversations.find((item: { id: string }) => item.id === conversationId),
+    ).toBeUndefined();
+
+    const renamedAfterLeave = await carol.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/group`,
+      { body: { name: "권한 없음" } },
+    );
+    expect(renamedAfterLeave.status).toBe(404);
+
+    await bob.client.request("DELETE", `/api/conversations/${conversationId}/members/me`);
+    const aliceList = await alice.client.request("GET", "/api/conversations");
+    const solo = aliceList.body.conversations.find(
+      (item: { id: string }) => item.id === conversationId,
+    );
+    expect(solo).toMatchObject({ kind: "group", name: "변경 후", memberCount: 1 });
+
+    const last = await alice.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/members/me`,
+    );
+    expect(last.status).toBe(204);
+    const empty = await alice.client.request("GET", "/api/conversations");
+    expect(
+      empty.body.conversations.find((item: { id: string }) => item.id === conversationId),
+    ).toBeUndefined();
+  });
+
   it("rejects invalid groups, non-participants, and direct-conversation member changes", async () => {
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

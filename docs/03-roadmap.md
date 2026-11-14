@@ -88,14 +88,14 @@ MVP 이후 과제를 순차 진행한다.
    - 복구 암호로 기기 키를 암호화해 서버에 저장, 새 브라우저에서 같은 기기 ID로 복구
    - `docs/08-key-backup.md`
 2. 그룹 대화·파일 첨부 — **완료**
-   - 그룹 대화(최대 20명, 기기별 봉투, 참여자 추가) · `docs/09-groups.md`
+   - 그룹 대화(최대 20명, 기기별 봉투, 참여자 추가/이름 변경/나가기) · `docs/09-groups.md`
    - 파일 첨부(파일별 AES-GCM, 암호문만 저장) · `docs/10-attachments.md`
    - Sender Keys 최적화 — 대기
 3. **Double Ratchet(v2)** — 완료
    - 대화×기기 세션, DH ratchet, 순서 뒤바뀜(최대 1000), 이력 키
    - 백업에 DR 세션·이력 키 포함 · `docs/11-double-ratchet.md`
 4. 푸시 알림, 모바일 앱
-   - **Web Push(VAPID)·PWA — 완료** · `docs/12-push-mobile.md`
+   - **Web Push(VAPID)·PWA(오프라인 앱 셸, PNG 아이콘)·대화별 음소거 — 완료** · `docs/12-push-mobile.md`
    - 네이티브 앱(React Native/Flutter) — 대기
 5. **부하 테스트 동시성·클라이언트 프로파일링** — 완료
    - Node `CONCURRENCY`, k6 HTTP 시나리오, `bench:crypto`

@@ -176,7 +176,48 @@ describe("encrypted direct messages", () => {
     expect(correct.status).toBe(201);
   });
 
+  it("toggles per-conversation notification mute", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const eve = await registerAccount("eve");
+    const conversationId = await createConversation(alice, bob);
+
+    const muted = await alice.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/notification`,
+      { body: { muted: true } },
+    );
+    expect(muted.status).toBe(200);
+    expect(muted.body.muted).toBe(true);
+
+    const aliceList = await alice.client.request("GET", "/api/conversations");
+    const aliceSummary = aliceList.body.conversations.find(
+      (item: { id: string }) => item.id === conversationId,
+    );
+    expect(aliceSummary?.muted).toBe(true);
+
+    const bobList = await bob.client.request("GET", "/api/conversations");
+    const bobSummary = bobList.body.conversations.find(
+      (item: { id: string }) => item.id === conversationId,
+    );
+    expect(bobSummary?.muted).toBe(false);
+
+    const unmuted = await alice.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/notification`,
+      { body: { muted: false } },
+    );
+    expect(unmuted.body.muted).toBe(false);
+
+    const outsider = await eve.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/notification`,
+      { body: { muted: true } },
+    );
+    expect(outsider.status).toBe(404);
+  });
   it("hides conversations and keys from non-participants", async () => {
+
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");
     const carol = await registerAccount("carol");

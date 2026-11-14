@@ -2,7 +2,7 @@
 
 개인용 **1:1 종단간 암호화(E2E) 메신저**, 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: M3 보안 강화 완료** (다음: M4 운영·배포)
+**현재 단계: M4 운영·배포 완료 (MVP 전 구간 완료)**
 
 ## 구현된 것
 
@@ -14,8 +14,8 @@
 - **기기**: 키 등록·폐기, 폐기 시 세션 무효, 새 기기는 이후 메시지만 수신
 - **대화**: 1:1 중복 방지, 실시간 수신·타이핑·presence, 참여자 전체 전달(구독 전 목록 갱신)
 - **메시지**: AES-256-GCM 암호문 + 기기별 키 봉투, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시
-- **운영**: `/healthz`, `/readyz`, 마이그레이션, 레이트리밋, 프로덕션에서 클라이언트 정적 서빙 + CSP
-- **테스트 45개**: 서버 35(단위·API·WS) + 클라이언트 8(암호화·안전번호) + 브라우저 E2E 2
+- **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
+- **테스트 48개**: 서버 38(단위·API·WS·버스) + 클라이언트 8(암호화·안전번호) + 브라우저 E2E 2
 
 ## 빠른 시작
 
@@ -53,12 +53,19 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `SESSION_SECRET` | ✅ | `openssl rand -base64 48` (32자 이상) |
 | `CORS_ORIGINS` | ✅ | `https://chat.example.com` |
 | `DB_POOL_MAX` | — | `5` (인스턴스 수 × 값 ≤ DB max_connections) |
+| `METRICS_TOKEN` | — | `/metrics` Bearer 토큰(운영 권장) |
+| `REDIS_URL` | — | 기본 `redis://redis:6379` (compose에 Redis 포함) |
+| `MIGRATE_ON_START` | — | 기본 `true`. 다중 인스턴스에서는 `false` |
 
 3. `app` 서비스에 도메인을 연결하고 **포트 8080**, HTTPS를 켠다.
 4. 배포 → 기동 시 `node scripts/migrate.mjs`가 자동 적용된 뒤 서버가 뜬다.
 5. 확인: `https://<도메인>/healthz`, `/readyz`, 로그인 후 쿠키가 `Secure; HttpOnly`인지 확인.
 
 자세한 절차·백업·트러블슈팅: [`docs/05-deploy-coolify.md`](docs/05-deploy-coolify.md)
+
+> compose에는 메시지 팬아웃용 **Redis**가 포함되어 있다. Dragonfly를 쓰려면 image만 교체하면 된다(Redis 호환).
+> 여러 인스턴스로 늘릴 때는 `MIGRATE_ON_START=false`로 두고 마이그레이션을 일회성으로 실행한다
+> (`docs/06-operations.md`).
 
 > Coolify의 **내장 PostgreSQL 리소스**를 쓰려면 compose에서 `postgres` 서비스를 제거하고,
 > `DATABASE_URL`을 그 리소스의 내부 주소로 지정하면 된다(백업·모니터링은 Coolify가 관리).
@@ -69,6 +76,9 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 pnpm verify:full   # 서버 타입 체크 + 서버 테스트 + 클라이언트 테스트 + 서버·클라이언트 빌드
 pnpm test:e2e      # 빌드 후 Chrome 2개로 가입→대화→새로고침→DB 평문 부재 검증
 pnpm verify:all    # 위 두 가지를 순차 실행
+# 운영 도구
+pnpm db:backup     # BACKUP_DOCKER_CONTAINER 또는 pg_dump
+pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 # 외부 DB: TEST_DATABASE_URL=postgres://... pnpm test
 # E2E DB: E2E_DATABASE_URL=postgres://... pnpm test:e2e (이름에 'e2e' 포함 필요)
 # E2E는 시스템 Chrome(channel)을 사용한다. 브라우저 바이너리는 내려받지 않는다.
@@ -91,6 +101,8 @@ pnpm verify:all    # 위 두 가지를 순차 실행
 - [화면 와이어프레임](docs/04-wireframes.md) — 로그인·대화 목록·채팅·기기/안전번호
 - [로드맵](docs/03-roadmap.md) — 마일스톤과 완료 기준
 - [Coolify 배포](docs/05-deploy-coolify.md) — PostgreSQL 컨테이너, 환경변수, 백업, 트러블슈팅
+- [운영 가이드](docs/06-operations.md) — 다중 인스턴스(Redis/Dragonfly), 마이그레이션, 모니터링, 부하 테스트
+- [백업·복구](docs/07-backup-restore.md) — pg_dump/restore, Coolify 예약 작업, 리허설 체크리스트
 
 ## 원칙
 

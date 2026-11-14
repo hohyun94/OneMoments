@@ -8,6 +8,7 @@ import { SESSION_COOKIE } from "../auth/session.js";
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
 import { AppError } from "../http/errors.js";
+import { recordWsConnection } from "../metrics.js";
 import { resolveSession, type AuthContext } from "../http/middleware.js";
 import { toMessageView } from "../http/serializers.js";
 import { touchDevice } from "../services/accounts.js";
@@ -182,6 +183,16 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
     const connection = hub.add(socket, auth.userId, auth.deviceId);
     alive.set(socket, true);
     frameLog.set(socket, []);
+    recordWsConnection(1);
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      hub.remove(socket);
+      alive.delete(socket);
+      frameLog.delete(socket);
+      recordWsConnection(-1);
+    };
 
     hub.send(socket, { type: "ready", userId: auth.userId, deviceId: auth.deviceId });
     void touchDevice(db, auth.deviceId).catch(() => undefined);
@@ -198,16 +209,8 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
       }
       void handleMessage(connection, data.toString());
     });
-    socket.on("close", () => {
-      hub.remove(socket);
-      alive.delete(socket);
-      frameLog.delete(socket);
-    });
-    socket.on("error", () => {
-      hub.remove(socket);
-      alive.delete(socket);
-      frameLog.delete(socket);
-    });
+    socket.on("close", cleanup);
+    socket.on("error", cleanup);
   }
 
   function sendError(

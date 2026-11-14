@@ -8,7 +8,8 @@ import express, { type Express, type RequestHandler } from "express";
 
 import type { Config } from "./config.js";
 import type { Database } from "./db/client.js";
-import { asyncHandler, errorHandler, notFoundHandler } from "./http/errors.js";
+import { AppError, asyncHandler, errorHandler, notFoundHandler } from "./http/errors.js";
+import { renderMetrics } from "./metrics.js";
 import { originGuard } from "./http/middleware.js";
 import type { MessageBus } from "./realtime/bus.js";
 import { createAuthRouter } from "./routes/auth.js";
@@ -85,6 +86,25 @@ export function createApp(options: AppOptions): Express {
     asyncHandler(async (_req, res) => {
       await db.execute(sql`select 1`);
       res.json({ status: "ready" });
+    }),
+  );
+
+  app.get(
+    "/metrics",
+    asyncHandler(async (req, res) => {
+      if (config.metricsToken) {
+        const header = req.headers.authorization;
+        if (header !== `Bearer ${config.metricsToken}`) {
+          throw AppError.unauthorized();
+        }
+      }
+      let dbReady = true;
+      try {
+        await db.execute(sql`select 1`);
+      } catch {
+        dbReady = false;
+      }
+      res.type("text/plain; version=0.0.4").send(renderMetrics(dbReady));
     }),
   );
 

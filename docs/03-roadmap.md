@@ -69,13 +69,16 @@
 
 - Docker 이미지, 외부 PostgreSQL, 마이그레이션 배포 job
 - 백업/PITR + 복구 리허설, 모니터링·알림
-- 다중 인스턴스 전략 확정(Redis 팬아웃 또는 sticky session)
+- 다중 인스턴스 전략: Redis/Dragonfly 팬아웃(구현), presence는 sticky 또는 후속
 - 부하 테스트(동시 연결·메시지 처리량)
 
 **완료 기준**
-- [ ] 복구 리허설 문서화 및 1회 수행
-- [ ] 배포·롤백 절차 문서화
-- [ ] `/healthz`·`/readyz` 기반 모니터링
+- [x] 복구 리허설 문서화 및 1회 수행 (`docs/07-backup-restore.md`)
+- [x] 배포·롤백 절차 문서화 (`docs/05`, `docs/06`)
+- [x] `/healthz`·`/readyz` 모니터링 + `/metrics`(Prometheus)
+- [x] 다중 인스턴스 팬아웃(Redis/Dragonfly) + 테스트
+- [x] 부하 테스트 스크립트·기준 측정
+- [x] 슬림 런타임 이미지(`pnpm deploy`, 556MB → 288MB)
 
 ## 이후 후보 (MVP 아님)
 

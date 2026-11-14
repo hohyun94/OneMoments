@@ -6,6 +6,7 @@ data/
 test-results/
 playwright-report/
 blob-report/
+backups/
 *.log
 .pnpm-install*
 .vitest*
@@ -15,6 +16,9 @@ blob-report/
 .ui-smoke*
 .e2e*
 .server-tests*
+.deploy-test*
+.load-server*
+.redis-pull*
 .env
 .env.local
 .DS_Store

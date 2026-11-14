@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+
+import { createClient } from "redis";
+
 import type { MessageKeyRow, MessageRow } from "../db/schema.js";
 
 export interface MessageEvent {
@@ -9,11 +13,14 @@ export interface MessageEvent {
 
 export type MessageListener = (event: MessageEvent) => void;
 
-/**
- * REST/WS 로 저장된 메시지를 WebSocket 구독자에게 전달하기 위한 얇은 버스.
- * 각 연결은 자기 기기의 키 봉투만 받는다.
- */
-export class MessageBus {
+export interface MessageBus {
+  subscribe(listener: MessageListener): () => void;
+  publish(event: MessageEvent): void;
+  close(): Promise<void>;
+}
+
+/** 단일 프로세스용 버스(테스트·개발 기본). */
+export class LocalMessageBus implements MessageBus {
   readonly #listeners = new Set<MessageListener>();
 
   subscribe(listener: MessageListener): () => void {
@@ -36,4 +43,146 @@ export class MessageBus {
       }
     }
   }
+
+  async close(): Promise<void> {
+    this.#listeners.clear();
+  }
+}
+
+export interface SerializedMessageEvent {
+  conversationId: string;
+  message: Record<string, unknown> & { createdAt: string };
+  keys: Array<Record<string, unknown> & { createdAt: string }>;
+  participantUserIds: string[];
+}
+
+export function serializeMessageEvent(event: MessageEvent): SerializedMessageEvent {
+  return {
+    conversationId: event.conversationId,
+    message: { ...event.message, createdAt: event.message.createdAt.toISOString() },
+    keys: event.keys.map((key) => ({
+      ...key,
+      createdAt: key.createdAt.toISOString(),
+    })),
+    participantUserIds: event.participantUserIds,
+  };
+}
+
+export function deserializeMessageEvent(data: SerializedMessageEvent): MessageEvent {
+  return {
+    conversationId: data.conversationId,
+    message: {
+      ...data.message,
+      createdAt: new Date(data.message.createdAt),
+    } as MessageRow,
+    keys: data.keys.map(
+      (key) =>
+        ({
+          ...key,
+          createdAt: new Date(key.createdAt),
+        }) as MessageKeyRow,
+    ),
+    participantUserIds: data.participantUserIds,
+  };
+}
+
+type RedisClient = ReturnType<typeof createClient>;
+
+/**
+ * Redis/Dragonfly pub/sub 팬아웃.
+ * 같은 인스턴스의 publish 는 로컬에서 즉시 전달하고, 다른 인스턴스에는 Redis 로 전파한다.
+ * Redis 장애 시에도 단일 인스턴스 동작은 유지된다.
+ */
+export class RedisMessageBus implements MessageBus {
+  readonly #instanceId = randomUUID();
+  readonly #local = new LocalMessageBus();
+
+  private constructor(
+    private readonly channel: string,
+    private readonly publisher: RedisClient,
+    private readonly subscriber: RedisClient,
+  ) {}
+
+  static async create(url: string, channel: string): Promise<RedisMessageBus> {
+    const publisher = createClient({ url });
+    const subscriber = createClient({ url });
+    const logError = (error: unknown) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "redis_error",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    };
+    publisher.on("error", logError);
+    subscriber.on("error", logError);
+
+    await publisher.connect();
+    await subscriber.connect();
+
+    const bus = new RedisMessageBus(channel, publisher, subscriber);
+    await subscriber.subscribe(channel, (message) => bus.handle(message));
+    return bus;
+  }
+
+  subscribe(listener: MessageListener): () => void {
+    return this.#local.subscribe(listener);
+  }
+
+  publish(event: MessageEvent): void {
+    // 같은 인스턴스의 연결에는 즉시 전달한다.
+    this.#local.publish(event);
+    const payload = JSON.stringify({
+      origin: this.#instanceId,
+      event: serializeMessageEvent(event),
+    });
+    void this.publisher.publish(this.channel, payload).catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "redis_publish_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+  }
+
+  private handle(raw: string): void {
+    try {
+      const parsed = JSON.parse(raw) as {
+        origin?: unknown;
+        event?: SerializedMessageEvent;
+      };
+      if (parsed.origin === this.#instanceId || !parsed.event) return;
+      this.#local.publish(deserializeMessageEvent(parsed.event));
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "redis_message_invalid",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+
+  async close(): Promise<void> {
+    await this.#local.close();
+    await Promise.allSettled([
+      this.subscriber.unsubscribe(this.channel),
+      this.publisher.quit(),
+      this.subscriber.quit(),
+    ]);
+  }
+}
+
+export async function createMessageBus(config: {
+  redisUrl: string | null;
+  redisChannel: string;
+}): Promise<MessageBus> {
+  if (config.redisUrl) {
+    return RedisMessageBus.create(config.redisUrl, config.redisChannel);
+  }
+  return new LocalMessageBus();
 }

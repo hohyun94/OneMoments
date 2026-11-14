@@ -30,6 +30,9 @@
 | `CORS_ORIGINS` | ✅ | 공개 URL (예: `https://chat.example.com`) |
 | `DB_POOL_MAX` | — | 기본 5 |
 | `MAX_CIPHERTEXT_BYTES` | — | 기본 16384 |
+| `METRICS_TOKEN` | — | `/metrics` Bearer 토큰(16자 이상, 운영 권장) |
+| `REDIS_URL` | — | 기본 `redis://redis:6379` (compose에 Redis 포함) |
+| `MIGRATE_ON_START` | — | 기본 `true`. 다중 인스턴스에서는 `false` |
 
 > `DATABASE_URL`의 비밀번호는 **URL 인코딩**한다(`@`→`%40`, `:`→`%3A`, `/`→`%2F`).
 > compose는 `COOKIE_SECURE=true`, `TRUST_PROXY=1`을 고정으로 넣는다(HTTPS 전제).
@@ -71,11 +74,15 @@ docker exec -i <postgres-container> pg_restore -U "$POSTGRES_USER" -d "$POSTGRES
 ## 5. 업데이트·롤백
 
 - 새 커밋을 푸시한 뒤 Coolify에서 Redeploy
-- 마이그레이션은 앱 기동 시 자동 적용된다. **인스턴스를 2개 이상**으로 늘리면
-  마이그레이션을 일회성 명령으로 분리한다:
+- 마이그레이션은 기본적으로 기동 시 자동 적용된다(`scripts/start.mjs`).
+- **인스턴스를 2개 이상**으로 늘리면 `MIGRATE_ON_START=false`로 두고, 배포 파이프라인에서 한 번만 실행한다:
   ```bash
   docker compose run --rm app node scripts/migrate.mjs
   ```
+- 메시지 팬아웃은 compose의 `redis` 서비스로 동작한다. Dragonfly로 바꾸려면 image만 교체(Redis 호환).
+  presence/typing까지 인스턴스 간 공유하려면 sticky session을 함께 사용한다(`docs/06-operations.md`).
+- 모니터링: `/metrics`(Prometheus) + `/healthz`·`/readyz`, `METRICS_TOKEN` 설정 권장.
+- 백업/복구: [`docs/07-backup-restore.md`](07-backup-restore.md)
 - 롤백: 이전 이미지/커밋으로 Redeploy. DB 마이그레이션은 되돌리지 않으므로,
   파괴적 변경은 별도 마이그레이션으로 단계적으로 배포한다.
 

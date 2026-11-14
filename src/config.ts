@@ -26,6 +26,9 @@ const envSchema = z.object({
   MESSAGE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000),
   SEARCH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
   SEARCH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000),
+  METRICS_TOKEN: z.string().min(16).optional(),
+  REDIS_URL: z.string().url().optional(),
+  REDIS_CHANNEL: z.string().min(1).default("onemoments:events"),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
 });
 
@@ -47,6 +50,9 @@ export interface Config {
   messageRateLimitWindowMs: number;
   searchRateLimitMax: number;
   searchRateLimitWindowMs: number;
+  metricsToken: string | null;
+  redisUrl: string | null;
+  redisChannel: string;
   trustProxy: number;
 }
 
@@ -92,6 +98,9 @@ export function loadConfig(env: Env = process.env): Config {
     messageRateLimitWindowMs: value.MESSAGE_RATE_LIMIT_WINDOW_MS,
     searchRateLimitMax: value.SEARCH_RATE_LIMIT_MAX,
     searchRateLimitWindowMs: value.SEARCH_RATE_LIMIT_WINDOW_MS,
+    metricsToken: value.METRICS_TOKEN ?? null,
+    redisUrl: value.REDIS_URL ?? null,
+    redisChannel: value.REDIS_CHANNEL,
     trustProxy: value.TRUST_PROXY,
   };
 }

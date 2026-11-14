@@ -6,7 +6,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { createApp } from "../../src/app.js";
 import { loadConfig, type Config } from "../../src/config.js";
 import { createDb, type Database } from "../../src/db/client.js";
-import { MessageBus } from "../../src/realtime/bus.js";
+import { LocalMessageBus } from "../../src/realtime/bus.js";
 import { createRealtime, type RealtimeHandle } from "../../src/realtime/ws.js";
 
 export const TEST_DATABASE_URL =
@@ -58,9 +58,10 @@ export async function createTestContext(): Promise<TestContext> {
     AUTH_RATE_LIMIT_MAX: "1000",
     MESSAGE_RATE_LIMIT_MAX: "10000",
     SEARCH_RATE_LIMIT_MAX: "10000",
+    METRICS_TOKEN: "test-metrics-token-0123456789",
   });
 
-  const bus = new MessageBus();
+  const bus = new LocalMessageBus();
   const app = createApp({ db, config, bus });
   const server = createServer(app);
   const realtime = createRealtime({ server, db, config, bus });

@@ -432,5 +432,16 @@ describe("operational endpoints", () => {
 
     const missing = await new TestClient(ctx.baseUrl).request("GET", "/api/nope");
     expect(missing.status).toBe(404);
+
+    const metricsDenied = await new TestClient(ctx.baseUrl).request("GET", "/metrics");
+    expect(metricsDenied.status).toBe(401);
+
+    const metrics = await new TestClient(ctx.baseUrl).request("GET", "/metrics", {
+      headers: { authorization: `Bearer ${ctx.config.metricsToken}` },
+    });
+    expect(metrics.status).toBe(200);
+    expect(metrics.text).toContain("onemoments_messages_total");
+    expect(metrics.text).toContain("onemoments_ws_connections");
+    expect(metrics.text).toContain("onemoments_db_ready 1");
   });
 });

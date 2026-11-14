@@ -9,6 +9,7 @@ import {
 } from "../crypto/envelope.js";
 import { AppError } from "../http/errors.js";
 import { toMessageView } from "../http/serializers.js";
+import { recordMessageCreated } from "../metrics.js";
 import type { MessageView } from "../types/protocol.js";
 import type { MessageEvent } from "../realtime/bus.js";
 import {
@@ -119,6 +120,7 @@ export async function sendEncryptedMessage(
   }
 
   if (result.created) {
+    recordMessageCreated();
     await unhideConversation(db, {
       conversationId: input.conversationId,
       userId: input.senderUserId,

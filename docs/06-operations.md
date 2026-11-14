@@ -1,0 +1,102 @@
+# 운영 가이드 — 다중 인스턴스·모니터링·부하
+
+## 1. 다중 인스턴스 (Redis / Dragonfly 팬아웃)
+
+WebSocket 연결은 인스턴스 메모리에 있으므로, 메시지 이벤트를 인스턴스 간에 전달해야 한다.
+
+```
+[인스턴스 A] ──publish/subscribe── [Redis 또는 Dragonfly] ── [인스턴스 B]
+      │                                                        │
+      └── 로컬 연결 전달                          로컬 연결 전달 ──┘
+```
+
+- `REDIS_URL`(예: `redis://redis:6379`)을 설정하면 `RedisMessageBus`가 활성화된다.
+- 같은 인스턴스의 연결에는 즉시 전달하고, 다른 인스턴스에는 pub/sub으로 전파한다.
+- Redis 장애 시에도 **단일 인스턴스 동작은 유지**된다(로컬 전달). 다만 인스턴스 간 전달은 중단된다.
+- `REDIS_CHANNEL` 기본값 `onemoments:events`.
+- Dragonfly를 쓰려면 compose의 `redis` 이미지를 `docker.dragonflydb.io/dragonflydb/dragonfly`로 바꾸고 URL은 그대로 사용한다(Redis 호환).
+
+**한계**
+- `typing`·`presence`는 구독 중인 **로컬 연결**에만 전달된다.
+  여러 인스턴스에서 완전한 presence가 필요하면 sticky session을 켜거나 Redis 기반 presence를 추가해야 한다.
+- 메시지(`message.created`)는 참여자 전체에게 전달되므로 인스턴스 간에도 대화 목록이 갱신된다.
+
+## 2. 마이그레이션 (일회성 job)
+
+| 상황 | 설정 |
+|---|---|
+| 단일 인스턴스 | `MIGRATE_ON_START=true`(기본) — 기동 시 `scripts/migrate.mjs` 실행 |
+| 다중 인스턴스 | `MIGRATE_ON_START=false` — 배포 파이프라인에서 **한 번만** 실행 |
+
+```bash
+# Coolify/compose 일회성 실행 예시
+docker compose -f docker-compose.coolify.yml run --rm app node scripts/migrate.mjs
+```
+
+`scripts/start.mjs`가 `MIGRATE_ON_START`를 해석한 뒤 서버를 시작한다.
+
+## 3. 모니터링
+
+### 엔드포인트
+
+| 경로 | 용도 |
+|---|---|
+| `/healthz` | 프로세스 생존(로드밸런서/컨테이너 healthcheck) |
+| `/readyz` | DB 연결 확인(트래픽 수용 가능 여부) |
+| `/metrics` | Prometheus 텍스트 메트릭 |
+
+`METRICS_TOKEN`(16자 이상)을 설정하면 `/metrics`는 `Authorization: Bearer <token>`을 요구한다. 운영에서는 반드시 설정한다.
+
+### 메트릭
+
+| 이름 | 설명 |
+|---|---|
+| `onemoments_up` | 프로세스 생존(항상 1) |
+| `onemoments_uptime_seconds` | 기동 후 경과 초 |
+| `onemoments_messages_total` | 저장된 메시지 수(프로세스 누적) |
+| `onemoments_ws_connections` | 현재 WebSocket 연결 수 |
+| `onemoments_db_ready` | DB 도달 가능 여부 |
+
+Prometheus scrape 예시:
+
+```yaml
+scrape_configs:
+  - job_name: onemoments
+    metrics_path: /metrics
+    authorization:
+      credentials: <METRICS_TOKEN>
+    static_configs:
+      - targets: ["onemoments:8080"]
+```
+
+**권장 알림**
+- `up == 0` (5분)
+- `onemoments_db_ready == 0` (2분)
+- `onemoments_ws_connections`가 비정상적으로 0에 고정되거나 급감
+- DB 연결 수/디스크 사용량(PostgreSQL·호스트 모니터링)
+
+## 4. 부하 테스트
+
+```bash
+# 서버 기동(레이트리밋을 넉넉히)
+MESSAGE_RATE_LIMIT_MAX=10000 pnpm dev
+
+# 다른 터미널
+BASE_URL=http://127.0.0.1:3900 MESSAGE_COUNT=100 pnpm db:load-test
+```
+
+측정 항목: REST 저장 지연(p50/p95), WebSocket 전달 지연, 초당 처리량.
+로컬 개발 머신 기준 예시(100건, 순차 전송): **약 63 msg/s, REST p95 22ms, WS 전달 즉시**.
+
+> 이 스크립트는 암호화 연산을 포함하지 않는 **서버 경로** 부하 테스트다. 클라이언트 암복호화 비용은
+> 브라우저 E2E/프로파일링으로 별도 확인한다.
+
+## 5. 컨테이너 이미지
+
+- 멀티스테이지: 빌드 단계에서 서버·클라이언트를 빌드하고 `pnpm deploy`로 **서버 런타임 의존성만** 추출한다.
+- 런타임 이미지에는 pnpm/빌드 도구가 포함되지 않는다.
+- `scripts/start.mjs`가 마이그레이션(옵션) 후 서버를 시작한다.
+
+## 6. 백업/복구
+
+[`docs/07-backup-restore.md`](07-backup-restore.md) 참고.

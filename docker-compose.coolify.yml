@@ -21,14 +21,20 @@ services:
       MAX_CIPHERTEXT_BYTES: ${MAX_CIPHERTEXT_BYTES:-16384}
       MAX_ENVELOPES: ${MAX_ENVELOPES:-50}
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      REDIS_CHANNEL: ${REDIS_CHANNEL:-onemoments:events}
+      MIGRATE_ON_START: ${MIGRATE_ON_START:-true}
     # Coolify 도메인을 이 서비스의 8080 포트에 연결한다.
     ports:
       - "8080"
     depends_on:
       postgres:
         condition: service_healthy
-    # 마이그레이션은 기동 시 1회. 인스턴스를 2개 이상으로 늘리면 일회성 job으로 분리한다.
-    command: ["sh", "-c", "node scripts/migrate.mjs && node dist/server.js"]
+      redis:
+        condition: service_healthy
+    # 다중 인스턴스에서는 MIGRATE_ON_START=false 로 두고 마이그레이션을 일회성으로 실행한다.
+    command: ["node", "scripts/start.mjs"]
     healthcheck:
       test:
         [
@@ -59,6 +65,19 @@ services:
       retries: 10
     shm_size: 256mb
 
+  # 인스턴스 간 메시지 팬아웃. Dragonfly로 바꾸려면 image만 교체하면 된다(Redis 호환).
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
   # 선택: 매일 백업을 남기려면 아래 주석을 해제하거나 Coolify 예약 작업으로 pg_dump 를 실행한다.
   # backup:
   #   image: prodrigestivill/postgres-backup-local:16-alpine
@@ -80,4 +99,5 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
   # postgres-backups:

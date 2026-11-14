@@ -103,6 +103,10 @@ test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 �
     await alice.getByRole("button", { name: "기기 관리" }).click();
     await expect(alice.getByRole("heading", { name: "기기 관리" })).toBeVisible();
     await expect(alice.getByText("현재 기기")).toHaveCount(1);
+    await expect(alice.getByRole("heading", { name: "알림" })).toBeVisible();
+    await expect(alice.getByRole("button", { name: "알림 켜기" })).toBeVisible();
+    expect((await alice.request.get("/manifest.webmanifest")).ok()).toBe(true);
+    expect((await alice.request.get("/sw.js")).ok()).toBe(true);
 
     // 서버 DB에는 암호문만 있어야 한다.
     const client = new pg.Client({ connectionString: DATABASE_URL });

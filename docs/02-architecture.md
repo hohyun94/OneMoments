@@ -99,6 +99,7 @@
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
+| `push_subscriptions` | id, user_id, device_id, endpoint(unique), p256dh, auth, failure_count, last_success_at | Web Push 구독(기기별, 로그아웃/폐기 시 삭제) |
 | `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at | 읽음 표시(P1) |
 
 - 인덱스: `messages(conversation_id, created_at desc)`, `message_keys(recipient_device_id)`.
@@ -127,6 +128,13 @@
 - 파일 이름·MIME·파일 키는 **메시지 암호문 안**에 넣어 기존 기기별 봉투로 전달한다.
 - 다운로드는 대화 참여자만 가능하며, 서버는 `ATTACHMENT_DIR` 의 UUID 파일만 읽는다.
 - 상세·한계: `docs/10-attachments.md`
+
+### 푸시 알림
+
+- `push_subscriptions` 에 기기별 Web Push 구독(endpoint, p256dh, auth)을 저장한다.
+- 새 메시지 저장 후 참여자 구독으로 **일반 문구 + 대화/메시지 ID만** 비동기 전송한다(발신 기기 제외).
+- VAPID ES256 JWT + RFC 8291 aes128gcm. 메시지 내용·발신자·파일 정보는 payload에 넣지 않는다.
+- 로그아웃·기기 폐기·계정 삭제 시 구독을 삭제한다. 상세: `docs/12-push-mobile.md`
 
 ### 키 백업·기기 복구
 
@@ -172,6 +180,9 @@
 | GET | `/api/conversations/:id/devices` | **대화 참여자 전체** 활성 기기 공개키(암호화 대상 목록) |
 | POST | `/api/conversations/:id/attachments` | 암호화된 파일 업로드(`application/octet-stream`) |
 | GET | `/api/attachments/:attachmentId` | 참여자만 첨부 암호문 다운로드 |
+| GET | `/api/push/public-key` | VAPID 공개키(세션 필요) |
+| POST | `/api/push/subscriptions` | Web Push 구독 저장/갱신 |
+| DELETE | `/api/push/subscriptions` | 구독 삭제 |
 | DELETE | `/api/conversations/:id` | 내 화면에서 숨김 |
 
 ### 메시지
@@ -238,6 +249,7 @@
 | 백업 복구 악용 | 기기 세션 탈취 | 일회용 챌린지 + Ed25519 서명, 폐기 기기 복구 금지, 기존 세션 폐기 |
 | 첨부 블롭 유출 | 파일 내용 노출 | 파일별 AES-GCM, 키는 메시지 암호문 안, 참여자만 다운로드 |
 | 첨부 저장소 고갈 | 서비스 장애 | 크기 제한(8MB), 업로드 레이트리밋, 디스크 모니터링 |
+| 푸시 구독 메타데이터 노출 | 대화 존재/활동 추론 | payload에 내용 미포함, 엔드포인트 로그 금지 |
 | 메타데이터 분석 | 대화 패턴 추론 | 패딩·커버 트래픽은 M4 이후 검토 |
 
 ## 기술 선택 (잠정)

@@ -109,3 +109,13 @@ BASE_URL=http://127.0.0.1:3900 MESSAGE_COUNT=100 pnpm db:load-test
 - 제한: 서버 암호문 8MB(`ATTACHMENT_MAX_BYTES`), 업로드 레이트리밋은 메시지 한도의 1/4.
 - 디스크 사용량을 모니터링한다. 메시지 전송 실패로 생긴 고아 블롭은 자동 정리되지 않는다.
 - **DB 백업과 볼륨을 함께 백업**한다. 상세: [`docs/10-attachments.md`](10-attachments.md)
+
+## 8. 푸시 알림
+
+- `pnpm push:keys`로 VAPID 키를 한 번 생성해 환경변수로 주입한다. 키를 바꾸면 사용자가 알림을 다시 켜야 할 수 있다.
+- HTTPS가 필수다(서비스 워커·Push API). iOS는 홈 화면에 추가한 PWA에서만 동작한다.
+- VAPID 미설정 시 푸시만 비활성화되고 메시지·첨부 기능은 정상 동작한다.
+- 발송 실패는 메시지 전달을 막지 않는다. 404/410 구독은 자동 삭제, 그 외 실패는 `failure_count`로 추적한다.
+- subscription endpoint는 민감 정보이므로 로그에 원문을 남기지 않는다.
+- 상세: [`docs/12-push-mobile.md`](12-push-mobile.md)
+

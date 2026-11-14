@@ -20,6 +20,7 @@ import {
   type ActiveDeviceKey,
 } from "./conversations.js";
 import { createMessage } from "./messages.js";
+import { sendMessagePushes } from "./push.js";
 
 export interface SendEncryptedMessageInput {
   conversationId: string;
@@ -128,6 +129,23 @@ export async function sendEncryptedMessage(
   }
 
   const participantUserIds = await listParticipantUserIds(db, input.conversationId);
+
+  if (result.created) {
+    // 알림은 응답을 막지 않는다. 실패해도 메시지 전달에는 영향을 주지 않는다.
+    void sendMessagePushes(db, config, {
+      message: result.message,
+      participantUserIds,
+      senderDeviceId: input.senderDeviceId,
+    }).catch((error: unknown) => {
+      console.error(
+        JSON.stringify({
+          level: "warn",
+          event: "push_dispatch_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    });
+  }
 
   return {
     message: toMessageView(result.message, ownKey),

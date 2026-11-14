@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, KeyRound, Laptop, ShieldCheck, Trash2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import {
+  ArrowLeft,
+  Bell,
+  BellOff,
+  KeyRound,
+  Laptop,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
 import {
@@ -15,6 +23,13 @@ import {
 import { ApiError, api } from "../lib/api.ts";
 import { BackupError, exportKeyBackup, exportLocalCryptoState } from "../lib/crypto/index.ts";
 import { deleteIdentity } from "../lib/keystore.ts";
+import {
+  currentPushSubscription,
+  disablePush,
+  enablePush,
+  pushSupported,
+  type PushState,
+} from "../lib/push.ts";
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
 
@@ -31,6 +46,51 @@ export function DevicesPage() {
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const [pushState, setPushState] = useState<PushState | "loading">("loading");
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushMessage, setPushMessage] = useState<string | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!pushSupported()) {
+      setPushState("unsupported");
+      return;
+    }
+    void currentPushSubscription()
+      .then((subscription) => {
+        if (!cancelled) setPushState(subscription ? "subscribed" : "unsubscribed");
+      })
+      .catch(() => {
+        if (!cancelled) setPushState("unsubscribed");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function togglePush(): Promise<void> {
+    setPushBusy(true);
+    setPushError(null);
+    setPushMessage(null);
+    try {
+      if (pushState === "subscribed") {
+        await disablePush();
+        setPushState("unsubscribed");
+        setPushMessage("알림을 껐습니다.");
+      } else {
+        await enablePush();
+        setPushState("subscribed");
+        setPushMessage("알림을 켰습니다. 새 메시지가 오면 브라우저 알림으로 알려드립니다.");
+      }
+    } catch (error) {
+      setPushError(
+        error instanceof Error ? error.message : "알림 설정을 변경하지 못했습니다.",
+      );
+    } finally {
+      setPushBusy(false);
+    }
+  }
 
   const devicesQuery = useQuery({
     queryKey: ["devices"],
@@ -288,6 +348,67 @@ export function DevicesPage() {
           <p className="mt-3 text-xs leading-relaxed text-zinc-500">
             복구 암호를 잊으면 백업을 복원할 수 없습니다. 백업을 갱신하면 이전 백업은
             덮어써집니다.
+          </p>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">알림</h2>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                새 메시지가 도착하면 브라우저 알림으로 알려줍니다. 알림에는 대화 ID만
+                포함되고 메시지 내용·발신자·파일 정보는 서버 푸시에 담기지 않습니다.
+              </p>
+            </div>
+            <span className="shrink-0 text-[11px] text-zinc-500">
+              {pushState === "loading"
+                ? "확인 중"
+                : pushState === "subscribed"
+                  ? "켜짐"
+                  : pushState === "unsupported"
+                    ? "미지원"
+                    : "꺼짐"}
+            </span>
+          </div>
+
+          {pushError ? (
+            <div className="mt-3">
+              <Alert variant="error">{pushError}</Alert>
+            </div>
+          ) : null}
+          {pushMessage ? (
+            <div className="mt-3">
+              <Alert>{pushMessage}</Alert>
+            </div>
+          ) : null}
+
+          {pushState === "unsupported" ? (
+            <p className="mt-3 text-xs text-zinc-500">
+              이 브라우저에서는 푸시 알림을 사용할 수 없습니다. HTTPS(또는 localhost)에서
+              다시 시도해 주세요.
+            </p>
+          ) : (
+            <Button
+              variant={pushState === "subscribed" ? "outline" : "default"}
+              size="sm"
+              className="mt-3"
+              onClick={() => void togglePush()}
+              disabled={pushBusy || pushState === "loading"}
+            >
+              {pushBusy ? (
+                <Spinner />
+              ) : pushState === "subscribed" ? (
+                <BellOff className="h-4 w-4" aria-hidden />
+              ) : (
+                <Bell className="h-4 w-4" aria-hidden />
+              )}
+              {pushState === "subscribed" ? "알림 끄기" : "알림 켜기"}
+            </Button>
+          )}
+
+          <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+            iOS는 홈 화면에 추가한 PWA에서만 Web Push를 지원합니다. 알림 권한은
+            브라우저 사이트 설정에서 언제든지 해제할 수 있습니다.
           </p>
         </Card>
 

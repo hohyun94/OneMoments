@@ -16,6 +16,7 @@ import { createAuthRouter } from "./routes/auth.js";
 import { createAttachmentsRouter } from "./routes/attachments.js";
 import { createConversationsRouter } from "./routes/conversations.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
+import { createPushRouter } from "./routes/push.js";
 
 export interface AppOptions {
   db: Database;
@@ -112,6 +113,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/auth", createAuthRouter(db, config));
   app.use("/api/devices", createDevicesRouter(db, config));
   app.use("/api/users", createUsersRouter(db, config));
+  app.use("/api/push", createPushRouter(db, config));
   app.use("/api/attachments", createAttachmentsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));
 

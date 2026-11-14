@@ -12,6 +12,7 @@ import { verifyEd25519Signature } from "../crypto/ed25519.js";
 import { normalizeDeviceKeys } from "../crypto/envelope.js";
 import type { Database } from "../db/client.js";
 import { AppError, asyncHandler } from "../http/errors.js";
+import { removePushSubscriptionsForDevice } from "../services/push.js";
 import {
   createRateLimiter,
   getAuth,
@@ -296,6 +297,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       await deleteSession(db, auth.sessionId);
+      await removePushSubscriptionsForDevice(db, auth.deviceId);
       res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions(config));
       res.status(204).end();
     }),

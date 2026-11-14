@@ -9,6 +9,7 @@ import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { Database } from "../db/client.js";
 import {
   devices,
+  pushSubscriptions,
   sessions,
   users,
   type DeviceRow,
@@ -174,6 +175,7 @@ export async function deleteAccount(
 
   await db.transaction(async (tx) => {
     await tx.delete(sessions).where(eq(sessions.userId, input.userId));
+    await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, input.userId));
     await tx
       .update(devices)
       .set({ revokedAt: new Date() })
@@ -229,6 +231,9 @@ export async function revokeDevice(
       .returning();
     if (!device) throw AppError.notFound("DEVICE_NOT_FOUND", "Device not found");
     await tx.delete(sessions).where(eq(sessions.deviceId, input.deviceId));
+    await tx
+      .delete(pushSubscriptions)
+      .where(eq(pushSubscriptions.deviceId, input.deviceId));
     return device;
   });
 }

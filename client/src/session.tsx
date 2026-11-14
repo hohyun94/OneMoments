@@ -19,6 +19,7 @@ import {
   type StoredIdentity,
 } from "./lib/crypto/index.ts";
 import { loadIdentity, saveIdentity } from "./lib/keystore.ts";
+import { disablePush } from "./lib/push.ts";
 import type { AuthResponse, MeResponse, PublicUser } from "./types.ts";
 
 const LAST_USERNAME_KEY = "onemoments:lastUsername";
@@ -246,6 +247,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    try {
+      // 이 기기의 푸시 구독을 먼저 해제해 로그아웃 후 알림이 남지 않게 한다.
+      await disablePush();
+    } catch {
+      // 브라우저가 푸시를 지원하지 않거나 구독이 없어도 로그아웃은 계속한다.
+    }
     try {
       await api("/api/auth/logout", { method: "POST" });
     } catch {

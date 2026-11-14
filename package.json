@@ -28,6 +28,7 @@
     "db:backup": "node --env-file-if-exists=.env scripts/backup.mjs",
     "db:restore": "node --env-file-if-exists=.env scripts/restore.mjs",
     "db:load-test": "node --env-file-if-exists=.env scripts/load-test.mjs",
+    "push:keys": "node scripts/generate-vapid-keys.mjs",
     "verify": "pnpm check && pnpm build",
     "verify:full": "pnpm check:test && pnpm test && pnpm test:client && pnpm verify",
     "verify:all": "pnpm verify:full && pnpm test:e2e"

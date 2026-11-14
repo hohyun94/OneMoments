@@ -43,6 +43,16 @@ const envSchema = z.object({
     .max(25 * 1024 * 1024)
     .default(8 * 1024 * 1024),
   ATTACHMENT_DIR: z.string().min(1).default("./data/attachments"),
+  VAPID_PUBLIC_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  VAPID_PRIVATE_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  VAPID_SUBJECT: z.string().min(1).default("mailto:admin@example.com"),
+  PUSH_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
 });
 
@@ -71,6 +81,10 @@ export interface Config {
   recoveryChallengeTtlSeconds: number;
   attachmentMaxBytes: number;
   attachmentDir: string;
+  vapidPublicKey: string | null;
+  vapidPrivateKey: string | null;
+  vapidSubject: string;
+  pushTtlSeconds: number;
   trustProxy: number;
 }
 
@@ -86,6 +100,12 @@ export function loadConfig(env: Env = process.env): Config {
   }
 
   const value = parsed.data;
+  if (Boolean(value.VAPID_PUBLIC_KEY) !== Boolean(value.VAPID_PRIVATE_KEY)) {
+    throw new Error("VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together");
+  }
+  if (!/^(mailto:|https:\/\/)/.test(value.VAPID_SUBJECT)) {
+    throw new Error("VAPID_SUBJECT must start with mailto: or https://");
+  }
   let sessionSecret = value.SESSION_SECRET;
   if (!sessionSecret) {
     if (value.NODE_ENV === "production") {
@@ -123,6 +143,10 @@ export function loadConfig(env: Env = process.env): Config {
     recoveryChallengeTtlSeconds: value.RECOVERY_CHALLENGE_TTL_SECONDS,
     attachmentMaxBytes: value.ATTACHMENT_MAX_BYTES,
     attachmentDir: value.ATTACHMENT_DIR,
+    vapidPublicKey: value.VAPID_PUBLIC_KEY ?? null,
+    vapidPrivateKey: value.VAPID_PRIVATE_KEY ?? null,
+    vapidSubject: value.VAPID_SUBJECT,
+    pushTtlSeconds: value.PUSH_TTL_SECONDS,
     trustProxy: value.TRUST_PROXY,
   };
 }

@@ -115,6 +115,18 @@ export const recoverBodySchema = z.object({
   signature: z.string().min(1, "signature is required").max(256),
 });
 
+export const pushSubscriptionBodySchema = z.object({
+  endpoint: z.string().url().max(2048),
+  keys: z.object({
+    p256dh: z.string().min(1).max(256),
+    auth: z.string().min(1).max(128),
+  }),
+});
+
+export const pushUnsubscribeBodySchema = z.object({
+  endpoint: z.string().url().max(2048),
+});
+
 export const listMessagesQuerySchema = z.object({
   before: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

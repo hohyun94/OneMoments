@@ -227,11 +227,36 @@ export const attachments = pgTable(
   (table) => [index("attachments_conversation_idx").on(table.conversationId)],
 );
 
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    // Push 서비스 엔드포인트(브라우저가 발급). 서버는 알림 전송에만 사용한다.
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+    failureCount: integer("failure_count").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_uq").on(table.endpoint),
+    index("push_subscriptions_user_idx").on(table.userId),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
 export type ConversationRow = typeof conversations.$inferSelect;
 export type ParticipantRow = typeof conversationParticipants.$inferSelect;
 export type AttachmentRow = typeof attachments.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageKeyRow = typeof messageKeys.$inferSelect;

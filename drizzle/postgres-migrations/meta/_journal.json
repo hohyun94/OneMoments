@@ -43,6 +43,13 @@
       "when": 1794644821766,
       "tag": "0005_fantastic_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794645742538,
+      "tag": "0006_clear_timeslip",
+      "breakpoints": true
     }
   ]
 }

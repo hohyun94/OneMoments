@@ -94,7 +94,9 @@ MVP 이후 과제를 순차 진행한다.
 3. **Double Ratchet(v2)** — 완료
    - 대화×기기 세션, DH ratchet, 순서 뒤바뀜(최대 1000), 이력 키
    - 백업에 DR 세션·이력 키 포함 · `docs/11-double-ratchet.md`
-4. 푸시 알림, 모바일 앱 — 대기
+4. 푸시 알림, 모바일 앱
+   - **Web Push(VAPID)·PWA — 완료** · `docs/12-push-mobile.md`
+   - 네이티브 앱(React Native/Flutter) — 대기
 5. 부하 테스트 동시성 확장, 클라이언트 암복호화 프로파일링 — 대기(기본 부하 테스트는 M4에서 완료)
 
 ## 리스크

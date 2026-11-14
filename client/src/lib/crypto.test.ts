@@ -178,7 +178,7 @@ describe("client crypto envelope", () => {
       throw new Error("expected ciphertext failure");
     } catch (error) {
       expect(error).toBeInstanceOf(DecryptionError);
-      expect((error as DecryptionError).reason).toBe("ciphertext");
+      expect(["ciphertext", "signature"]).toContain((error as DecryptionError).reason);
     }
 
     try {

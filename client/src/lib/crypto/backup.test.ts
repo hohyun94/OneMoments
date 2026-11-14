@@ -84,6 +84,42 @@ describe("encrypted key backup", () => {
     });
   });
 
+  it("round-trips the local ratchet state", async () => {
+    const identity = withDevice(await createIdentityWithBackend("noble"));
+    const state = {
+      sessions: [
+        {
+          version: 1 as const,
+          conversationId: "conversation-state",
+          localDeviceId: identity.deviceId as string,
+          remoteDeviceId: "remote-device",
+          dhSelfPrivate: "private",
+          dhSelfPublic: "public",
+          dhRemote: "remote",
+          rootKey: "root",
+          sendChainKey: "send",
+          recvChainKey: "recv",
+          sendCount: 3,
+          recvCount: 2,
+          previousSendCount: 0,
+          skipped: { "remote:0": "key" },
+        },
+      ],
+      historyKeys: [
+        {
+          deviceId: identity.deviceId as string,
+          messageId: "message-1",
+          key: "message-key",
+          savedAt: 123,
+        },
+      ],
+    };
+
+    const blob = await exportKeyBackup(identity, PASSPHRASE, state);
+    const restored = await importKeyBackup(blob, PASSPHRASE);
+    expect(restored.state).toEqual(state);
+  });
+
   it("rejects identities without a device id", async () => {
     const identity = await createIdentityWithBackend("noble");
     await expect(exportKeyBackup(identity, PASSPHRASE)).rejects.toBeInstanceOf(

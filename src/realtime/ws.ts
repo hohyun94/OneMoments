@@ -24,7 +24,10 @@ const MAX_FRAMES_PER_WINDOW = 120;
 const conversationId = z.string().uuid();
 const envelopeKey = z.object({
   deviceId: z.string().uuid(),
-  ephemeralPublicKey: z.string().min(1),
+  ephemeralPublicKey: z.string().min(1).optional(),
+  ratchetPublicKey: z.string().min(1).optional(),
+  previousChainLength: z.number().int().min(0).optional(),
+  messageNumber: z.number().int().min(0).optional(),
   wrappedKey: z.string().min(1),
   wrapNonce: z.string().min(1),
   version: z.number().int().optional(),

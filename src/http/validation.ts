@@ -80,7 +80,10 @@ export const sendMessageBodySchema = z.object({
     .array(
       z.object({
         deviceId: z.string().uuid(),
-        ephemeralPublicKey: z.string().min(1),
+        ephemeralPublicKey: z.string().min(1).optional(),
+        ratchetPublicKey: z.string().min(1).optional(),
+        previousChainLength: z.number().int().min(0).optional(),
+        messageNumber: z.number().int().min(0).optional(),
         wrappedKey: z.string().min(1),
         wrapNonce: z.string().min(1),
         version: z.number().int().optional(),
@@ -95,7 +98,7 @@ export const deleteAccountBodySchema = z.object({
 });
 
 export const backupBodySchema = z.object({
-  blob: z.string().min(1, "blob is required").max(65536),
+  blob: z.string().min(1, "blob is required").max(25 * 1024 * 1024),
 });
 
 export const recoveryChallengeBodySchema = z.object({

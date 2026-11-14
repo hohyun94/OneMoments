@@ -82,7 +82,11 @@ export async function createMessage(
         payload.keys.map((key) => ({
           messageId: inserted.id,
           recipientDeviceId: key.deviceId,
-          ephemeralPublicKey: key.ephemeralPublicKey,
+          ephemeralPublicKey: key.version === 1 ? key.ephemeralPublicKey : null,
+          ratchetPublicKey: key.version === 2 ? key.ratchetPublicKey : null,
+          previousChainLength:
+            key.version === 2 ? key.previousChainLength : null,
+          messageNumber: key.version === 2 ? key.messageNumber : null,
           wrappedKey: key.wrappedKey,
           wrapNonce: key.wrapNonce,
           version: key.version,

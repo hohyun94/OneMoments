@@ -13,7 +13,7 @@ import {
   Spinner,
 } from "../components/ui.tsx";
 import { ApiError, api } from "../lib/api.ts";
-import { BackupError, exportKeyBackup } from "../lib/crypto/index.ts";
+import { BackupError, exportKeyBackup, exportLocalCryptoState } from "../lib/crypto/index.ts";
 import { deleteIdentity } from "../lib/keystore.ts";
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
@@ -82,10 +82,12 @@ export function DevicesPage() {
 
     setBackupBusy(true);
     try {
-      const blob = await exportKeyBackup(identity, backupPassphrase);
+      const state =
+        identity.deviceId ? await exportLocalCryptoState(identity.deviceId) : undefined;
+      const blob = await exportKeyBackup(identity, backupPassphrase, state);
       const response = await api<{ updatedAt: string }>("/api/auth/backup", {
         method: "PUT",
-        body: { blob: JSON.stringify(blob) },
+        rawBody: new Blob([JSON.stringify(blob)], { type: "text/plain" }),
       });
       setBackupMessage(
         `백업이 저장되었습니다 (${new Date(response.updatedAt).toLocaleString("ko-KR")})`,
@@ -99,7 +101,11 @@ export function DevicesPage() {
           ? error.reason === "format"
             ? "이 기기의 키는 백업을 지원하지 않습니다(이전 버전 키). 새 기기에서 다시 로그인해 주세요."
             : "백업을 만들 수 없습니다."
-          : "백업을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+          : error instanceof ApiError
+            ? error.status === 413
+              ? "백업 데이터가 너무 큽니다. 기기 관리에서 다시 백업하거나 관리자에게 문의하세요."
+              : error.message
+            : "백업을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
       );
     } finally {
       setBackupBusy(false);

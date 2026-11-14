@@ -12,6 +12,7 @@ import { ApiError, api, setCsrfToken } from "./lib/api.ts";
 import {
   createIdentity,
   importKeyBackup,
+  importLocalCryptoState,
   signPayload,
   toBase64,
   type KeyBackupBlob,
@@ -228,12 +229,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     setCsrfToken(response.csrfToken);
+    const { state, ...device } = restored;
     const stored: StoredIdentity = {
-      ...restored,
+      ...device,
       username: response.user.username,
       userId: response.user.id,
       deviceId: response.device.id,
     };
+    if (state) await importLocalCryptoState(state);
     await saveIdentity(stored);
     localStorage.setItem(LAST_USERNAME_KEY, response.user.username);
     setLastUsername(response.user.username);

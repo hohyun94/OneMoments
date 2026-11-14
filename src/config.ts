@@ -29,7 +29,12 @@ const envSchema = z.object({
   METRICS_TOKEN: z.string().min(16).optional(),
   REDIS_URL: z.string().url().optional(),
   REDIS_CHANNEL: z.string().min(1).default("onemoments:events"),
-  BACKUP_MAX_BYTES: z.coerce.number().int().min(1024).max(65536).default(16384),
+  BACKUP_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(25 * 1024 * 1024)
+    .default(8 * 1024 * 1024),
   RECOVERY_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   ATTACHMENT_MAX_BYTES: z.coerce
     .number()

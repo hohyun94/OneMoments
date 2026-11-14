@@ -1,5 +1,6 @@
 import { subtle, type DeviceIdentity, type IdentityBackend } from "./keys.ts";
 import { fromBase64, randomBytes, toBase64 } from "./encoding.ts";
+import type { HistoryKeyRecord, LocalCryptoState, RatchetSession } from "./ratchet.ts";
 
 const VERSION = 1 as const;
 const PBKDF2_ITERATIONS = 600_000;
@@ -37,7 +38,13 @@ interface BackupPayload {
   signingPublicKey: string;
   identityPrivate: string;
   signingPrivate: string;
+  /** Double Ratchet 세션 + 이력 키. 복구 후 기존 DR 이력을 읽기 위해 필요하다. */
+  state?: LocalCryptoState;
   createdAt: string;
+}
+
+export interface ImportedKeyBackup extends DeviceIdentity {
+  state: LocalCryptoState | null;
 }
 
 async function deriveBackupKey(
@@ -87,6 +94,7 @@ async function importPrivateKey(
 export async function exportKeyBackup(
   identity: DeviceIdentity,
   passphrase: string,
+  state?: LocalCryptoState,
 ): Promise<KeyBackupBlob> {
   if (!identity.deviceId) throw new BackupError("format");
   if (passphrase.length < 10) throw new BackupError("format");
@@ -99,6 +107,7 @@ export async function exportKeyBackup(
     signingPublicKey: identity.signingPublicKey,
     identityPrivate: await exportPrivateKey(identity.identityPrivate),
     signingPrivate: await exportPrivateKey(identity.signingPrivate),
+    ...(state ? { state } : {}),
     createdAt: new Date().toISOString(),
   };
 
@@ -127,7 +136,7 @@ export async function exportKeyBackup(
 export async function importKeyBackup(
   blob: KeyBackupBlob,
   passphrase: string,
-): Promise<DeviceIdentity> {
+): Promise<ImportedKeyBackup> {
   if (
     blob.version !== VERSION ||
     blob.kdf?.name !== "PBKDF2" ||
@@ -176,7 +185,33 @@ export async function importKeyBackup(
     throw new BackupError("format");
   }
 
+  const state: LocalCryptoState | null =
+    payload.state &&
+    Array.isArray(payload.state.sessions) &&
+    Array.isArray(payload.state.historyKeys)
+      ? {
+          sessions: payload.state.sessions.filter(
+            (session): session is RatchetSession =>
+              typeof session === "object" &&
+              session !== null &&
+              typeof session.conversationId === "string" &&
+              typeof session.remoteDeviceId === "string" &&
+              typeof session.dhSelfPrivate === "string",
+          ),
+          historyKeys: payload.state.historyKeys.filter(
+            (record): record is HistoryKeyRecord =>
+              typeof record === "object" &&
+              record !== null &&
+              typeof record.deviceId === "string" &&
+              typeof record.messageId === "string" &&
+              typeof record.key === "string" &&
+              typeof record.savedAt === "number",
+          ),
+        }
+      : null;
+
   return {
+    state,
     backend: payload.backend,
     identityPrivate: await importPrivateKey(
       payload.backend,

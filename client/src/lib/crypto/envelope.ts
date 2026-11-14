@@ -12,19 +12,38 @@ import {
   type DeviceIdentity,
 } from "./keys.ts";
 import { decoder, fromBase64, toBase64 } from "./encoding.ts";
+import {
+  decryptWithMessageKey,
+  findHistoryKey,
+  rememberHistoryKey,
+  unwrapContentKey,
+  wrapContentKey,
+  RATCHET_VERSION,
+  RatchetError,
+} from "./ratchet.ts";
 
 export interface RecipientDevice {
   deviceId: string;
   identityPublicKey: string;
 }
 
-export interface DeviceKeyEnvelope {
-  deviceId: string;
-  ephemeralPublicKey: string;
-  wrappedKey: string;
-  wrapNonce: string;
-  version: 1;
-}
+export type DeviceKeyEnvelope =
+  | {
+      deviceId: string;
+      ephemeralPublicKey: string;
+      wrappedKey: string;
+      wrapNonce: string;
+      version: 1;
+    }
+  | {
+      deviceId: string;
+      ratchetPublicKey: string;
+      previousChainLength: number;
+      messageNumber: number;
+      wrappedKey: string;
+      wrapNonce: string;
+      version: 2;
+    };
 
 export interface EncryptedPayload {
   clientMessageId: string;
@@ -34,18 +53,19 @@ export interface EncryptedPayload {
   keys: DeviceKeyEnvelope[];
 }
 
+export type DecryptableKeyEnvelope = DeviceKeyEnvelope;
+
 export interface DecryptableMessage {
+  id?: string;
   conversationId: string;
   clientMessageId: string;
   ciphertext: string;
   nonce: string;
   signature: string;
+  senderUserId?: string;
+  senderDeviceId?: string;
   senderSigningPublicKey: string;
-  key: {
-    ephemeralPublicKey: string;
-    wrappedKey: string;
-    wrapNonce: string;
-  };
+  key: DecryptableKeyEnvelope;
 }
 
 export type DecryptionFailure = "key" | "ciphertext" | "signature";
@@ -96,22 +116,38 @@ export async function encryptMessage(input: {
 
   const keys: DeviceKeyEnvelope[] = [];
   for (const recipient of input.recipients) {
-    const ephemeral = await generateEphemeral(input.identity.backend);
-    const shared = await deriveShared(
-      input.identity.backend,
-      ephemeral.privateKey,
-      recipient.identityPublicKey,
-    );
-    const kek = await deriveKek(shared);
-    const wrapNonce = randomBytes(12);
-    const wrappedKey = await aesEncrypt(kek, wrapNonce, contentKeyRaw);
-    keys.push({
-      deviceId: recipient.deviceId,
-      ephemeralPublicKey: ephemeral.publicKey,
-      wrappedKey: toBase64(wrappedKey),
-      wrapNonce: toBase64(wrapNonce),
-      version: VERSION,
+    if (
+      (input.identity.deviceId && recipient.deviceId === input.identity.deviceId) ||
+      recipient.identityPublicKey === input.identity.identityPublicKey
+    ) {
+      // 발신자 자신의 기기는 즉시 복호화할 수 있도록 기존 정적 키 봉투를 쓴다.
+      const ephemeral = await generateEphemeral(input.identity.backend);
+      const shared = await deriveShared(
+        input.identity.backend,
+        ephemeral.privateKey,
+        recipient.identityPublicKey,
+      );
+      const kek = await deriveKek(shared);
+      const wrapNonce = randomBytes(12);
+      const wrappedKey = await aesEncrypt(kek, wrapNonce, contentKeyRaw);
+      keys.push({
+        deviceId: recipient.deviceId,
+        ephemeralPublicKey: ephemeral.publicKey,
+        wrappedKey: toBase64(wrappedKey),
+        wrapNonce: toBase64(wrapNonce),
+        version: VERSION,
+      });
+      continue;
+    }
+
+    const wrapped = await wrapContentKey({
+      identity: input.identity,
+      conversationId: input.conversationId,
+      remoteDeviceId: recipient.deviceId,
+      remoteIdentityPublicKey: recipient.identityPublicKey,
+      contentKey: contentKeyRaw,
     });
+    keys.push({ deviceId: recipient.deviceId, ...wrapped });
   }
 
   return {
@@ -123,27 +159,87 @@ export async function encryptMessage(input: {
   };
 }
 
+async function verifyMessageSignature(
+  identity: DeviceIdentity,
+  message: DecryptableMessage,
+): Promise<boolean> {
+  return verifyPayload(
+    identity.backend,
+    message.senderSigningPublicKey,
+    await signaturePayload(
+      message.conversationId,
+      message.clientMessageId,
+      message.ciphertext,
+    ),
+    fromBase64(message.signature),
+  );
+}
+
 export async function decryptMessage(input: {
   identity: DeviceIdentity;
   message: DecryptableMessage;
 }): Promise<string> {
   const { identity, message } = input;
+  const isRatchet = message.key.version === RATCHET_VERSION;
+
+  // v2는 서명을 먼저 확인해 변조 메시지가 ratchet 상태를 소모하지 않게 한다.
+  if (isRatchet && !(await verifyMessageSignature(identity, message))) {
+    throw new DecryptionError("signature");
+  }
 
   let contentKeyRaw: Uint8Array<ArrayBuffer>;
-  try {
-    const shared = await deriveShared(
-      identity.backend,
-      identity.identityPrivate,
-      message.key.ephemeralPublicKey,
-    );
-    const kek = await deriveKek(shared);
-    contentKeyRaw = await aesDecrypt(
-      kek,
-      fromBase64(message.key.wrapNonce),
-      fromBase64(message.key.wrappedKey),
-    );
-  } catch {
-    throw new DecryptionError("key");
+  let newHistoryKey: string | null = null;
+
+  if (message.key.version === RATCHET_VERSION) {
+    const key = message.key;
+    const historyKey = await findHistoryKey(identity.deviceId, message.id);
+    if (historyKey) {
+      try {
+        contentKeyRaw = await decryptWithMessageKey({
+          messageKey: historyKey,
+          wrappedKey: key.wrappedKey,
+          wrapNonce: key.wrapNonce,
+        });
+      } catch {
+        throw new DecryptionError("key");
+      }
+    } else {
+      try {
+        const result = await unwrapContentKey({
+          identity,
+          conversationId: message.conversationId,
+          senderDeviceId: message.senderDeviceId ?? "unknown",
+          header: {
+            ratchetPublicKey: key.ratchetPublicKey,
+            previousChainLength: key.previousChainLength,
+            messageNumber: key.messageNumber,
+          },
+          wrappedKey: key.wrappedKey,
+          wrapNonce: key.wrapNonce,
+        });
+        contentKeyRaw = result.contentKey;
+        newHistoryKey = result.messageKey;
+      } catch (error) {
+        if (error instanceof RatchetError) throw new DecryptionError("key");
+        throw new DecryptionError("key");
+      }
+    }
+  } else {
+    try {
+      const shared = await deriveShared(
+        identity.backend,
+        identity.identityPrivate,
+        message.key.ephemeralPublicKey,
+      );
+      const kek = await deriveKek(shared);
+      contentKeyRaw = await aesDecrypt(
+        kek,
+        fromBase64(message.key.wrapNonce),
+        fromBase64(message.key.wrappedKey),
+      );
+    } catch {
+      throw new DecryptionError("key");
+    }
   }
 
   let plaintext: Uint8Array<ArrayBuffer>;
@@ -158,17 +254,17 @@ export async function decryptMessage(input: {
     throw new DecryptionError("ciphertext");
   }
 
-  const verified = await verifyPayload(
-    identity.backend,
-    message.senderSigningPublicKey,
-    await signaturePayload(
-      message.conversationId,
-      message.clientMessageId,
-      message.ciphertext,
-    ),
-    fromBase64(message.signature),
-  );
-  if (!verified) throw new DecryptionError("signature");
+  if (!isRatchet && !(await verifyMessageSignature(identity, message))) {
+    throw new DecryptionError("signature");
+  }
+
+  if (newHistoryKey) {
+    await rememberHistoryKey({
+      deviceId: identity.deviceId,
+      messageId: message.id,
+      messageKey: newHistoryKey,
+    });
+  }
 
   return decoder.decode(plaintext);
 }

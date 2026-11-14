@@ -392,10 +392,18 @@ describe("encrypted direct messages", () => {
     const version = await post({
       ...valid,
       clientMessageId: "version",
-      keys: valid.keys.map((key) => ({ ...key, version: 2 })),
+      keys: valid.keys.map((key) => ({ ...key, version: 3 })),
     });
     expect(version.status).toBe(400);
     expect(version.body.error.code).toBe("UNSUPPORTED_ENVELOPE_VERSION");
+
+    const ratchetWithoutHeader = await post({
+      ...valid,
+      clientMessageId: "ratchet-without-header",
+      keys: valid.keys.map((key) => ({ ...key, version: 2 })),
+    });
+    expect(ratchetWithoutHeader.status).toBe(400);
+    expect(ratchetWithoutHeader.body.error.code).toBe("INVALID_ENVELOPE");
 
     const history = await bob.client.request(
       "GET",

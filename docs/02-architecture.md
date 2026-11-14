@@ -33,23 +33,35 @@
   XSS 위험은 엄격한 CSP·서드파티 스크립트 금지로 완화한다.
 - WebCrypto의 X25519/Ed25519 지원이 없는 브라우저는 `@noble/curves`로 폴백한다(이 경우 키 보관 방식은 별도 결정).
 
+### Double Ratchet (v2 봉투)
+
+- 대화 × 기기 쌍마다 **독립 세션**을 둔다. 세션은 루트 키, 송·수신 체인 키, DH ratchet 키 쌍, 카운터, 건너뛴 메시지 키를 가진다.
+- 세션 초기화는 상대의 정적 X25519 공개키를 첫 DH ratchet 키로 사용한다(X3DH/사전 키는 아직 없음).
+- 메시지마다 체인에서 message key를 유도해 **콘텐츠 키를 래핑**하고, 헤더(`ratchetPublicKey`, `previousChainLength`, `messageNumber`)를 봉투에 넣는다.
+- 상대가 새 DH 공개키를 보내면 DH ratchet을 수행하고, 순서가 뒤바뀐 메시지는 **건너뛴 키(최대 1000개)** 로 복호화한다.
+- 발신자 자신의 기기 봉투는 v1(정적 키)을 유지해 즉시 표시·복구를 단순화한다.
+- 이력 복호화를 위해 사용한 message key를 로컬 `historyKeys`에 저장하고, 키 백업에 세션·이력 키를 함께 넣는다.
+- 상세: `docs/11-double-ratchet.md`
+
 ### 메시지 전송 절차
 
 1. 발신 기기: 32바이트 콘텐츠 키 `K`, 12바이트 `nonce` 생성 → `AES-256-GCM(K, nonce, plaintext)` → `C`(+태그)
 2. 발신 기기: `conversationId`, `clientMessageId`, `C`의 해시를 `SK`로 **서명** → `sig`
 3. 수신자(상대 사용자 + 내 다른 기기)의 **활성 기기마다**:
-   - 임시 X25519 키 쌍 `(e, E)` 생성
-   - `shared = ECDH(e_priv, recipient_IK_pub)` → `HKDF-SHA256(shared, info="onemoments/v1/wrap")` → `KEK`
-   - `AES-256-GCM(KEK, wrap_nonce, K)` → `W`
-4. 서버 전송: `{ clientMessageId, ciphertext: C, nonce, signature: sig, keys: [{ deviceId, ephemeralPublicKey: E, wrapNonce, wrappedKey: W }] }`
-5. 발신 기기는 `e_priv`와 `K`를 즉시 폐기한다.
+   - v2(기본): 해당 대화·기기 세션에서 message key `MK` 유도 → `AES-256-GCM(MK, wrap_nonce, K)` → `W`
+     헤더 `{ ratchetPublicKey, previousChainLength, messageNumber }` 포함
+   - v1(내 기기·레거시): 임시 X25519 ECDH + HKDF KEK로 `K` 래핑
+4. 서버 전송: `{ ciphertext: C, nonce, signature: sig, keys: [{ deviceId, version, ...헤더, wrapNonce, wrappedKey: W }] }`
+5. 발신 기기는 사용한 message key/chain을 전진시키고 이전 키를 폐기한다(v1 임시 키도 폐기).
 
 ### 수신 절차
 
 1. 수신 기기: 자신의 `deviceId` 봉투를 받는다
-2. `shared = ECDH(recipient_IK_priv, E)` → `KEK` → `K` 복원
-3. `AES-256-GCM(K, nonce, C)` 복호화
-4. 발신 기기의 `SK_pub`으로 `sig` 검증(대화·clientMessageId·암호문 해시)
+2. v2: 로컬 이력 키가 있으면 재복호화(새로고침·백업 복구). 없으면 세션을 전진/래칫해 `K` 복원
+   - 새 DH 공개키 → 필요 시 건너뛴 키 저장 → DH ratchet → message key
+   - 서명을 먼저 검증해 변조 메시지가 세션 상태를 소모하지 않게 한다
+3. v1: `ECDH(recipient_IK_priv, E)` → `KEK` → `K`
+4. `AES-256-GCM(K, nonce, C)` 복호화 후 발신 기기 `SK_pub`으로 서명 검증
 
 ### 안전번호(safety number)
 
@@ -62,16 +74,16 @@
 
 ### 보장과 한계
 
-| 항목 | MVP 보장 | 비고 |
+| 항목 | 보장 | 비고 |
 |---|---|---|
 | 기밀성 | 서버·DB·백업에 평문 없음 | 메타데이터는 노출 |
 | 무결성 | AES-GCM + Ed25519 서명 | 서버가 변조하면 복호화·검증 실패 |
 | 발신자 인증 | 기기 서명 + 안전번호 | 서버가 발신자를 사칭할 수 없음 |
-| 순방향 비밀성(FS) | **부분적** | 임시 키는 폐기하지만 Double Ratchet 없음 |
-| 기기 키 침해 시 과거 메시지 | 해당 기기 봉투는 복호화 가능 | 봉투 키가 기기 키로 감싸여 있음 |
-| 새 기기의 과거 이력 | **불가** | 키 백업/재봉투는 MVP 범위 밖 |
+| 순방향 비밀성(FS) | **수신 v2 메시지에 적용** | 체인 키 폐기 + DH ratchet, 건너뛴 키 최대 1000 |
+| 기기 키 침해 시 과거 메시지 | **수신 DR 이력은 보호** | 단, 로컬 이력 키/백업, 발신자 자신의 v1 봉투는 예외 |
+| 새 기기의 과거 이력 | **백업 스냅샷까지** | 백업에 DR 세션·이력 키 포함, 이후 메시지는 재백업 필요 |
 
-> Double Ratchet(신호 프로토콜 수준의 FS)은 M4 이후 과제로 둔다. MVP는 기기별 정적 키 + 임시 ECDH 봉투로 시작한다.
+> 초기 핸드셰이크는 상대의 정적 키를 사용한다(X3DH·서명된 사전 키 없음). 따라서 **첫 DH ratchet 이전** 메시지는 상대 정적 키 침해에 취약하고, 이후 체인은 래칫된다. 상세 한계는 `docs/11-double-ratchet.md`.
 
 ## 데이터 모델 (초안)
 
@@ -83,7 +95,7 @@
 | `conversations` | id, kind('direct'\|'group'), name, created_at | 1:1 또는 그룹. 그룹은 name 필수 |
 | `conversation_participants` | conversation_id, user_id, joined_at, hidden_at (PK) | 참여자. 그룹은 최대 20명 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, created_at | 암호문 1건 + 발신 기기 서명 공개키 스냅샷(기기 폐기 후에도 검증 가능). `(conversation_id, sender_user_id, client_message_id)` 유니크 |
-| `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, version (PK: message_id+recipient_device_id) | 기기별 키 봉투 |
+| `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, ratchet_public_key, previous_chain_length, message_number, version (PK: message_id+recipient_device_id) | 기기별 키 봉투(v1 정적/v2 DR 헤더) |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
@@ -118,9 +130,10 @@
 
 ### 키 백업·기기 복구
 
-- 복구 암호(PBKDF2-SHA256 600k + AES-256-GCM)로 기기 private 키를 클라이언트에서 암호화해 `key_backups` 에 저장한다.
+- 복구 암호(PBKDF2-SHA256 600k + AES-256-GCM)로 기기 private 키 + **DR 세션/이력 키**를 클라이언트에서 암호화해 `key_backups` 에 저장한다.
 - 새 브라우저는 username으로 블롭을 조회해 복호화하고, 서버가 발급한 **일회용 챌린지**에 기기 Ed25519 서명을 붙여
   `POST /api/auth/recover` 로 **같은 기기 ID** 세션을 얻는다. 이 기기 앞으로 저장된 기존 봉투를 그대로 복호화할 수 있다.
+- 복구 시 DR 세션·이력 키를 IndexedDB에 복원해 백업 시점까지의 DR 이력을 읽는다.
 - 복구 시 그 기기의 기존 세션은 모두 폐기한다. 폐기된 기기는 복구할 수 없다.
 - 자세한 내용과 한계: `docs/08-key-backup.md`
 

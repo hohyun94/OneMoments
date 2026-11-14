@@ -191,7 +191,17 @@ test("키 백업으로 새 브라우저에서 기기와 이력을 복구한다",
     await sendMessage(alice, text);
     await expect(alice.getByText(text)).toBeVisible();
 
-    // 이 기기 키를 복구 암호로 백업한다.
+    // 상대의 답장(DR v2)까지 받은 뒤 백업해야 이력 키도 함께 저장된다.
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByText(text)).toBeVisible();
+    const reply = "백업 전에 받은 답장";
+    await sendMessage(bob, reply);
+    await expect(alice.getByText(reply)).toBeVisible();
+
+    // 이 기기 키와 DR 세션/이력 키를 복구 암호로 백업한다.
     await alice.getByRole("button", { name: "기기 관리" }).click();
     await alice.getByLabel("복구 암호", { exact: true }).fill(recoveryPassphrase);
     await alice.getByLabel("복구 암호 확인").fill(recoveryPassphrase);
@@ -213,6 +223,7 @@ test("키 백업으로 새 브라우저에서 기기와 이력을 복구한다",
     await expect(conversation).toBeVisible();
     await conversation.click();
     await expect(recovered.getByText(text)).toBeVisible();
+    await expect(recovered.getByText(reply)).toBeVisible();
 
     await recovered.getByRole("button", { name: "기기 관리" }).click();
     await expect(recovered.getByText("현재 기기")).toHaveCount(1);

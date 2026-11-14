@@ -141,6 +141,36 @@ export async function deriveShared(
   );
 }
 
+export async function serializeX25519Private(
+  backend: IdentityBackend,
+  privateKey: CryptoKey | string,
+): Promise<string> {
+  if (backend === "noble") return privateKey as string;
+  if (!(privateKey instanceof CryptoKey) || !privateKey.extractable) {
+    throw new Error("X25519 private key is not exportable");
+  }
+  return toBase64(new Uint8Array(await subtle().exportKey("pkcs8", privateKey)));
+}
+
+/** 저장된 private key(pkcs8/noble raw)로 X25519 shared secret 을 계산한다. */
+export async function deriveSharedSerialized(
+  backend: IdentityBackend,
+  privateKeySerialized: string,
+  publicKeyBase64: string,
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (backend === "noble") {
+    return deriveShared(backend, privateKeySerialized, publicKeyBase64);
+  }
+  const privateKey = await subtle().importKey(
+    "pkcs8",
+    fromBase64(privateKeySerialized),
+    { name: "X25519" },
+    false,
+    ["deriveBits"],
+  );
+  return deriveShared(backend, privateKey, publicKeyBase64);
+}
+
 export async function deriveKek(
   shared: Uint8Array<ArrayBuffer>,
 ): Promise<CryptoKey> {

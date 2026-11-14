@@ -73,12 +73,23 @@ export function toConversationSummary(
 }
 
 export function toDeviceKeyEnvelope(row: MessageKeyRow): DeviceKeyEnvelope {
+  if (row.version === 2 && row.ratchetPublicKey) {
+    return {
+      deviceId: row.recipientDeviceId,
+      version: 2,
+      ratchetPublicKey: row.ratchetPublicKey,
+      previousChainLength: row.previousChainLength ?? 0,
+      messageNumber: row.messageNumber ?? 0,
+      wrappedKey: row.wrappedKey,
+      wrapNonce: row.wrapNonce,
+    };
+  }
   return {
     deviceId: row.recipientDeviceId,
-    ephemeralPublicKey: row.ephemeralPublicKey,
+    version: 1,
+    ephemeralPublicKey: row.ephemeralPublicKey ?? "",
     wrappedKey: row.wrappedKey,
     wrapNonce: row.wrapNonce,
-    version: 1,
   };
 }
 

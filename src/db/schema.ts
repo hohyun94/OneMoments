@@ -152,9 +152,13 @@ export const messageKeys = pgTable(
     recipientDeviceId: uuid("recipient_device_id")
       .notNull()
       .references(() => devices.id, { onDelete: "cascade" }),
-    // X25519 임시 공개키 32바이트
-    ephemeralPublicKey: text("ephemeral_public_key").notNull(),
-    // AES-256-GCM(KEK, wrapNonce, contentKey) base64
+    // v1: X25519 임시 공개키(정적 기기 키 봉투). v2: null
+    ephemeralPublicKey: text("ephemeral_public_key"),
+    // v2: Double Ratchet 헤더. v1: null
+    ratchetPublicKey: text("ratchet_public_key"),
+    previousChainLength: integer("previous_chain_length"),
+    messageNumber: integer("message_number"),
+    // AES-256-GCM(KEK 또는 ratchet message key, wrapNonce, contentKey) base64
     wrappedKey: text("wrapped_key").notNull(),
     wrapNonce: text("wrap_nonce").notNull(),
     version: smallint("version").notNull().default(1),
@@ -163,7 +167,11 @@ export const messageKeys = pgTable(
   (table) => [
     primaryKey({ columns: [table.messageId, table.recipientDeviceId] }),
     index("message_keys_device_idx").on(table.recipientDeviceId),
-    check("message_keys_version_chk", sql`${table.version} = 1`),
+    check("message_keys_version_chk", sql`${table.version} in (1, 2)`),
+    check(
+      "message_keys_envelope_chk",
+      sql`(${table.version} = 1 and ${table.ephemeralPublicKey} is not null and ${table.ratchetPublicKey} is null) or (${table.version} = 2 and ${table.ephemeralPublicKey} is null and ${table.ratchetPublicKey} is not null and ${table.previousChainLength} is not null and ${table.messageNumber} is not null)`,
+    ),
   ],
 );
 

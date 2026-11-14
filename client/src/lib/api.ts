@@ -32,8 +32,12 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   const method = options.method ?? "GET";
   const headers: Record<string, string> = {};
   const isRaw = options.rawBody !== undefined;
-  if (isRaw) headers["content-type"] = "application/octet-stream";
-  else if (options.body !== undefined) headers["content-type"] = "application/json";
+  if (isRaw) {
+    headers["content-type"] =
+      options.rawBody instanceof Blob && options.rawBody.type
+        ? options.rawBody.type
+        : "application/octet-stream";
+  } else if (options.body !== undefined) headers["content-type"] = "application/json";
   const needsCsrf = method !== "GET" && (options.csrf ?? true);
   if (needsCsrf && csrfToken) headers["x-csrf-token"] = csrfToken;
 

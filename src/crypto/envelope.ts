@@ -12,6 +12,8 @@ import { AppError } from "../http/errors.js";
  *   - wrappedKey: AES-256-GCM(KEK, nonce, 32바이트 키) = 48바이트 이상
  */
 export const ENVELOPE_VERSION = 1;
+export const RATCHET_ENVELOPE_VERSION = 2;
+export const MAX_RATCHET_INDEX = 1_000_000;
 export const GCM_NONCE_BYTES = 12;
 export const GCM_TAG_BYTES = 16;
 export const X25519_KEY_BYTES = 32;
@@ -76,7 +78,10 @@ export function normalizeDeviceKeys(input: {
 
 export interface MessageKeyInput {
   deviceId: string;
-  ephemeralPublicKey: string;
+  ephemeralPublicKey?: string | undefined;
+  ratchetPublicKey?: string | undefined;
+  previousChainLength?: number | undefined;
+  messageNumber?: number | undefined;
   wrappedKey: string;
   wrapNonce: string;
   version?: number | undefined;
@@ -90,13 +95,23 @@ export interface MessagePayloadInput {
   keys: MessageKeyInput[];
 }
 
-export interface NormalizedMessageKey {
-  deviceId: string;
-  ephemeralPublicKey: string;
-  wrappedKey: string;
-  wrapNonce: string;
-  version: typeof ENVELOPE_VERSION;
-}
+export type NormalizedMessageKey =
+  | {
+      deviceId: string;
+      version: typeof ENVELOPE_VERSION;
+      ephemeralPublicKey: string;
+      wrappedKey: string;
+      wrapNonce: string;
+    }
+  | {
+      deviceId: string;
+      version: typeof RATCHET_ENVELOPE_VERSION;
+      ratchetPublicKey: string;
+      previousChainLength: number;
+      messageNumber: number;
+      wrappedKey: string;
+      wrapNonce: string;
+    };
 
 export interface NormalizedMessagePayload {
   clientMessageId: string;
@@ -104,6 +119,18 @@ export interface NormalizedMessagePayload {
   nonce: string;
   signature: string;
   keys: NormalizedMessageKey[];
+}
+
+function requireRatchetIndex(value: number | undefined, field: string): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_RATCHET_INDEX
+  ) {
+    throw AppError.badRequest("INVALID_ENVELOPE", `${field} must be a non-negative integer`);
+  }
+  return value;
 }
 
 export function normalizeMessagePayload(
@@ -142,29 +169,53 @@ export function normalizeMessagePayload(
     seen.add(key.deviceId);
 
     const version = key.version ?? ENVELOPE_VERSION;
-    if (version !== ENVELOPE_VERSION) {
-      throw AppError.badRequest(
-        "UNSUPPORTED_ENVELOPE_VERSION",
-        `Only envelope version ${ENVELOPE_VERSION} is supported`,
-      );
+    const wrappedKey = requireBytesInRange(
+      key.wrappedKey,
+      "wrappedKey",
+      MIN_WRAPPED_KEY_BYTES,
+      MAX_WRAPPED_KEY_BYTES,
+    );
+    const wrapNonce = requireBytes(key.wrapNonce, "wrapNonce", GCM_NONCE_BYTES);
+
+    if (version === ENVELOPE_VERSION) {
+      keys.push({
+        deviceId: key.deviceId,
+        version: ENVELOPE_VERSION,
+        ephemeralPublicKey: requireBytes(
+          key.ephemeralPublicKey ?? "",
+          "ephemeralPublicKey",
+          X25519_KEY_BYTES,
+        ),
+        wrappedKey,
+        wrapNonce,
+      });
+      continue;
     }
 
-    keys.push({
-      deviceId: key.deviceId,
-      ephemeralPublicKey: requireBytes(
-        key.ephemeralPublicKey,
-        "ephemeralPublicKey",
-        X25519_KEY_BYTES,
-      ),
-      wrappedKey: requireBytesInRange(
-        key.wrappedKey,
-        "wrappedKey",
-        MIN_WRAPPED_KEY_BYTES,
-        MAX_WRAPPED_KEY_BYTES,
-      ),
-      wrapNonce: requireBytes(key.wrapNonce, "wrapNonce", GCM_NONCE_BYTES),
-      version: ENVELOPE_VERSION,
-    });
+    if (version === RATCHET_ENVELOPE_VERSION) {
+      keys.push({
+        deviceId: key.deviceId,
+        version: RATCHET_ENVELOPE_VERSION,
+        ratchetPublicKey: requireBytes(
+          key.ratchetPublicKey ?? "",
+          "ratchetPublicKey",
+          X25519_KEY_BYTES,
+        ),
+        previousChainLength: requireRatchetIndex(
+          key.previousChainLength,
+          "previousChainLength",
+        ),
+        messageNumber: requireRatchetIndex(key.messageNumber, "messageNumber"),
+        wrappedKey,
+        wrapNonce,
+      });
+      continue;
+    }
+
+    throw AppError.badRequest(
+      "UNSUPPORTED_ENVELOPE_VERSION",
+      `Envelope version must be ${ENVELOPE_VERSION} or ${RATCHET_ENVELOPE_VERSION}`,
+    );
   }
 
   return {

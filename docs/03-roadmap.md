@@ -91,7 +91,9 @@ MVP 이후 과제를 순차 진행한다.
    - 그룹 대화(최대 20명, 기기별 봉투, 참여자 추가) · `docs/09-groups.md`
    - 파일 첨부(파일별 AES-GCM, 암호문만 저장) · `docs/10-attachments.md`
    - Sender Keys 최적화 — 대기
-3. Double Ratchet 기반 순방향 비밀성 — 대기
+3. **Double Ratchet(v2)** — 완료
+   - 대화×기기 세션, DH ratchet, 순서 뒤바뀜(최대 1000), 이력 키
+   - 백업에 DR 세션·이력 키 포함 · `docs/11-double-ratchet.md`
 4. 푸시 알림, 모바일 앱 — 대기
 5. 부하 테스트 동시성 확장, 클라이언트 암복호화 프로파일링 — 대기(기본 부하 테스트는 M4에서 완료)
 

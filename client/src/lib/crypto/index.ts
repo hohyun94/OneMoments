@@ -37,3 +37,17 @@ export {
   type AttachmentPayload,
   type EncryptedAttachment,
 } from "./attachment.ts";
+export {
+  RATCHET_VERSION,
+  RatchetError,
+  decryptWithMessageKey,
+  exportLocalCryptoState,
+  importLocalCryptoState,
+  unwrapContentKey,
+  wrapContentKey,
+  type HistoryKeyRecord,
+  type LocalCryptoState,
+  type RatchetHeader,
+  type RatchetSession,
+  type WrappedContentKey,
+} from "./ratchet.ts";

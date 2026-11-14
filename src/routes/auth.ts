@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import express, { Router, type Request } from "express";
 
 import { issueSession } from "../auth/issueSession.js";
 import {
@@ -162,10 +162,18 @@ export function createAuthRouter(db: Database, config: Config): Router {
     "/backup",
     session,
     csrf,
+    express.text({ type: "text/plain", limit: config.backupMaxBytes }),
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
-      const body = backupBodySchema.parse(req.body);
-      if (Buffer.byteLength(body.blob, "utf8") > config.backupMaxBytes) {
+      // 큰 DR 상태 백업은 text/plain 원문으로 받는다(전역 JSON 파서 한도 우회).
+      const blob =
+        typeof req.body === "string"
+          ? req.body
+          : backupBodySchema.parse(req.body).blob;
+      if (blob.length === 0) {
+        throw AppError.badRequest("INVALID_BACKUP", "Backup blob is empty");
+      }
+      if (Buffer.byteLength(blob, "utf8") > config.backupMaxBytes) {
         throw AppError.payloadTooLarge(
           `Key backup exceeds ${config.backupMaxBytes} bytes`,
         );
@@ -173,7 +181,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
       const result = await upsertKeyBackup(db, {
         userId: auth.userId,
         deviceId: auth.deviceId,
-        blob: body.blob,
+        blob,
       });
       res.json({ updatedAt: result.updatedAt.toISOString() });
     }),

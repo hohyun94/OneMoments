@@ -217,7 +217,8 @@ describe("key backup and device recovery", () => {
     expect((await anonymous.request("GET", "/api/auth/backup")).status).toBe(401);
 
     const tooLarge = await alice.client.request("PUT", "/api/auth/backup", {
-      body: { blob: "x".repeat(ctx.config.backupMaxBytes + 1) },
+      rawBody: "x".repeat(ctx.config.backupMaxBytes + 1),
+      headers: { "content-type": "text/plain" },
     });
     expect(tooLarge.status).toBe(413);
 

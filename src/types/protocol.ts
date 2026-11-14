@@ -42,13 +42,23 @@ export interface ConversationSummary {
   lastMessageAt: string | null;
 }
 
-export interface DeviceKeyEnvelope {
-  deviceId: string;
-  ephemeralPublicKey: string;
-  wrappedKey: string;
-  wrapNonce: string;
-  version: 1;
-}
+export type DeviceKeyEnvelope =
+  | {
+      deviceId: string;
+      version: 1;
+      ephemeralPublicKey: string;
+      wrappedKey: string;
+      wrapNonce: string;
+    }
+  | {
+      deviceId: string;
+      version: 2;
+      ratchetPublicKey: string;
+      previousChainLength: number;
+      messageNumber: number;
+      wrappedKey: string;
+      wrapNonce: string;
+    };
 
 /** 서버가 보관·중계하는 메시지 + 내 기기 봉투. 서버는 복호화하지 않는다. */
 export interface MessageView {
@@ -88,7 +98,10 @@ export type ClientFrame =
       signature: string;
       keys: Array<{
         deviceId: string;
-        ephemeralPublicKey: string;
+        ephemeralPublicKey?: string;
+        ratchetPublicKey?: string;
+        previousChainLength?: number;
+        messageNumber?: number;
         wrappedKey: string;
         wrapNonce: string;
         version?: number;

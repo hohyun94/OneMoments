@@ -32,13 +32,23 @@ export interface ConversationSummary {
   lastMessageAt: string | null;
 }
 
-export interface DeviceKeyEnvelope {
-  deviceId: string;
-  ephemeralPublicKey: string;
-  wrappedKey: string;
-  wrapNonce: string;
-  version: 1;
-}
+export type DeviceKeyEnvelope =
+  | {
+      deviceId: string;
+      version: 1;
+      ephemeralPublicKey: string;
+      wrappedKey: string;
+      wrapNonce: string;
+    }
+  | {
+      deviceId: string;
+      version: 2;
+      ratchetPublicKey: string;
+      previousChainLength: number;
+      messageNumber: number;
+      wrappedKey: string;
+      wrapNonce: string;
+    };
 
 export interface MessageView {
   id: string;

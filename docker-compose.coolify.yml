@@ -1,0 +1,83 @@
+# Coolify 배포용 — 앱 + PostgreSQL 컨테이너.
+# Coolify에서 "Docker Compose" 리소스로 이 파일을 선택하고 아래 환경변수를 주입한다.
+# DB는 외부 포트를 열지 않는다(내부 네트워크 전용). TLS/도메인은 Coolify가 담당한다.
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      # 예: postgres://onemoments:<url-encoded-password>@postgres:5432/onemoments
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+      DATABASE_SSL: ${DATABASE_SSL:-disable}
+      DB_POOL_MAX: ${DB_POOL_MAX:-5}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required (>= 32 chars)}
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-43200}
+      COOKIE_SECURE: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required (e.g. https://chat.example.com)}
+      MAX_CIPHERTEXT_BYTES: ${MAX_CIPHERTEXT_BYTES:-16384}
+      MAX_ENVELOPES: ${MAX_ENVELOPES:-50}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    # Coolify 도메인을 이 서비스의 8080 포트에 연결한다.
+    ports:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # 마이그레이션은 기동 시 1회. 인스턴스를 2개 이상으로 늘리면 일회성 job으로 분리한다.
+    command: ["sh", "-c", "node scripts/migrate.mjs && node dist/server.js"]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    shm_size: 256mb
+
+  # 선택: 매일 백업을 남기려면 아래 주석을 해제하거나 Coolify 예약 작업으로 pg_dump 를 실행한다.
+  # backup:
+  #   image: prodrigestivill/postgres-backup-local:16-alpine
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_HOST: postgres
+  #     POSTGRES_DB: ${POSTGRES_DB}
+  #     POSTGRES_USER: ${POSTGRES_USER}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #     SCHEDULE: "@daily"
+  #     BACKUP_KEEP_DAYS: "7"
+  #     BACKUP_KEEP_WEEKS: "4"
+  #     BACKUP_KEEP_MONTHS: "6"
+  #   volumes:
+  #     - postgres-backups:/backups
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+volumes:
+  postgres-data:
+  # postgres-backups:

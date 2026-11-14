@@ -8,6 +8,7 @@ test-results/
 .pnpm-install*
 .vitest*
 .verify*
+.docker-build*
 .env
 .env.local
 .DS_Store

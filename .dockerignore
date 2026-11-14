@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+.pnpm-store
+.git
+.github
+docs
+test
+*.log
+.env
+.env.*
+!.env.example

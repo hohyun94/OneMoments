@@ -32,6 +32,30 @@ docker compose -f docker-compose.db.yml up -d
 docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATABASE onemoments_test"
 ```
 
+## Coolify 배포 (PostgreSQL 컨테이너)
+
+`docker-compose.coolify.yml` 하나로 **앱 + PostgreSQL 컨테이너**를 올린다. DB는 외부 포트를 열지 않고 내부 네트워크로만 통신하며, TLS·도메인은 Coolify가 처리한다.
+
+1. Coolify → **New Resource → Docker Compose** → 저장소/브랜치 선택, Compose 파일 `docker-compose.coolify.yml`
+2. 환경변수 주입
+
+| 변수 | 필수 | 예시 |
+|---|---|---|
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | ✅ | `onemoments` / 긴 랜덤 값 / `onemoments` |
+| `DATABASE_URL` | ✅ | `postgres://onemoments:<url-encoded-password>@postgres:5432/onemoments` |
+| `SESSION_SECRET` | ✅ | `openssl rand -base64 48` (32자 이상) |
+| `CORS_ORIGINS` | ✅ | `https://chat.example.com` |
+| `DB_POOL_MAX` | — | `5` (인스턴스 수 × 값 ≤ DB max_connections) |
+
+3. `app` 서비스에 도메인을 연결하고 **포트 8080**, HTTPS를 켠다.
+4. 배포 → 기동 시 `node scripts/migrate.mjs`가 자동 적용된 뒤 서버가 뜬다.
+5. 확인: `https://<도메인>/healthz`, `/readyz`, 로그인 후 쿠키가 `Secure; HttpOnly`인지 확인.
+
+자세한 절차·백업·트러블슈팅: [`docs/05-deploy-coolify.md`](docs/05-deploy-coolify.md)
+
+> Coolify의 **내장 PostgreSQL 리소스**를 쓰려면 compose에서 `postgres` 서비스를 제거하고,
+> `DATABASE_URL`을 그 리소스의 내부 주소로 지정하면 된다(백업·모니터링은 Coolify가 관리).
+
 ## 검증
 
 ```bash
@@ -52,6 +76,7 @@ pnpm verify:full   # 타입 체크(테스트 포함) + 테스트 + 빌드
 - [아키텍처·보안 설계](docs/02-architecture.md) — E2E 암호 설계, 데이터 모델, API, 위협 모델
 - [화면 와이어프레임](docs/04-wireframes.md) — 로그인·대화 목록·채팅·기기/안전번호
 - [로드맵](docs/03-roadmap.md) — 마일스톤과 완료 기준
+- [Coolify 배포](docs/05-deploy-coolify.md) — PostgreSQL 컨테이너, 환경변수, 백업, 트러블슈팅
 
 ## 원칙
 

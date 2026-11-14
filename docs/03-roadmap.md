@@ -98,6 +98,7 @@ MVP 이후 과제를 순차 진행한다.
    - 백업에 DR 세션·이력 키·SPK private 포함 · `docs/11-double-ratchet.md`
 4. 푸시 알림, 모바일 앱
    - **Web Push(VAPID)·PWA(오프라인 앱 셸, PNG 아이콘)·대화별 음소거 — 완료** · `docs/12-push-mobile.md`
+   - **네이티브 앱 — 평가 완료(구현 대기)** · `docs/16-native-app.md`
    - 네이티브 앱(React Native/Flutter) — 대기
 5. **부하 테스트 동시성·클라이언트 프로파일링** — 완료
    - Node `CONCURRENCY`, k6 HTTP 시나리오, `bench:crypto`

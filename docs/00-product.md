@@ -42,6 +42,7 @@
 - 그룹 소유자 역할(참여자 추가·이름 변경 권한, 나가면 자동 이전)
 - 그룹 Sender Keys(에포크 최초 배포, 멤버 변경 시 회전)
 - X3DH signed prekey(최초 v2 세션, 기존 기기 fallback)
+- 네이티브 앱 평가(React Native 권고, 구현 대기)
 
 ## 남은 범위
 

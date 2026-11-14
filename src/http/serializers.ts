@@ -59,6 +59,7 @@ export function toConversationSummary(
   peer: UserRow | null,
   memberCount: number,
   muted: boolean,
+  isAdmin: boolean,
   unreadCount: number,
   lastMessageAt: Date | string | null,
 ): ConversationSummary {
@@ -71,6 +72,7 @@ export function toConversationSummary(
     members: members.map(toPeerUser),
     memberCount,
     muted,
+    isAdmin,
     unreadCount,
     lastMessageAt: iso(lastMessageAt),
   };

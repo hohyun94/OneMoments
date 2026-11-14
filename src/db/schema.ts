@@ -103,10 +103,13 @@ export const conversationParticipants = pgTable(
     hiddenAt: timestamp("hidden_at", { withTimezone: true }),
     // 이 대화의 푸시 알림을 끈 시각(사용자별).
     mutedAt: timestamp("muted_at", { withTimezone: true }),
+    // 그룹 소유자/일반 참여자. 기존 그룹은 마이그레이션에서 가장 먼저 참여한 사용자를 owner로 승격한다.
+    role: text("role").notNull().default("member"),
   },
   (table) => [
     primaryKey({ columns: [table.conversationId, table.userId] }),
     index("conversation_participants_user_idx").on(table.userId),
+    check("conversation_participants_role_chk", sql`${table.role} in ('owner', 'member')`),
   ],
 );
 

@@ -219,14 +219,31 @@ export async function createGroupConversation(
       .values({ kind: "group", name: normalizeGroupName(input.name) })
       .returning();
     if (!created) throw new Error("Failed to insert conversation");
-    await tx.insert(conversationParticipants).values(
-      [input.creatorUserId, ...memberIds].map((userId) => ({
+    await tx.insert(conversationParticipants).values([
+      { conversationId: created.id, userId: input.creatorUserId, role: "owner" },
+      ...memberIds.map((userId) => ({
         conversationId: created.id,
         userId,
+        role: "member",
       })),
-    );
+    ]);
     return created;
   });
+}
+
+/** 그룹 owner만 참여자 추가·이름 변경을 할 수 있다. */
+export async function requireGroupAdmin(
+  db: Database,
+  input: { conversationId: string; userId: string },
+): Promise<ConversationContext> {
+  const context = await requireParticipant(db, input);
+  if (context.conversation.kind !== "group") {
+    throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations have an owner");
+  }
+  if (context.participant.role !== "owner") {
+    throw AppError.forbidden("Only the group owner can perform this action");
+  }
+  return context;
 }
 
 /** 그룹에 참여자를 추가한다. 이미 참여 중인 사용자는 무시한다(멱등). */
@@ -234,13 +251,10 @@ export async function addGroupMembers(
   db: Database,
   input: { conversationId: string; requesterUserId: string; userIds: string[] },
 ): Promise<{ conversation: ConversationRow; added: number }> {
-  const context = await requireParticipant(db, {
+  const context = await requireGroupAdmin(db, {
     conversationId: input.conversationId,
     userId: input.requesterUserId,
   });
-  if (context.conversation.kind !== "group") {
-    throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations have members");
-  }
 
   const unique = [...new Set(input.userIds)];
   if (unique.includes(input.requesterUserId)) {
@@ -395,6 +409,7 @@ export async function getConversationSummary(
     context.peer,
     members.length + 1,
     context.participant.mutedAt !== null,
+    context.participant.role === "owner",
     await unreadCountFor(db, {
       conversationId: context.conversation.id,
       userId: context.participant.userId,
@@ -473,6 +488,7 @@ export async function listConversations(
         peer,
         members.length + 1,
         row.participant.mutedAt !== null,
+        row.participant.role === "owner",
         await unreadCountFor(db, {
           conversationId: row.conversation.id,
           userId,
@@ -588,13 +604,10 @@ export async function renameGroup(
   db: Database,
   input: { conversationId: string; userId: string; name: string },
 ): Promise<ConversationRow> {
-  const context = await requireParticipant(db, {
+  await requireGroupAdmin(db, {
     conversationId: input.conversationId,
     userId: input.userId,
   });
-  if (context.conversation.kind !== "group") {
-    throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations can be renamed");
-  }
   const [updated] = await db
     .update(conversations)
     .set({ name: normalizeGroupName(input.name) })
@@ -616,6 +629,7 @@ export async function leaveGroup(
   if (context.conversation.kind !== "group") {
     throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations can be left");
   }
+  const wasOwner = context.participant.role === "owner";
 
   return db.transaction(async (tx) => {
     await tx
@@ -633,6 +647,25 @@ export async function leaveGroup(
     if ((row?.count ?? 0) === 0) {
       await tx.delete(conversations).where(eq(conversations.id, input.conversationId));
       return { deleted: true };
+    }
+    if (wasOwner) {
+      const [nextOwner] = await tx
+        .select({ userId: conversationParticipants.userId })
+        .from(conversationParticipants)
+        .where(eq(conversationParticipants.conversationId, input.conversationId))
+        .orderBy(conversationParticipants.joinedAt, conversationParticipants.userId)
+        .limit(1);
+      if (nextOwner) {
+        await tx
+          .update(conversationParticipants)
+          .set({ role: "owner" })
+          .where(
+            and(
+              eq(conversationParticipants.conversationId, input.conversationId),
+              eq(conversationParticipants.userId, nextOwner.userId),
+            ),
+          );
+      }
     }
     return { deleted: false };
   });

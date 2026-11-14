@@ -10,6 +10,7 @@ export function GroupSettingsDialog({
   onClose,
   conversationId,
   currentName,
+  canRename,
   onUpdated,
   onLeft,
 }: {
@@ -17,6 +18,7 @@ export function GroupSettingsDialog({
   onClose: () => void;
   conversationId: string;
   currentName: string;
+  canRename: boolean;
   onUpdated: (name: string) => void;
   onLeft: () => void;
 }) {
@@ -71,28 +73,39 @@ export function GroupSettingsDialog({
     <Dialog open={open} onClose={onClose} title="그룹 설정">
       <div className="space-y-1.5">
         <Label htmlFor="group-settings-name">그룹 이름</Label>
-        <div className="flex gap-2">
-          <Input
-            id="group-settings-name"
-            value={name}
-            maxLength={64}
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void rename();
-              }
-            }}
-          />
-          <Button
-            onClick={() => void rename()}
-            disabled={busy || !name.trim() || name.trim() === currentName}
-            className="shrink-0"
-          >
-            {busy ? <Spinner /> : <Settings className="h-4 w-4" aria-hidden />}
-            이름 저장
-          </Button>
-        </div>
+        {canRename ? (
+          <div className="flex gap-2">
+            <Input
+              id="group-settings-name"
+              value={name}
+              maxLength={64}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void rename();
+                }
+              }}
+            />
+            <Button
+              onClick={() => void rename()}
+              disabled={busy || !name.trim() || name.trim() === currentName}
+              className="shrink-0"
+            >
+              {busy ? <Spinner /> : <Settings className="h-4 w-4" aria-hidden />}
+              이름 저장
+            </Button>
+          </div>
+        ) : (
+          <>
+            <p className="rounded-lg border border-zinc-200 px-3 py-2 text-sm text-zinc-700">
+              {currentName}
+            </p>
+            <p className="text-xs text-zinc-500">
+              그룹 이름 변경과 참여자 추가는 그룹 소유자만 할 수 있습니다.
+            </p>
+          </>
+        )}
       </div>
 
       {error ? (

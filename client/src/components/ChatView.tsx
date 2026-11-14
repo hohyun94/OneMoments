@@ -492,7 +492,7 @@ export function ChatView({
             <span className="hidden sm:inline">그룹 설정</span>
           </Button>
         ) : null}
-        {isGroup ? (
+        {isGroup && conversation.isAdmin ? (
           <Button
             variant="ghost"
             size="sm"
@@ -733,6 +733,7 @@ export function ChatView({
           onClose={() => setSettingsOpen(false)}
           conversationId={conversation.id}
           currentName={conversation.name ?? "그룹"}
+          canRename={conversation.isAdmin}
           onUpdated={() => {
             void queryClient.invalidateQueries({ queryKey: ["conversations"] });
           }}

@@ -1,0 +1,3 @@
+ALTER TABLE "conversation_participants" ADD COLUMN "role" text DEFAULT 'member' NOT NULL;--> statement-breakpoint
+ALTER TABLE "conversation_participants" ADD CONSTRAINT "conversation_participants_role_chk" CHECK ("conversation_participants"."role" in ('owner', 'member'));--> statement-breakpoint
+UPDATE "conversation_participants" AS p SET "role" = 'owner' WHERE p."conversation_id" IN (SELECT "id" FROM "conversations" WHERE "kind" = 'group') AND p."user_id" = (SELECT q."user_id" FROM "conversation_participants" q WHERE q."conversation_id" = p."conversation_id" ORDER BY q."joined_at", q."user_id" LIMIT 1);

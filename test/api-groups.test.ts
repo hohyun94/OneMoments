@@ -291,13 +291,27 @@ describe("group conversations", () => {
     const carol = await registerAccount("carol");
     const conversationId = await createGroup(alice, "변경 전", [bob, carol]);
 
-    const renamed = await bob.client.request(
+    const renamed = await alice.client.request(
       "PUT",
       `/api/conversations/${conversationId}/group`,
       { body: { name: "변경 후" } },
     );
     expect(renamed.status).toBe(200);
     expect(renamed.body.conversation.name).toBe("변경 후");
+
+    const forbiddenRename = await bob.client.request(
+      "PUT",
+      `/api/conversations/${conversationId}/group`,
+      { body: { name: "권한 없음" } },
+    );
+    expect(forbiddenRename.status).toBe(403);
+
+    const forbiddenAdd = await bob.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/members`,
+      { body: { userIds: [bob.userId] } },
+    );
+    expect(forbiddenAdd.status).toBe(403);
 
     const left = await carol.client.request(
       "DELETE",

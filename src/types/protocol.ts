@@ -41,6 +41,8 @@ export interface ConversationSummary {
   memberCount: number;
   /** 이 대화의 푸시 알림을 끈 상태 */
   muted: boolean;
+  /** 그룹 소유자(이름 변경·참여자 추가 가능) */
+  isAdmin: boolean;
   /** 읽지 않은(내가 보내지 않은) 메시지 수 */
   unreadCount: number;
   lastMessageAt: string | null;

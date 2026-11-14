@@ -93,7 +93,7 @@
 | `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent | 쿠키 세션(원문 토큰 저장 안 함) |
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, created_at, last_seen_at, revoked_at | 기기 공개키 |
 | `conversations` | id, kind('direct'\|'group'), name, created_at | 1:1 또는 그룹. 그룹은 name 필수 |
-| `conversation_participants` | conversation_id, user_id, joined_at, hidden_at, muted_at (PK) | 참여자. 그룹은 최대 20명, 사용자별 숨김/알림 음소거 |
+| `conversation_participants` | conversation_id, user_id, joined_at, hidden_at, muted_at, role('owner'\|'member') (PK) | 참여자. 그룹 최대 20명, 사용자별 숨김/음소거, 소유자 권한 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, created_at | 암호문 1건 + 발신 기기 서명 공개키 스냅샷(기기 폐기 후에도 검증 가능). `(conversation_id, sender_user_id, client_message_id)` 유니크 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, ratchet_public_key, previous_chain_length, message_number, version (PK: message_id+recipient_device_id) | 기기별 키 봉투(v1 정적/v2 DR 헤더) |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |

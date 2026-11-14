@@ -66,6 +66,17 @@ test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 �
     await sendMessage(bob, reply);
     await expect(alice.getByText(reply)).toBeVisible();
 
+    // 안전번호: 60자리(5자리 × 12그룹)
+    await alice.getByRole("button", { name: "안전번호" }).click();
+    const safetyDialog = alice.getByRole("dialog", { name: "안전번호" });
+    await expect(safetyDialog.getByTestId("safety-number")).toBeVisible();
+    const digits = (await safetyDialog.getByTestId("safety-number").innerText()).replace(
+      /\s/g,
+      "",
+    );
+    expect(digits).toMatch(/^\d{60}$/);
+    await safetyDialog.getByRole("button", { name: "닫기" }).click();
+
     // 새로고침 후에도 IndexedDB의 기기 키로 이력이 복호화된다.
     await alice.reload();
     await expect(alice.getByText(first)).toBeVisible();
@@ -91,6 +102,53 @@ test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 �
     } finally {
       await client.end();
     }
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
+test("계정 삭제 후 상대 이력은 유지되고 익명화된다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("alice");
+  const bobName = uniqueName("bob");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+    await startConversation(alice, bobName);
+
+    const text = "삭제 후에도 남는 메시지";
+    await sendMessage(alice, text);
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByText(text)).toBeVisible();
+
+    // Alice 계정 삭제(익명화)
+    await alice.getByRole("button", { name: "기기 관리" }).click();
+    await alice.getByRole("button", { name: "계정 삭제", exact: true }).click();
+    const deleteDialog = alice.getByRole("dialog", { name: "계정 삭제" });
+    await deleteDialog.getByLabel("비밀번호 확인").fill(PASSWORD);
+    await deleteDialog.getByRole("button", { name: "계정 삭제" }).click();
+    await expect(
+      alice.getByText("두 사람만 읽을 수 있는 1:1 암호화 메신저"),
+    ).toBeVisible();
+
+    // Bob: 이력은 유지되고 발신자는 "삭제된 사용자"로 표시된다.
+    await bob.reload();
+    await expect(bob.getByText(text)).toBeVisible();
+    const reloadedList = bob.getByRole("navigation", { name: "대화 목록" });
+    const deletedPeer = reloadedList.getByRole("button", { name: /삭제된 사용자/ });
+    await expect(deletedPeer).toBeVisible();
+    await deletedPeer.click();
+    await expect(bob.getByText("이 사용자는 계정을 삭제했습니다.")).toBeVisible();
   } finally {
     await aliceContext.close();
     await bobContext.close();

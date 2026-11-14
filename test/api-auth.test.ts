@@ -96,8 +96,10 @@ describe("accounts, sessions and CSRF", () => {
     expect(newDeviceLogin.status).toBe(200);
     expect(newDeviceLogin.body.device.id).not.toBe(alice.deviceId);
 
-    const me = await alice.client.request("GET", "/api/auth/me");
+    const me = await existing.request("GET", "/api/auth/me");
     expect(me.body.devices).toHaveLength(2);
+    // 같은 기기 재로그인으로 이전 세션은 회전(무효화)된다.
+    expect((await alice.client.request("GET", "/api/auth/me")).status).toBe(401);
 
     const noDevice = new TestClient(ctx.baseUrl);
     const missing = await noDevice.request("POST", "/api/auth/login", {

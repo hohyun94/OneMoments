@@ -1,15 +1,30 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Laptop, ShieldCheck, Trash2 } from "lucide-react";
+import { ArrowLeft, KeyRound, Laptop, ShieldCheck, Trash2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 
-import { Alert, Button, Card, Spinner } from "../components/ui.tsx";
-import { api } from "../lib/api.ts";
+import {
+  Alert,
+  Button,
+  Card,
+  Dialog,
+  Input,
+  Label,
+  Spinner,
+} from "../components/ui.tsx";
+import { ApiError, api } from "../lib/api.ts";
+import { deleteIdentity } from "../lib/keystore.ts";
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
 
 export function DevicesPage() {
-  const { session } = useSession();
+  const { session, logout } = useSession();
   const queryClient = useQueryClient();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [keyDeleteOpen, setKeyDeleteOpen] = useState(false);
 
   const devicesQuery = useQuery({
     queryKey: ["devices"],
@@ -25,6 +40,37 @@ export function DevicesPage() {
   });
 
   const devices = devicesQuery.data ?? [];
+
+  async function confirmAccountDeletion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api("/api/auth/account", { method: "DELETE", body: { password } });
+      await logout();
+    } catch (error) {
+      setDeleteError(
+        error instanceof ApiError && error.status === 401
+          ? "비밀번호가 올바르지 않습니다."
+          : "계정을 삭제할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function deleteLocalKeys() {
+    if (!session) return;
+    try {
+      // 서버 기기 폐기(세션 무효) + 로컬 키 삭제. 실패해도 로그아웃은 진행한다.
+      await api(`/api/devices/${session.deviceId}`, { method: "DELETE" }).catch(
+        () => undefined,
+      );
+      await deleteIdentity(session.user.username);
+    } finally {
+      await logout();
+    }
+  }
 
   return (
     <div className="min-h-dvh bg-zinc-50">
@@ -114,7 +160,97 @@ export function DevicesPage() {
           새 기기에서 로그인하면 그 기기의 키가 새로 만들어집니다. 이전 대화는 그 키로
           복호화할 수 없으므로, 다른 기기에서 계속 확인해야 합니다.
         </p>
+
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold text-zinc-900">이 기기 키</h2>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            이 브라우저에 저장된 기기 키를 삭제하고 로그아웃합니다. 삭제 후에는 이
+            기기에서 과거 대화를 복호화할 수 없습니다.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="mt-3"
+            onClick={() => setKeyDeleteOpen(true)}
+          >
+            <KeyRound className="h-4 w-4" aria-hidden />
+            이 기기에서 키 삭제
+          </Button>
+        </Card>
+
+        <Card className="border-red-200 p-5">
+          <h2 className="text-sm font-semibold text-zinc-900">계정 삭제</h2>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            계정을 삭제하면 로그인·기기·세션이 무효화되고 계정이 익명화됩니다. 상대의
+            대화 이력에는 내 메시지가 &quot;삭제된 사용자&quot;로 남으며, username은
+            재사용할 수 없습니다.
+          </p>
+          <Button
+            variant="destructive"
+            size="sm"
+            className="mt-3"
+            onClick={() => {
+              setPassword("");
+              setDeleteError(null);
+              setDeleteOpen(true);
+            }}
+          >
+            <Trash2 className="h-4 w-4" aria-hidden />
+            계정 삭제
+          </Button>
+        </Card>
       </div>
+
+      <Dialog
+        open={keyDeleteOpen}
+        onClose={() => setKeyDeleteOpen(false)}
+        title="이 기기에서 키 삭제"
+      >
+        <p className="text-sm leading-relaxed text-zinc-600">
+          이 기기의 비밀키를 삭제하고 로그아웃합니다. 같은 계정으로 다시 로그인하면 새
+          기기 키가 만들어지며, 과거 메시지는 복호화되지 않습니다.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setKeyDeleteOpen(false)}>
+            취소
+          </Button>
+          <Button variant="destructive" onClick={() => void deleteLocalKeys()}>
+            <Trash2 className="h-4 w-4" aria-hidden />
+            삭제하고 로그아웃
+          </Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} title="계정 삭제">
+        <form className="space-y-3" onSubmit={confirmAccountDeletion}>
+          <p className="text-sm leading-relaxed text-zinc-600">
+            계정을 삭제하면 로그인·기기·세션이 무효화되고 계정이 익명화됩니다. 상대의
+            대화 이력에는 내 메시지가 &quot;삭제된 사용자&quot;로 남습니다. 이 작업은
+            되돌릴 수 없습니다.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="delete-account-password">비밀번호 확인</Label>
+            <Input
+              id="delete-account-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              required
+            />
+          </div>
+          {deleteError ? <Alert variant="error">{deleteError}</Alert> : null}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
+              취소
+            </Button>
+            <Button type="submit" variant="destructive" disabled={deleting}>
+              {deleting ? <Spinner /> : <Trash2 className="h-4 w-4" aria-hidden />}
+              계정 삭제
+            </Button>
+          </div>
+        </form>
+      </Dialog>
     </div>
   );
 }

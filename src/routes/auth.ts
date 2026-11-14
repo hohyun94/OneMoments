@@ -18,9 +18,11 @@ import {
   requireSession,
 } from "../http/middleware.js";
 import { toOwnDevice, toPublicDevice, toPublicUser } from "../http/serializers.js";
-import { loginBodySchema, registerBodySchema } from "../http/validation.js";
+import { loginBodySchema, registerBodySchema, deleteAccountBodySchema } from "../http/validation.js";
 import {
+  deleteAccount,
   deleteSession,
+  deleteSessionsForDevice,
   findActiveDevice,
   findUserById,
   listDevices,
@@ -101,6 +103,9 @@ export function createAuthRouter(db: Database, config: Config): Router {
         );
       }
 
+      // 같은 기기의 이전 세션은 폐기한다(세션 회전).
+      await deleteSessionsForDevice(db, device.id);
+
       const issued = await issueSession(db, config, {
         userId: user.id,
         deviceId: device.id,
@@ -113,6 +118,20 @@ export function createAuthRouter(db: Database, config: Config): Router {
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
       });
+    }),
+  );
+
+  router.delete(
+    "/account",
+    credentialLimiter,
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = deleteAccountBodySchema.parse(req.body);
+      await deleteAccount(db, { userId: auth.userId, password: body.password });
+      res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions(config));
+      res.status(204).end();
     }),
   );
 

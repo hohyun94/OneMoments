@@ -52,9 +52,12 @@
 
 ### 안전번호(safety number)
 
-- 두 사용자의 **활성 기기 공개키(IK+SK)** 를 정렬해 SHA-256 → 숫자/QR로 표시
-- 기기 추가·폐기로 지문이 바뀌면 경고한다(TOFU 모델)
-- 서버는 안전번호 계산에 관여하지 않는다
+- 두 사용자의 **활성 기기 공개키(IK+SK)** 로 계산한다.
+  - 사용자별: 기기 키를 정렬해 `userId + 키 목록`을 SHA-256
+  - 사용자 ID 순으로 정렬한 뒤 다시 SHA-256 → 60자리(5자리 × 12그룹)로 표시
+- 기기 추가·폐기로 지문이 바뀌면 **경고 배너**를 띄우고, 사용자가 확인하면 새 번호를 저장한다(TOFU).
+- 마지막으로 확인한 번호는 브라우저(localStorage)에 대화별로 저장한다.
+- 서버는 안전번호 계산에 관여하지 않는다.
 
 ### 보장과 한계
 
@@ -105,6 +108,7 @@
 | POST | `/api/auth/register` | `{username, password, device:{name, identityPublicKey, signingPublicKey}}` |
 | POST | `/api/auth/login` | `{username, password, deviceId?}`. 새 기기는 `device`를 함께 보내 즉시 등록 |
 | POST | `/api/auth/logout` | 현재 세션 종료 |
+| DELETE | `/api/auth/account` | `{password}` 확인 후 계정 익명화 삭제(세션·기기 무효, 메시지 유지) |
 | GET | `/api/auth/me` | 내 정보 + 세션 기기 |
 
 - 쿠키: `om_session`(HttpOnly, Secure, SameSite=Lax). 원문 토큰은 DB에 저장하지 않고 해시만 저장.

@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Send } from "lucide-react";
+import { AlertCircle, ArrowLeft, Send, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { ApiError, api } from "../lib/api.ts";
@@ -17,8 +17,9 @@ import type {
   MessagePage,
   MessageView,
 } from "../types.ts";
-import { Alert, Avatar, Button, Spinner, Textarea, cn } from "./ui.tsx";
+import { Alert, Avatar, Button, Dialog, Spinner, Textarea, cn } from "./ui.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
+import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
 
 interface PendingMessage {
   clientMessageId: string;
@@ -77,11 +78,15 @@ export function ChatView({
         `/api/conversations/${conversation.id}/devices`,
       ).then((response) => response.devices),
     staleTime: 0,
+    refetchInterval: 60_000,
   });
 
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [safety, setSafety] = useState<SafetyNumber | null>(null);
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [safetyChanged, setSafetyChanged] = useState(false);
   const pendingRef = useRef<PendingMessage | null>(null);
   const typingTimerRef = useRef<number | undefined>(undefined);
   const lastTypingAtRef = useRef(0);
@@ -100,6 +105,39 @@ export function ChatView({
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [conversation.id, latestId]);
+
+  useEffect(() => {
+    const devices = devicesQuery.data;
+    if (!devices || devices.length === 0) {
+      setSafety(null);
+      setSafetyChanged(false);
+      return;
+    }
+    let cancelled = false;
+    void computeSafetyNumber(devices)
+      .then((value) => {
+        if (cancelled || !value) return;
+        setSafety(value);
+        const storageKey = `onemoments:safety:${conversation.id}`;
+        const stored = localStorage.getItem(storageKey);
+        if (!stored) {
+          localStorage.setItem(storageKey, value.hex);
+          setSafetyChanged(false);
+        } else {
+          setSafetyChanged(stored !== value.hex);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.id, devicesQuery.data]);
+
+  function acknowledgeSafetyChange(): void {
+    if (!safety) return;
+    localStorage.setItem(`onemoments:safety:${conversation.id}`, safety.hex);
+    setSafetyChanged(false);
+  }
 
   useEffect(() => {
     return () => {
@@ -253,12 +291,34 @@ export function ChatView({
             )}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setSafetyOpen(true)}
+          aria-label="안전번호"
+          disabled={!safety}
+        >
+          <ShieldCheck className="h-4 w-4" aria-hidden />
+          <span className="hidden sm:inline">안전번호</span>
+        </Button>
         {connection !== "open" ? (
           <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
             연결 중…
           </span>
         ) : null}
       </header>
+
+      {safetyChanged ? (
+        <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" aria-hidden />
+            상대의 기기 키가 변경되었습니다. 안전번호를 확인하세요.
+          </span>
+          <Button size="sm" variant="outline" onClick={acknowledgeSafetyChange}>
+            확인
+          </Button>
+        </div>
+      ) : null}
 
       <div className="flex-1 overflow-y-auto px-3 py-4 md:px-6" aria-live="polite">
         {messagesQuery.hasNextPage ? (
@@ -383,6 +443,28 @@ export function ChatView({
           Enter 전송 · Shift+Enter 줄바꿈 · 종단간 암호화
         </p>
       </form>
+
+      <Dialog open={safetyOpen} onClose={() => setSafetyOpen(false)} title="안전번호">
+        <p className="text-sm leading-relaxed text-zinc-600">
+          {peerName}님과 대면 또는 음성으로 아래 숫자를 대조하세요. 기기 키가 바뀌면
+          번호도 바뀝니다.
+        </p>
+        {safety ? (
+          <div
+            data-testid="safety-number"
+            className="mt-3 grid grid-cols-3 gap-2 rounded-xl bg-zinc-50 p-3 font-mono text-sm text-zinc-800"
+          >
+            {safety.groups.map((group, index) => (
+              <span key={`${group}-${index}`}>{group}</span>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-zinc-500">기기 정보를 불러오는 중…</p>
+        )}
+        <p className="mt-3 text-xs text-zinc-500">
+          번호가 예상과 다르면 대화를 중단하고 상대에게 직접 확인하세요.
+        </p>
+      </Dialog>
     </section>
   );
 }

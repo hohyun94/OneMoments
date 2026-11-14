@@ -72,6 +72,10 @@ export const sendMessageBodySchema = z.object({
     .max(200),
 });
 
+export const deleteAccountBodySchema = z.object({
+  password: z.string().min(1, "Password is required").max(200),
+});
+
 export const listMessagesQuerySchema = z.object({
   before: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

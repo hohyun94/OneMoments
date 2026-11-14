@@ -1,4 +1,9 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  isNull,
+} from "drizzle-orm";
 
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { Database } from "../db/client.js";
@@ -141,6 +146,43 @@ export async function createSession(
 
 export async function deleteSession(db: Database, sessionId: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.id, sessionId));
+}
+
+/** 같은 기기에서 새로 로그인하면 이전 세션은 폐기한다(세션 회전). */
+export async function deleteSessionsForDevice(
+  db: Database,
+  deviceId: string,
+): Promise<void> {
+  await db.delete(sessions).where(eq(sessions.deviceId, deviceId));
+}
+
+/**
+ * 계정 익명화 삭제.
+ * 세션·기기를 무효화하고 계정을 deleted_at 으로 표시하되, 메시지는 유지한다.
+ * username 은 재사용할 수 없도록 행을 그대로 둔다(사칭 방지).
+ */
+export async function deleteAccount(
+  db: Database,
+  input: { userId: string; password: string },
+): Promise<void> {
+  const user = await findUserById(db, input.userId);
+  if (!user || user.deletedAt !== null) {
+    throw AppError.unauthorized("Unknown account");
+  }
+  const matches = await verifyPassword(input.password, user.passwordHash);
+  if (!matches) throw AppError.unauthorized("Invalid password");
+
+  await db.transaction(async (tx) => {
+    await tx.delete(sessions).where(eq(sessions.userId, input.userId));
+    await tx
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(devices.userId, input.userId), isNull(devices.revokedAt)));
+    await tx
+      .update(users)
+      .set({ deletedAt: new Date(), passwordHash: "deleted-account" })
+      .where(eq(users.id, input.userId));
+  });
 }
 
 export async function listDevices(db: Database, userId: string): Promise<DeviceRow[]> {

@@ -59,6 +59,15 @@ function historyKey(deviceId: string, messageId: string): string {
   return `${deviceId}:${messageId}`;
 }
 
+function identityKey(identity: StoredIdentity): string {
+  return (identity.userId ?? identity.username).toLowerCase();
+}
+
+async function allIdentities(): Promise<StoredIdentity[]> {
+  if (!canUseIndexedDb) return [...memoryIdentities.values()];
+  return (await db()).getAll("identities");
+}
+
 export async function loadIdentity(username: string): Promise<StoredIdentity | null> {
   const key = username.toLowerCase();
   if (!canUseIndexedDb) return memoryIdentities.get(key) ?? null;
@@ -66,8 +75,36 @@ export async function loadIdentity(username: string): Promise<StoredIdentity | n
   return value ?? null;
 }
 
+/** userId 우선, 구버전 username 키는 fallback. */
+export async function loadIdentityForUser(
+  userId: string,
+  username: string,
+): Promise<StoredIdentity | null> {
+  const byId = await loadIdentity(userId);
+  if (byId) return byId;
+  return loadIdentity(username);
+}
+
+/** 같은 로그인 별칭으로 저장된 실제/decoy identity 목록(중복 userId 제거). */
+export async function listIdentitiesForAlias(alias: string): Promise<StoredIdentity[]> {
+  const normalized = alias.toLowerCase();
+  const seen = new Set<string>();
+  const result: StoredIdentity[] = [];
+  for (const identity of await allIdentities()) {
+    const matches =
+      identity.loginAlias?.toLowerCase() === normalized ||
+      identity.username.toLowerCase() === normalized;
+    if (!matches) continue;
+    const key = identityKey(identity);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(identity);
+  }
+  return result;
+}
+
 export async function saveIdentity(identity: StoredIdentity): Promise<void> {
-  const key = identity.username.toLowerCase();
+  const key = identityKey(identity);
   if (!canUseIndexedDb) {
     memoryIdentities.set(key, identity);
     return;
@@ -82,6 +119,10 @@ export async function deleteIdentity(username: string): Promise<void> {
     return;
   }
   await (await db()).delete("identities", key);
+}
+
+export async function deleteIdentityByUser(userId: string): Promise<void> {
+  await deleteIdentity(userId);
 }
 
 export async function loadRatchetSession(

@@ -2,7 +2,7 @@
 
 개인용 **종단간 암호화(E2E) 메신저**(1:1·소규모 그룹), 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: Post-MVP 1~5 완료 (웹/PWA 기준, 네이티브 앱은 범위 외)**
+**현재 단계: Post-MVP 1~7 완료 (웹/PWA 기준, 네이티브 앱은 범위 외)**
 
 ## 구현된 것
 
@@ -19,7 +19,7 @@
 - **푸시·PWA**: VAPID Web Push(RFC 8291), 서비스 워커, **오프라인 앱 셸**, PNG 192/512 아이콘, 로그아웃/기기 폐기 시 구독 정리
 - **성능**: 동시성 부하 테스트(Node/k6), 클라이언트 DR·첨부 암복호화 벤치마크
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
-- **테스트 89개**: 서버 59(단위·API·WS·버스·푸시·초대·첨부 정리, 1 skipped) + 클라이언트 24(DR·X3DH/OPK·Sender Keys·첨부·백업) + 브라우저 E2E 6(그룹·초대·오프라인)
+- **테스트 91개**: 서버 60(단위·API·WS·버스·푸시·초대·첨부 정리·decoy, 1 skipped) + 클라이언트 25(DR·X3DH/OPK·Sender Keys·첨부·백업·프로필 저장) + 브라우저 E2E 6
 
 ## 빠른 시작
 
@@ -122,6 +122,7 @@ pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 - [X3DH](docs/15-x3dh.md) — signed prekey, 최초 세션, 백업과 OPK 후속
 - [네이티브 앱 평가(참고, 범위 외)](docs/16-native-app.md) — React Native/Flutter, 키 보관, APNs/FCM, 결정 게이트
 - [로컬 웹 테스트](docs/17-web-test.md) — 브라우저/PWA 접속 URL, 시나리오, 환경 초기화
+- [Decoy 프로필](docs/18-decoy-profile.md) — 배포 관리자 CLI, 별도 비밀번호, 격리와 한계
 - [푸시·PWA](docs/12-push-mobile.md) — Web Push, VAPID, 서비스 워커, 모바일 대응
 - [성능·부하 테스트](docs/13-performance.md) — 동시성·k6, 클라이언트 암복호화 프로파일링
 

@@ -96,7 +96,25 @@ docker exec -i <postgres-container> pg_restore -U "$POSTGRES_USER" -d "$POSTGRES
 | 마이그레이션 잠금/중복 실행 | 인스턴스 수 확인, 기동 마이그레이션을 일회성 job으로 분리 |
 | WS 연결 실패 | 프록시가 WebSocket 업그레이드(`/ws`)를 허용하는지 |
 
-## 7. 보안 체크리스트
+## 7. Decoy 프로필 (배포 관리자 전용)
+
+일반 사용자 UI/API에는 노출되지 않는다. app 컨테이너에서 CLI로만 관리한다.
+
+```bash
+DECOY_PASSWORD='<long-decoy-password>' \
+  node scripts/decoy-admin.mjs create \
+  --alias <real-login-id> --handle <decoy-handle>
+
+DECOY_PASSWORD='<new-password>' node scripts/decoy-admin.mjs rotate --alias <id>
+node scripts/decoy-admin.mjs disable --alias <id>
+node scripts/decoy-admin.mjs enable --alias <id>
+```
+
+- 실제 ID + decoy 비밀번호로 로그인하면 별도 decoy 프로필 세션이 발급된다.
+- 관리자는 decoy 비밀번호를 알게 되며, 실제 E2E 메시지는 복호화할 수 없다.
+- 상세·한계: `docs/18-decoy-profile.md`
+
+## 8. 보안 체크리스트
 
 - [ ] `postgres` 포트를 외부에 publish 하지 않는다
 - [ ] `SESSION_SECRET`·DB 비밀번호는 Coolify secret 으로만 주입

@@ -310,6 +310,29 @@ export const pushSubscriptions = pgTable(
   ],
 );
 
+export const loginProfiles = pgTable(
+  "login_profiles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // 사용자가 입력하는 로그인 ID(실제 계정의 username)
+    alias: text("alias").notNull(),
+    // decoy 프로필의 users 행
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // 관리자가 설정한 decoy 비밀번호 해시
+    passwordHash: text("password_hash").notNull(),
+    kind: text("kind").notNull().default("decoy"),
+    disabledAt: timestamp("disabled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("login_profiles_alias_uq").on(table.alias),
+    index("login_profiles_user_idx").on(table.userId),
+    check("login_profiles_kind_chk", sql`${table.kind} in ('decoy')`),
+  ],
+);
+
 export const conversationInvites = pgTable(
   "conversation_invites",
   {

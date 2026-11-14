@@ -20,7 +20,11 @@ import {
   type KeyBackupBlob,
   type StoredIdentity,
 } from "./lib/crypto/index.ts";
-import { loadIdentity, saveIdentity } from "./lib/keystore.ts";
+import {
+  listIdentitiesForAlias,
+  loadIdentityForUser,
+  saveIdentity,
+} from "./lib/keystore.ts";
 import { disablePush } from "./lib/push.ts";
 import type { AuthResponse, MeResponse, PublicUser } from "./types.ts";
 
@@ -148,7 +152,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     api<MeResponse>("/api/auth/me")
       .then(async (me) => {
         if (cancelled) return;
-        const stored = await loadIdentity(me.user.username);
+        const stored = await loadIdentityForUser(me.user.id, me.user.username);
         if (!stored) {
           setSession({ user: me.user, deviceId: me.deviceId });
           setStatus("missing-keys");
@@ -157,6 +161,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const ensured = await syncPreKeys(stored);
         const updated: StoredIdentity = {
           ...ensured,
+          username: ensured.username,
+          loginAlias: ensured.loginAlias ?? ensured.username.toLowerCase(),
           deviceId: me.deviceId,
           userId: me.user.id,
         };
@@ -204,6 +210,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const stored: StoredIdentity = {
       ...generated,
       username: response.user.username,
+      loginAlias: response.user.username,
       userId: response.user.id,
       deviceId: response.device.id,
     };
@@ -217,11 +224,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (username: string, password: string) => {
     const normalized = username.trim().toLowerCase();
-    const storedIdentity = await loadIdentity(normalized);
-    let localIdentity: StoredIdentity = storedIdentity ?? {
-      ...(await createIdentity()),
-      username: normalized,
-    };
+    const candidates = await listIdentitiesForAlias(normalized);
 
     const loginWithDevice = (deviceId: string | undefined, current: StoredIdentity) =>
       api<AuthResponse>("/api/auth/login", {
@@ -241,35 +244,49 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             },
       });
 
-    let response: AuthResponse;
-    try {
-      response = await loginWithDevice(localIdentity.deviceId, localIdentity);
-    } catch (error) {
-      const revoked =
-        error instanceof ApiError &&
-        error.status === 401 &&
-        localIdentity.deviceId !== undefined &&
-        /device/i.test(error.message);
-      if (!revoked) throw error;
+    let response: AuthResponse | null = null;
+    let localIdentity: StoredIdentity | null = null;
 
-      // 폐기된 기기: 새 키로 이 기기를 등록하고 다시 로그인한다(과거 이력은 복호화 불가).
+    // 같은 로그인 ID에 실제/decoy identity가 모두 있을 수 있으므로
+    // 비밀번호로 선택된 프로필의 기기에서만 성공한다.
+    for (const candidate of candidates) {
+      if (!candidate.deviceId) continue;
+      try {
+        response = await loginWithDevice(candidate.deviceId, candidate);
+        localIdentity = candidate;
+        break;
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) throw error;
+      }
+    }
+
+    // 처음 decoy 로그인/기기 폐기/새 기기: 새 키로 기기를 등록한다.
+    if (!response || !localIdentity) {
+      const generated = await createIdentity();
       localIdentity = {
-        ...(await createIdentity()),
+        ...generated,
         username: normalized,
+        loginAlias: normalized,
       };
       response = await loginWithDevice(undefined, localIdentity);
     }
 
     setCsrfToken(response.csrfToken);
+    // decoy 프로필에서는 실제 프로필의 브라우저 푸시 구독이 남지 않게 한다.
+    if (response.user.username.toLowerCase() !== normalized) {
+      await disablePush().catch(() => undefined);
+    }
+
     const stored: StoredIdentity = {
       ...localIdentity,
       username: response.user.username,
+      loginAlias: normalized,
       userId: response.user.id,
       deviceId: response.device.id,
     };
     await saveIdentity(stored);
-    localStorage.setItem(LAST_USERNAME_KEY, response.user.username);
-    setLastUsername(response.user.username);
+    localStorage.setItem(LAST_USERNAME_KEY, normalized);
+    setLastUsername(normalized);
     setIdentity(stored);
     setSession({ user: response.user, deviceId: response.device.id });
     setStatus("authenticated");
@@ -322,13 +339,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const stored: StoredIdentity = {
       ...device,
       username: response.user.username,
+      loginAlias: normalized,
       userId: response.user.id,
       deviceId: response.device.id,
     };
     if (state) await importLocalCryptoState(state);
     await saveIdentity(stored);
-    localStorage.setItem(LAST_USERNAME_KEY, response.user.username);
-    setLastUsername(response.user.username);
+    localStorage.setItem(LAST_USERNAME_KEY, normalized);
+    setLastUsername(normalized);
     setIdentity(stored);
     setSession({ user: response.user, deviceId: response.device.id });
     setStatus("authenticated");

@@ -22,7 +22,7 @@ import {
 } from "../components/ui.tsx";
 import { ApiError, api } from "../lib/api.ts";
 import { BackupError, exportKeyBackup, exportLocalCryptoState } from "../lib/crypto/index.ts";
-import { deleteIdentity } from "../lib/keystore.ts";
+import { deleteIdentity, deleteIdentityByUser } from "../lib/keystore.ts";
 import {
   currentPushSubscription,
   disablePush,
@@ -197,6 +197,7 @@ export function DevicesPage() {
       await api(`/api/devices/${session.deviceId}`, { method: "DELETE" }).catch(
         () => undefined,
       );
+      await deleteIdentityByUser(session.user.id);
       await deleteIdentity(session.user.username);
     } finally {
       await logout();

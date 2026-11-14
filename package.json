@@ -29,6 +29,7 @@
     "db:restore": "node --env-file-if-exists=.env scripts/restore.mjs",
     "db:load-test": "node --env-file-if-exists=.env scripts/load-test.mjs",
     "attachments:cleanup": "node --env-file-if-exists=.env scripts/cleanup-attachments.mjs",
+    "decoy:admin": "node --env-file-if-exists=.env scripts/decoy-admin.mjs",
     "push:keys": "node scripts/generate-vapid-keys.mjs",
     "icons:pwa": "node scripts/generate-pwa-icons.mjs",
     "bench:crypto": "tsx scripts/crypto-bench.ts",

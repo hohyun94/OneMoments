@@ -11,6 +11,7 @@ import type { Database } from "../db/client.js";
 import {
   deviceOneTimePreKeys,
   devices,
+  loginProfiles,
   pushSubscriptions,
   sessions,
   users,
@@ -103,6 +104,55 @@ export async function registerAccount(
     }
     throw error;
   }
+}
+
+export interface VerifiedLogin {
+  user: UserRow;
+  profile: "real" | "decoy";
+}
+
+/**
+ * 아이디 + 비밀번호를 실제 프로필 또는 decoy 프로필로 해석한다.
+ * decoy 자격증명은 관리자 CLI로만 생성된다.
+ */
+export async function verifyLoginCredentials(
+  db: Database,
+  input: { username: string; password: string },
+): Promise<VerifiedLogin> {
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.username, input.username))
+    .limit(1);
+
+  if (user && user.deletedAt === null) {
+    const matches = await verifyPassword(input.password, user.passwordHash);
+    if (matches) return { user, profile: "real" };
+  }
+
+  const [decoy] = await db
+    .select({
+      user: users,
+      passwordHash: loginProfiles.passwordHash,
+    })
+    .from(loginProfiles)
+    .innerJoin(users, eq(users.id, loginProfiles.userId))
+    .where(
+      and(
+        eq(loginProfiles.alias, input.username),
+        isNull(loginProfiles.disabledAt),
+        eq(loginProfiles.kind, "decoy"),
+      ),
+    )
+    .limit(1);
+
+  if (decoy && decoy.user.deletedAt === null) {
+    const matches = await verifyPassword(input.password, decoy.passwordHash);
+    if (matches) return { user: decoy.user, profile: "decoy" };
+  }
+
+  // 존재 여부·프로필 종류를 노출하지 않는 공통 오류.
+  throw AppError.unauthorized("Invalid username or password");
 }
 
 export async function verifyCredentials(

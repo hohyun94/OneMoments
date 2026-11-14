@@ -106,6 +106,9 @@ MVP 이후 과제를 순차 진행한다.
    - 그룹 초대 링크 — 완료 · `docs/09-groups.md`
    - 첨부 S3 옵션·고아 TTL 정리 — 완료 · `docs/10-attachments.md`
    - 오프라인 캐시 버전 E2E — 완료 · `docs/12-push-mobile.md`
+7. **Decoy 프로필(배포 관리자 전용)** — 완료 · `docs/18-decoy-profile.md`
+   - 실제 ID + 관리자 설정 decoy 비밀번호 → 별도 프로필
+   - 일반 사용자 UI/API에는 존재 비노출
 
 ## 리스크
 

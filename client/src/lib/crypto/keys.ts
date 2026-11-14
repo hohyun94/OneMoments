@@ -37,6 +37,8 @@ export interface DeviceIdentity {
 
 export interface StoredIdentity extends DeviceIdentity {
   username: string;
+  /** 같은 로그인 ID 아래 실제/decoy 프로필을 찾기 위한 별칭 */
+  loginAlias?: string;
 }
 
 export const subtle = (): SubtleCrypto => {

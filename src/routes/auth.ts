@@ -44,7 +44,7 @@ import {
   registerAccount,
   registerDevice,
   updateDeviceSignedPreKey,
-  verifyCredentials,
+  verifyLoginCredentials,
 } from "../services/accounts.js";
 import {
   consumeRecoveryChallenge,
@@ -109,10 +109,11 @@ export function createAuthRouter(db: Database, config: Config): Router {
     credentialLimiter,
     asyncHandler(async (req, res) => {
       const body = loginBodySchema.parse(req.body);
-      const user = await verifyCredentials(db, {
+      const verified = await verifyLoginCredentials(db, {
         username: body.username,
         password: body.password,
       });
+      const user = verified.user;
 
       // 쿠키 세션은 항상 기기에 묶는다. 새 브라우저는 device 를 함께 보내 등록한다.
       let device;

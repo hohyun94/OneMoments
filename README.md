@@ -2,7 +2,7 @@
 
 개인용 **종단간 암호화(E2E) 메신저**(1:1·소규모 그룹), 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: Post-MVP 1~5 완료 (네이티브 앱은 후속)**
+**현재 단계: Post-MVP 1~5 완료 (웹/PWA 기준, 네이티브 앱은 범위 외)**
 
 ## 구현된 것
 
@@ -120,7 +120,7 @@ pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 - [Double Ratchet](docs/11-double-ratchet.md) — v2 세션·DH 래칫, 이력 키, 백업과 한계
 - [Sender Keys](docs/14-sender-keys.md) — 그룹 체인 배포, 회전, 백업과 보안 한계
 - [X3DH](docs/15-x3dh.md) — signed prekey, 최초 세션, 백업과 OPK 후속
-- [네이티브 앱 평가](docs/16-native-app.md) — React Native/Flutter, 키 보관, APNs/FCM, 결정 게이트
+- [네이티브 앱 평가(참고, 범위 외)](docs/16-native-app.md) — React Native/Flutter, 키 보관, APNs/FCM, 결정 게이트
 - [로컬 웹 테스트](docs/17-web-test.md) — 브라우저/PWA 접속 URL, 시나리오, 환경 초기화
 - [푸시·PWA](docs/12-push-mobile.md) — Web Push, VAPID, 서비스 워커, 모바일 대응
 - [성능·부하 테스트](docs/13-performance.md) — 동시성·k6, 클라이언트 암복호화 프로파일링

@@ -96,10 +96,9 @@ MVP 이후 과제를 순차 진행한다.
    - **X3DH signed prekey** 최초 세션 — 완료 · `docs/15-x3dh.md`
    - 원타임 프리키(OPK)·SPK 주기 회전 — 대기
    - 백업에 DR 세션·이력 키·SPK private 포함 · `docs/11-double-ratchet.md`
-4. 푸시 알림, 모바일 앱
+4. 푸시 알림·웹/PWA
    - **Web Push(VAPID)·PWA(오프라인 앱 셸, PNG 아이콘)·대화별 음소거 — 완료** · `docs/12-push-mobile.md`
-   - **네이티브 앱 — 평가 완료(구현 대기)** · `docs/16-native-app.md`
-   - 네이티브 앱(React Native/Flutter) — 대기
+   - **네이티브 앱 — 현재 제품 범위에서 제외**(참고 평가만 유지) · `docs/16-native-app.md`
 5. **부하 테스트 동시성·클라이언트 프로파일링** — 완료
    - Node `CONCURRENCY`, k6 HTTP 시나리오, `bench:crypto`
    - 로컬 200건/동시성 20: 302.6 msg/s, REST p95 103.5ms · `docs/13-performance.md`

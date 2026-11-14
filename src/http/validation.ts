@@ -76,6 +76,24 @@ export const deleteAccountBodySchema = z.object({
   password: z.string().min(1, "Password is required").max(200),
 });
 
+export const backupBodySchema = z.object({
+  blob: z.string().min(1, "blob is required").max(65536),
+});
+
+export const recoveryChallengeBodySchema = z.object({
+  deviceId: z.string().uuid(),
+});
+
+export const recoveryLookupBodySchema = z.object({
+  username: usernameSchema,
+});
+
+export const recoverBodySchema = z.object({
+  deviceId: z.string().uuid(),
+  challengeId: z.string().uuid(),
+  signature: z.string().min(1, "signature is required").max(256),
+});
+
 export const listMessagesQuerySchema = z.object({
   before: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),

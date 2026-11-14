@@ -21,7 +21,7 @@ export function getCsrfToken(): string | null {
 }
 
 export interface RequestOptions {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   csrf?: boolean;
 }

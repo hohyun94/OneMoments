@@ -29,7 +29,8 @@
 | `IK` (신원 키) | X25519 | 메시지 키 봉투(ECDH) | 공개키만 |
 | `SK` (서명 키) | Ed25519 | 메시지 발신자 인증 | 공개키만 |
 
-- 브라우저에서 생성하고, 가능하면 **non-extractable** `CryptoKey`로 IndexedDB에 보관한다.
+- 브라우저에서 생성하고 IndexedDB에 보관한다. 키 백업(복구)을 위해 private `CryptoKey`는 **extractable**로 보관하며,
+  XSS 위험은 엄격한 CSP·서드파티 스크립트 금지로 완화한다.
 - WebCrypto의 X25519/Ed25519 지원이 없는 브라우저는 `@noble/curves`로 폴백한다(이 경우 키 보관 방식은 별도 결정).
 
 ### 메시지 전송 절차
@@ -83,6 +84,8 @@
 | `conversation_participants` | conversation_id, user_id, joined_at (PK) | 참여자. 1:1은 항상 2명 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, created_at | 암호문 1건 + 발신 기기 서명 공개키 스냅샷(기기 폐기 후에도 검증 가능). `(conversation_id, sender_user_id, client_message_id)` 유니크 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, version (PK: message_id+recipient_device_id) | 기기별 키 봉투 |
+| `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
+| `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at | 읽음 표시(P1) |
 
 - 인덱스: `messages(conversation_id, created_at desc)`, `message_keys(recipient_device_id)`.
@@ -90,7 +93,6 @@
 - 서버는 `ciphertext`·`wrapped_key`의 **형식과 크기**만 검증한다.
 
 ### 계정 삭제(익명화) 절차
-
 1. 해당 사용자의 **모든 세션 삭제** → 즉시 로그아웃
 2. `devices.revoked_at` 설정. 과거 메시지 서명 검증에 필요한 공개키는 보존
 3. `users.deleted_at` 설정, `password_hash` 무효화. username 행은 유지되어 **재사용 불가**(사칭 방지)
@@ -98,6 +100,14 @@
 5. 삭제된 사용자와의 대화는 **읽기 전용**(전송 불가)
 
 > 대화 삭제는 `conversation_participants` 에 숨김 표시(예: `hidden_at`)만 남기고 데이터는 유지한다.
+
+### 키 백업·기기 복구
+
+- 복구 암호(PBKDF2-SHA256 600k + AES-256-GCM)로 기기 private 키를 클라이언트에서 암호화해 `key_backups` 에 저장한다.
+- 새 브라우저는 username으로 블롭을 조회해 복호화하고, 서버가 발급한 **일회용 챌린지**에 기기 Ed25519 서명을 붙여
+  `POST /api/auth/recover` 로 **같은 기기 ID** 세션을 얻는다. 이 기기 앞으로 저장된 기존 봉투를 그대로 복호화할 수 있다.
+- 복구 시 그 기기의 기존 세션은 모두 폐기한다. 폐기된 기기는 복구할 수 없다.
+- 자세한 내용과 한계: `docs/08-key-backup.md`
 
 ## API 초안
 
@@ -109,6 +119,11 @@
 | POST | `/api/auth/login` | `{username, password, deviceId?}`. 새 기기는 `device`를 함께 보내 즉시 등록 |
 | POST | `/api/auth/logout` | 현재 세션 종료 |
 | DELETE | `/api/auth/account` | `{password}` 확인 후 계정 익명화 삭제(세션·기기 무효, 메시지 유지) |
+| PUT | `/api/auth/backup` | 복구 암호로 암호화한 기기 키 블롭 저장/갱신 |
+| GET | `/api/auth/backup` | 내 기기 백업 조회 |
+| POST | `/api/auth/recovery/lookup` | username의 최신 백업 블롭 조회(암호문) |
+| POST | `/api/auth/recovery/challenge` | 기기 복구용 일회용 챌린지 발급 |
+| POST | `/api/auth/recover` | 챌린지 서명 검증 후 같은 기기 ID로 세션 발급 |
 | GET | `/api/auth/me` | 내 정보 + 세션 기기 |
 
 - 쿠키: `om_session`(HttpOnly, Secure, SameSite=Lax). 원문 토큰은 DB에 저장하지 않고 해시만 저장.
@@ -187,6 +202,8 @@
 | MITM | 대화 도청 | TLS + 안전번호 대조(TOFU 경고) |
 | 기기 도난 | 해당 기기 대화 노출 | OS 잠금, 세션/기기 폐기, 로그아웃 시 키 삭제 |
 | 스팸·검색 남용 | 서비스 품질 저하 | 검색/메시지 레이트리밋, 차단(P1) |
+| 백업 블롭 유출 + 약한 복구 암호 | 오프라인 대입으로 기기 키 복원 | PBKDF2 600k, 10자 이상 권장, `key_backups` 접근 최소화 |
+| 백업 복구 악용 | 기기 세션 탈취 | 일회용 챌린지 + Ed25519 서명, 폐기 기기 복구 금지, 기존 세션 폐기 |
 | 메타데이터 분석 | 대화 패턴 추론 | 패딩·커버 트래픽은 M4 이후 검토 |
 
 ## 기술 선택 (잠정)

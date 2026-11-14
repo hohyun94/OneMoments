@@ -29,6 +29,8 @@ const envSchema = z.object({
   METRICS_TOKEN: z.string().min(16).optional(),
   REDIS_URL: z.string().url().optional(),
   REDIS_CHANNEL: z.string().min(1).default("onemoments:events"),
+  BACKUP_MAX_BYTES: z.coerce.number().int().min(1024).max(65536).default(16384),
+  RECOVERY_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
 });
 
@@ -53,6 +55,8 @@ export interface Config {
   metricsToken: string | null;
   redisUrl: string | null;
   redisChannel: string;
+  backupMaxBytes: number;
+  recoveryChallengeTtlSeconds: number;
   trustProxy: number;
 }
 
@@ -101,6 +105,8 @@ export function loadConfig(env: Env = process.env): Config {
     metricsToken: value.METRICS_TOKEN ?? null,
     redisUrl: value.REDIS_URL ?? null,
     redisChannel: value.REDIS_CHANNEL,
+    backupMaxBytes: value.BACKUP_MAX_BYTES,
+    recoveryChallengeTtlSeconds: value.RECOVERY_CHALLENGE_TTL_SECONDS,
     trustProxy: value.TRUST_PROXY,
   };
 }

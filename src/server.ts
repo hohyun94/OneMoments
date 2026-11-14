@@ -8,6 +8,7 @@ import { createDb } from "./db/client.js";
 import { sessions } from "./db/schema.js";
 import { createMessageBus } from "./realtime/bus.js";
 import { createRealtime } from "./realtime/ws.js";
+import { deleteExpiredRecoveryChallenges } from "./services/keyBackup.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -24,6 +25,7 @@ async function main(): Promise<void> {
       .delete(sessions)
       .where(lt(sessions.expiresAt, new Date()))
       .catch(() => undefined);
+    void deleteExpiredRecoveryChallenges(db).catch(() => undefined);
   }, 60 * 60 * 1000);
   sessionCleanup.unref();
 

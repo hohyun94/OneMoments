@@ -154,3 +154,54 @@ test("계정 삭제 후 상대 이력은 유지되고 익명화된다", async ({
     await bobContext.close();
   }
 });
+
+test("키 백업으로 새 브라우저에서 기기와 이력을 복구한다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("alice");
+  const bobName = uniqueName("bob");
+  const recoveryPassphrase = "recovery-passphrase-12345";
+  let recoveredContext: Awaited<ReturnType<typeof browser.newContext>> | null = null;
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    const text = "백업으로 복구할 메시지";
+    await sendMessage(alice, text);
+    await expect(alice.getByText(text)).toBeVisible();
+
+    // 이 기기 키를 복구 암호로 백업한다.
+    await alice.getByRole("button", { name: "기기 관리" }).click();
+    await alice.getByLabel("복구 암호", { exact: true }).fill(recoveryPassphrase);
+    await alice.getByLabel("복구 암호 확인").fill(recoveryPassphrase);
+    await alice.getByRole("button", { name: "백업 저장" }).click();
+    await expect(alice.getByText(/백업이 저장되었습니다/)).toBeVisible();
+
+    // 완전히 새 브라우저(빈 저장소)에서 복구한다.
+    recoveredContext = await browser.newContext();
+    const recovered = await recoveredContext.newPage();
+    await recovered.goto("/");
+    await recovered.getByRole("button", { name: "복구", exact: true }).click();
+    await recovered.getByLabel("아이디").fill(aliceName);
+    await recovered.getByLabel("복구 암호").fill(recoveryPassphrase);
+    await recovered.getByRole("button", { name: "백업으로 복구" }).click();
+
+    await expect(recovered.getByText(`@${aliceName}`)).toBeVisible();
+    const list = recovered.getByRole("navigation", { name: "대화 목록" });
+    const conversation = list.getByRole("button", { name: new RegExp(bobName) });
+    await expect(conversation).toBeVisible();
+    await conversation.click();
+    await expect(recovered.getByText(text)).toBeVisible();
+
+    await recovered.getByRole("button", { name: "기기 관리" }).click();
+    await expect(recovered.getByText("현재 기기")).toHaveCount(1);
+  } finally {
+    if (recoveredContext) await recoveredContext.close();
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});

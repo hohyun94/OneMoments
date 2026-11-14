@@ -9,7 +9,14 @@ import {
 } from "react";
 
 import { ApiError, api, setCsrfToken } from "./lib/api.ts";
-import { createIdentity, type StoredIdentity } from "./lib/crypto/index.ts";
+import {
+  createIdentity,
+  importKeyBackup,
+  signPayload,
+  toBase64,
+  type KeyBackupBlob,
+  type StoredIdentity,
+} from "./lib/crypto/index.ts";
 import { loadIdentity, saveIdentity } from "./lib/keystore.ts";
 import type { AuthResponse, MeResponse, PublicUser } from "./types.ts";
 
@@ -33,6 +40,7 @@ interface SessionContextValue {
   lastUsername: string;
   register: (username: string, password: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
+  recover: (username: string, passphrase: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -177,6 +185,63 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setStatus("authenticated");
   }, []);
 
+  const recover = useCallback(async (username: string, passphrase: string) => {
+    const normalized = username.trim().toLowerCase();
+    if (passphrase.length < 10) {
+      throw new Error("복구 암호는 10자 이상이어야 합니다.");
+    }
+
+    const lookup = await api<{ backup: { blob: string } }>(
+      "/api/auth/recovery/lookup",
+      { method: "POST", csrf: false, body: { username: normalized } },
+    );
+    let blob: KeyBackupBlob;
+    try {
+      blob = JSON.parse(lookup.backup.blob) as KeyBackupBlob;
+    } catch {
+      throw new Error("백업 형식이 올바르지 않습니다.");
+    }
+
+    const restored = await importKeyBackup(blob, passphrase);
+    if (!restored.deviceId) throw new Error("백업에 기기 정보가 없습니다.");
+
+    const challenge = await api<{ challengeId: string; challenge: string }>(
+      "/api/auth/recovery/challenge",
+      { method: "POST", csrf: false, body: { deviceId: restored.deviceId } },
+    );
+    const signature = toBase64(
+      await signPayload(
+        restored.backend,
+        restored.signingPrivate,
+        new TextEncoder().encode(`recover:${challenge.challenge}`),
+      ),
+    );
+
+    const response = await api<AuthResponse>("/api/auth/recover", {
+      method: "POST",
+      csrf: false,
+      body: {
+        deviceId: restored.deviceId,
+        challengeId: challenge.challengeId,
+        signature,
+      },
+    });
+
+    setCsrfToken(response.csrfToken);
+    const stored: StoredIdentity = {
+      ...restored,
+      username: response.user.username,
+      userId: response.user.id,
+      deviceId: response.device.id,
+    };
+    await saveIdentity(stored);
+    localStorage.setItem(LAST_USERNAME_KEY, response.user.username);
+    setLastUsername(response.user.username);
+    setIdentity(stored);
+    setSession({ user: response.user, deviceId: response.device.id });
+    setStatus("authenticated");
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api("/api/auth/logout", { method: "POST" });
@@ -190,8 +255,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ status, session, identity, lastUsername, register, login, logout }),
-    [status, session, identity, lastUsername, register, login, logout],
+    () => ({
+      status,
+      session,
+      identity,
+      lastUsername,
+      register,
+      login,
+      recover,
+      logout,
+    }),
+    [status, session, identity, lastUsername, register, login, recover, logout],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

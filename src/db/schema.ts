@@ -158,6 +158,41 @@ export const messageKeys = pgTable(
   ],
 );
 
+export const keyBackups = pgTable(
+  "key_backups",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    // 클라이언트가 복구 암호로 암호화한 불투명 블롭(JSON). 서버는 복호화하지 않는다.
+    blob: text("blob").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("key_backups_device_uq").on(table.deviceId),
+    index("key_backups_user_idx").on(table.userId),
+  ],
+);
+
+export const recoveryChallenges = pgTable(
+  "recovery_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    // 기기 서명키로 서명해야 하는 일회용 nonce
+    nonce: text("nonce").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [index("recovery_challenges_device_idx").on(table.deviceId)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;

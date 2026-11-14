@@ -47,14 +47,6 @@ async function createWebCryptoIdentity(): Promise<DeviceIdentity> {
   const identityPublicKey = toBase64(
     new Uint8Array(await subtle().exportKey("raw", ecdh.publicKey)),
   );
-  const ecdhPrivatePkcs8 = await subtle().exportKey("pkcs8", ecdh.privateKey);
-  const identityPrivate = await subtle().importKey(
-    "pkcs8",
-    ecdhPrivatePkcs8,
-    { name: "X25519" },
-    false,
-    ["deriveBits"],
-  );
 
   const signing = (await subtle().generateKey({ name: "Ed25519" }, true, [
     "sign",
@@ -63,19 +55,13 @@ async function createWebCryptoIdentity(): Promise<DeviceIdentity> {
   const signingPublicKey = toBase64(
     new Uint8Array(await subtle().exportKey("raw", signing.publicKey)),
   );
-  const signingPrivatePkcs8 = await subtle().exportKey("pkcs8", signing.privateKey);
-  const signingPrivate = await subtle().importKey(
-    "pkcs8",
-    signingPrivatePkcs8,
-    { name: "Ed25519" },
-    false,
-    ["sign"],
-  );
 
+  // 키 백업(복구)을 위해 private 키는 extractable 로 보관한다.
+  // XSS 위험은 CSP·서드파티 스크립트 금지로 완화한다(README 보안 참고).
   return {
     backend: "webcrypto",
-    identityPrivate,
-    signingPrivate,
+    identityPrivate: ecdh.privateKey,
+    signingPrivate: signing.privateKey,
     identityPublicKey,
     signingPublicKey,
   };

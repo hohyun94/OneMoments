@@ -2,12 +2,13 @@
 
 개인용 **1:1 종단간 암호화(E2E) 메신저**, 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: M4 운영·배포 완료 (MVP 전 구간 완료)**
+**현재 단계: MVP 완료 · 이후 과제 1/5(키 백업·복구) 완료**
 
 ## 구현된 것
 
 - **웹 클라이언트** (`client/`): React 19 + Vite + Tailwind, 로그인/가입, 대화 목록, 채팅, 기기 관리
 - **E2E 암호화**: 브라우저에서 X25519/Ed25519 키 생성·보관(IndexedDB), 기기별 키 봉투, Ed25519 서명 검증
+- **키 백업·기기 복구**: 복구 암호(PBKDF2+AES-GCM)로 기기 키를 암호화해 서버에 저장, 새 브라우저에서 복구(같은 기기 ID·이력 유지)
 - **안전번호**: 활성 기기 공개키 지문(60자리) 표시, 기기 키 변경 시 경고 배너
 - **계정/세션**: scrypt 비밀번호, HttpOnly 세션 쿠키, CSRF + Origin 가드, **같은 기기 재로그인 시 세션 회전**
 - **삭제 정책**: 대화 숨김(내 화면만), **계정 익명화 삭제**(상대 이력 유지), **이 기기 키 삭제** 옵션
@@ -15,7 +16,7 @@
 - **대화**: 1:1 중복 방지, 실시간 수신·타이핑·presence, 참여자 전체 전달(구독 전 목록 갱신)
 - **메시지**: AES-256-GCM 암호문 + 기기별 키 봉투, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
-- **테스트 48개**: 서버 38(단위·API·WS·버스) + 클라이언트 8(암호화·안전번호) + 브라우저 E2E 2
+- **테스트 55개**: 서버 41(단위·API·WS·버스) + 클라이언트 11(암호화·안전번호·키 백업) + 브라우저 E2E 3
 
 ## 빠른 시작
 
@@ -56,9 +57,11 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `METRICS_TOKEN` | — | `/metrics` Bearer 토큰(운영 권장) |
 | `REDIS_URL` | — | 기본 `redis://redis:6379` (compose에 Redis 포함) |
 | `MIGRATE_ON_START` | — | 기본 `true`. 다중 인스턴스에서는 `false` |
+| `BACKUP_MAX_BYTES` | — | 키 백업 블롭 최대 크기(기본 16384) |
+| `RECOVERY_CHALLENGE_TTL_SECONDS` | — | 복구 챌린지 유효 시간(기본 300초) |
 
 3. `app` 서비스에 도메인을 연결하고 **포트 8080**, HTTPS를 켠다.
-4. 배포 → 기동 시 `node scripts/migrate.mjs`가 자동 적용된 뒤 서버가 뜬다.
+4. 배포 → 기동 시 `scripts/start.mjs`가 마이그레이션을 적용한 뒤 서버를 띄운다.
 5. 확인: `https://<도메인>/healthz`, `/readyz`, 로그인 후 쿠키가 `Secure; HttpOnly`인지 확인.
 
 자세한 절차·백업·트러블슈팅: [`docs/05-deploy-coolify.md`](docs/05-deploy-coolify.md)
@@ -103,6 +106,7 @@ pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 - [Coolify 배포](docs/05-deploy-coolify.md) — PostgreSQL 컨테이너, 환경변수, 백업, 트러블슈팅
 - [운영 가이드](docs/06-operations.md) — 다중 인스턴스(Redis/Dragonfly), 마이그레이션, 모니터링, 부하 테스트
 - [백업·복구](docs/07-backup-restore.md) — pg_dump/restore, Coolify 예약 작업, 리허설 체크리스트
+- [키 백업·기기 복구](docs/08-key-backup.md) — 복구 암호, 백업 블롭, 복구 절차와 한계
 
 ## 원칙
 

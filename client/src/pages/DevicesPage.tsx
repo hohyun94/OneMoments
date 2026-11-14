@@ -13,18 +13,24 @@ import {
   Spinner,
 } from "../components/ui.tsx";
 import { ApiError, api } from "../lib/api.ts";
+import { BackupError, exportKeyBackup } from "../lib/crypto/index.ts";
 import { deleteIdentity } from "../lib/keystore.ts";
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
 
 export function DevicesPage() {
-  const { session, logout } = useSession();
+  const { session, identity, logout } = useSession();
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [password, setPassword] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [keyDeleteOpen, setKeyDeleteOpen] = useState(false);
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [backupConfirm, setBackupConfirm] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   const devicesQuery = useQuery({
     queryKey: ["devices"],
@@ -40,6 +46,65 @@ export function DevicesPage() {
   });
 
   const devices = devicesQuery.data ?? [];
+
+  const backupQuery = useQuery({
+    queryKey: ["key-backup"],
+    queryFn: async () => {
+      try {
+        return await api<{ backup: { blob: string; updatedAt: string } }>(
+          "/api/auth/backup",
+        );
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) return null;
+        throw error;
+      }
+    },
+  });
+  const lastBackupAt = backupQuery.data?.backup.updatedAt ?? null;
+
+  async function saveBackup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBackupError(null);
+    setBackupMessage(null);
+
+    if (!identity) {
+      setBackupError("이 기기의 키를 찾을 수 없습니다. 다시 로그인해 주세요.");
+      return;
+    }
+    if (backupPassphrase.length < 10) {
+      setBackupError("복구 암호는 10자 이상이어야 합니다.");
+      return;
+    }
+    if (backupPassphrase !== backupConfirm) {
+      setBackupError("복구 암호가 서로 다릅니다.");
+      return;
+    }
+
+    setBackupBusy(true);
+    try {
+      const blob = await exportKeyBackup(identity, backupPassphrase);
+      const response = await api<{ updatedAt: string }>("/api/auth/backup", {
+        method: "PUT",
+        body: { blob: JSON.stringify(blob) },
+      });
+      setBackupMessage(
+        `백업이 저장되었습니다 (${new Date(response.updatedAt).toLocaleString("ko-KR")})`,
+      );
+      setBackupPassphrase("");
+      setBackupConfirm("");
+      await queryClient.invalidateQueries({ queryKey: ["key-backup"] });
+    } catch (error) {
+      setBackupError(
+        error instanceof BackupError
+          ? error.reason === "format"
+            ? "이 기기의 키는 백업을 지원하지 않습니다(이전 버전 키). 새 기기에서 다시 로그인해 주세요."
+            : "백업을 만들 수 없습니다."
+          : "백업을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+      );
+    } finally {
+      setBackupBusy(false);
+    }
+  }
 
   async function confirmAccountDeletion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -160,6 +225,65 @@ export function DevicesPage() {
           새 기기에서 로그인하면 그 기기의 키가 새로 만들어집니다. 이전 대화는 그 키로
           복호화할 수 없으므로, 다른 기기에서 계속 확인해야 합니다.
         </p>
+
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-900">키 백업</h2>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                복구 암호로 이 기기의 키를 암호화해 서버에 저장합니다. 복구 암호는
+                서버로 전송되지 않으며, 새 브라우저의 로그인 화면 → 복구 탭에서 이
+                백업으로 대화 이력을 이어갈 수 있습니다.
+              </p>
+            </div>
+            <span className="shrink-0 text-[11px] text-zinc-500">
+              {lastBackupAt
+                ? `마지막 백업 ${new Date(lastBackupAt).toLocaleDateString("ko-KR")}`
+                : "백업 없음"}
+            </span>
+          </div>
+
+          <form className="mt-4 space-y-3" onSubmit={saveBackup}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="backup-passphrase">복구 암호</Label>
+                <Input
+                  id="backup-passphrase"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={10}
+                  value={backupPassphrase}
+                  onChange={(event) => setBackupPassphrase(event.target.value)}
+                  placeholder="10자 이상"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="backup-confirm">복구 암호 확인</Label>
+                <Input
+                  id="backup-confirm"
+                  type="password"
+                  autoComplete="new-password"
+                  minLength={10}
+                  value={backupConfirm}
+                  onChange={(event) => setBackupConfirm(event.target.value)}
+                />
+              </div>
+            </div>
+
+            {backupError ? <Alert variant="error">{backupError}</Alert> : null}
+            {backupMessage ? <Alert>{backupMessage}</Alert> : null}
+
+            <Button type="submit" size="sm" disabled={backupBusy}>
+              {backupBusy ? <Spinner /> : <KeyRound className="h-4 w-4" aria-hidden />}
+              백업 저장
+            </Button>
+          </form>
+
+          <p className="mt-3 text-xs leading-relaxed text-zinc-500">
+            복구 암호를 잊으면 백업을 복원할 수 없습니다. 백업을 갱신하면 이전 백업은
+            덮어써집니다.
+          </p>
+        </Card>
 
         <Card className="p-5">
           <h2 className="text-sm font-semibold text-zinc-900">이 기기 키</h2>

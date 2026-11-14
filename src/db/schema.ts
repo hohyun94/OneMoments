@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
+  integer,
   pgTable,
   primaryKey,
   smallint,
@@ -201,10 +202,28 @@ export const recoveryChallenges = pgTable(
   (table) => [index("recovery_challenges_device_idx").on(table.deviceId)],
 );
 
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    uploaderUserId: uuid("uploader_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // 암호문 크기만 저장한다. 파일 이름·MIME·키는 메시지 암호문 안에만 있다.
+    size: integer("size").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("attachments_conversation_idx").on(table.conversationId)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
 export type ConversationRow = typeof conversations.$inferSelect;
 export type ParticipantRow = typeof conversationParticipants.$inferSelect;
+export type AttachmentRow = typeof attachments.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageKeyRow = typeof messageKeys.$inferSelect;

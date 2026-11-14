@@ -58,6 +58,8 @@ export async function createTestContext(): Promise<TestContext> {
     AUTH_RATE_LIMIT_MAX: "1000",
     MESSAGE_RATE_LIMIT_MAX: "10000",
     SEARCH_RATE_LIMIT_MAX: "10000",
+    ATTACHMENT_MAX_BYTES: "4096",
+    ATTACHMENT_DIR: ".test-artifacts/attachments",
     METRICS_TOKEN: "test-metrics-token-0123456789",
   });
 

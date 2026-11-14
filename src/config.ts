@@ -31,6 +31,13 @@ const envSchema = z.object({
   REDIS_CHANNEL: z.string().min(1).default("onemoments:events"),
   BACKUP_MAX_BYTES: z.coerce.number().int().min(1024).max(65536).default(16384),
   RECOVERY_CHALLENGE_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
+  ATTACHMENT_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024)
+    .max(25 * 1024 * 1024)
+    .default(8 * 1024 * 1024),
+  ATTACHMENT_DIR: z.string().min(1).default("./data/attachments"),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
 });
 
@@ -57,6 +64,8 @@ export interface Config {
   redisChannel: string;
   backupMaxBytes: number;
   recoveryChallengeTtlSeconds: number;
+  attachmentMaxBytes: number;
+  attachmentDir: string;
   trustProxy: number;
 }
 
@@ -107,6 +116,8 @@ export function loadConfig(env: Env = process.env): Config {
     redisChannel: value.REDIS_CHANNEL,
     backupMaxBytes: value.BACKUP_MAX_BYTES,
     recoveryChallengeTtlSeconds: value.RECOVERY_CHALLENGE_TTL_SECONDS,
+    attachmentMaxBytes: value.ATTACHMENT_MAX_BYTES,
+    attachmentDir: value.ATTACHMENT_DIR,
     trustProxy: value.TRUST_PROXY,
   };
 }

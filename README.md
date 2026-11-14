@@ -2,7 +2,7 @@
 
 개인용 **종단간 암호화(E2E) 메신저**(1:1·소규모 그룹), 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: Post-MVP 1/5(키 백업·복구) 완료 · 2/5 그룹 대화 완료(파일 첨부 대기)**
+**현재 단계: Post-MVP 1/5(키 백업·복구) 완료 · 2/5(그룹 대화·파일 첨부) 완료**
 
 ## 구현된 것
 
@@ -15,8 +15,9 @@
 - **기기**: 키 등록·폐기, 폐기 시 세션 무효, 새 기기는 이후 메시지만 수신
 - **대화**: 1:1 중복 방지, **그룹 대화(최대 20명·참여자 추가)**, 실시간 수신·타이핑·presence, 참여자 전체 전달(구독 전 목록 갱신)
 - **메시지**: AES-256-GCM 암호문 + 기기별 키 봉투, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시
+- **파일 첨부**: 파일별 AES-GCM 암호화 후 암호문만 업로드(파일 이름·MIME·키는 메시지 암호문 안), 참여자만 다운로드
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
-- **테스트 58개**: 서버 43(단위·API·WS·버스, 1 skipped) + 클라이언트 11(암호화·안전번호·키 백업) + 브라우저 E2E 4(1:1·계정 삭제·키 복구·그룹)
+- **테스트 66개**: 서버 46(단위·API·WS·버스, 1 skipped) + 클라이언트 15(암호화·안전번호·키 백업·첨부) + 브라우저 E2E 5(1:1·계정 삭제·키 복구·그룹·첨부 다운로드)
 
 ## 빠른 시작
 
@@ -59,6 +60,8 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `MIGRATE_ON_START` | — | 기본 `true`. 다중 인스턴스에서는 `false` |
 | `BACKUP_MAX_BYTES` | — | 키 백업 블롭 최대 크기(기본 16384) |
 | `RECOVERY_CHALLENGE_TTL_SECONDS` | — | 복구 챌린지 유효 시간(기본 300초) |
+| `ATTACHMENT_MAX_BYTES` | — | 첨부 암호문 최대 크기(기본 8MB) |
+| `ATTACHMENT_DIR` | — | 첨부 저장 경로(compose에서 `/app/data/attachments` + 볼륨) |
 
 3. `app` 서비스에 도메인을 연결하고 **포트 8080**, HTTPS를 켠다.
 4. 배포 → 기동 시 `scripts/start.mjs`가 마이그레이션을 적용한 뒤 서버를 띄운다.
@@ -108,6 +111,7 @@ pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 - [백업·복구](docs/07-backup-restore.md) — pg_dump/restore, Coolify 예약 작업, 리허설 체크리스트
 - [키 백업·기기 복구](docs/08-key-backup.md) — 복구 암호, 백업 블롭, 복구 절차와 한계
 - [그룹 대화](docs/09-groups.md) — 기기별 봉투, 참여자 추가, 인원 제한과 한계
+- [파일 첨부](docs/10-attachments.md) — 파일별 암호화, 저장·접근 제어, 백업과 한계
 
 ## 원칙
 

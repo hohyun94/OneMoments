@@ -1,8 +1,8 @@
-import { Router } from "express";
+import express, { Router } from "express";
 
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
-import { asyncHandler } from "../http/errors.js";
+import { AppError, asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import {
   addConversationMembersBodySchema,
@@ -24,6 +24,7 @@ import {
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
 import { listMessages } from "../services/messages.js";
+import { createAttachment } from "../services/attachments.js";
 
 export interface ConversationsRouterOptions {
   db: Database;
@@ -41,6 +42,12 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     max: config.messageRateLimitMax,
     key: (req) => req.auth?.userId ?? req.ip ?? "unknown",
     message: "Message rate limit exceeded",
+  });
+  const attachmentLimiter = createRateLimiter({
+    windowMs: config.messageRateLimitWindowMs,
+    max: Math.max(4, Math.floor(config.messageRateLimitMax / 4)),
+    key: (req) => req.auth?.userId ?? req.ip ?? "unknown",
+    message: "Attachment rate limit exceeded",
   });
 
   router.post(
@@ -110,6 +117,40 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
       });
       const context = await requireParticipant(db, { conversationId, userId: auth.userId });
       res.json({ conversation: await getConversationSummary(db, context), added });
+    }),
+  );
+
+  router.post(
+    "/:conversationId/attachments",
+    session,
+    csrf,
+    attachmentLimiter,
+    express.raw({ type: "application/octet-stream", limit: config.attachmentMaxBytes }),
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      if (!req.is("application/octet-stream")) {
+        throw new AppError(
+          415,
+          "UNSUPPORTED_MEDIA_TYPE",
+          "Attachment must be sent as application/octet-stream",
+        );
+      }
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      if (!Buffer.isBuffer(req.body) || req.body.byteLength === 0) {
+        throw AppError.badRequest("EMPTY_ATTACHMENT", "Attachment body is empty");
+      }
+      if (req.body.byteLength > config.attachmentMaxBytes) {
+        throw AppError.payloadTooLarge("Attachment is too large");
+      }
+
+      const attachment = await createAttachment(db, {
+        conversationId,
+        uploaderUserId: auth.userId,
+        directory: config.attachmentDir,
+        data: req.body,
+      });
+      res.status(201).json({ attachment: { id: attachment.id, size: attachment.size } });
     }),
   );
 

@@ -22,6 +22,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/client/dist ./client/dist
 COPY drizzle ./drizzle
 COPY scripts ./scripts
+# 첨부 암호문 저장 디렉터리(비root 사용자 쓰기 가능). 운영에서는 볼륨으로 마운트한다.
+RUN mkdir -p /app/data/attachments && chown -R node:node /app/data
 EXPOSE 8080
 USER node
 CMD ["node", "scripts/start.mjs"]

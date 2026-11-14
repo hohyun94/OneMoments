@@ -125,6 +125,10 @@ export const conversationIdParamsSchema = z.object({
   conversationId: z.string().uuid(),
 });
 
+export const attachmentIdParamsSchema = z.object({
+  attachmentId: z.string().uuid(),
+});
+
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type SendMessageBody = z.infer<typeof sendMessageBodySchema>;

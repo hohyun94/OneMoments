@@ -25,3 +25,15 @@ export {
   type BackupFailure,
   type KeyBackupBlob,
 } from "./backup.ts";
+export {
+  ATTACHMENT_MESSAGE_PREFIX,
+  AttachmentError,
+  MAX_ATTACHMENT_BYTES,
+  decryptAttachment,
+  encodeAttachmentPayload,
+  encryptAttachment,
+  parseAttachmentPayload,
+  type AttachmentFailure,
+  type AttachmentPayload,
+  type EncryptedAttachment,
+} from "./attachment.ts";

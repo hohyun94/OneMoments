@@ -4,12 +4,27 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Send, ShieldCheck, UserPlus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { AlertCircle, ArrowLeft, Paperclip, Send, ShieldCheck, UserPlus, X } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 
 import { ApiError, api } from "../lib/api.ts";
-import { encryptMessage, type StoredIdentity } from "../lib/crypto/index.ts";
-import { formatDayLabel } from "../lib/format.ts";
+import {
+  AttachmentError,
+  MAX_ATTACHMENT_BYTES,
+  encryptAttachment,
+  encodeAttachmentPayload,
+  encryptMessage,
+  type StoredIdentity,
+} from "../lib/crypto/index.ts";
+import { formatBytes, formatDayLabel } from "../lib/format.ts";
 import { useRealtime } from "../realtime.tsx";
 import type {
   ActiveDevice,
@@ -83,6 +98,8 @@ export function ChatView({
   });
 
   const [draft, setDraft] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [safety, setSafety] = useState<SafetyNumber | null>(null);
@@ -90,6 +107,7 @@ export function ChatView({
   const [safetyChanged, setSafetyChanged] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const pendingRef = useRef<PendingMessage | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimerRef = useRef<number | undefined>(undefined);
   const lastTypingAtRef = useRef(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -122,6 +140,15 @@ export function ChatView({
     .filter((name): name is string => Boolean(name));
   const peerOnline =
     !isGroup && peer ? onlineUsers(conversation.id).includes(peer.id) : false;
+
+  useEffect(() => {
+    setDraft("");
+    setAttachment(null);
+    setAttachmentError(null);
+    setSendError(null);
+    pendingRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, [conversation.id]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -230,24 +257,97 @@ export function ChatView({
     }
   }
 
-  function handleSubmit(event?: FormEvent<HTMLFormElement>) {
+  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
+    const selected = event.target.files?.[0] ?? null;
+    setAttachmentError(null);
+    if (!selected) {
+      setAttachment(null);
+      return;
+    }
+    if (selected.size === 0) {
+      setAttachment(null);
+      setAttachmentError("빈 파일은 첨부할 수 없습니다.");
+      event.target.value = "";
+      return;
+    }
+    if (selected.size > MAX_ATTACHMENT_BYTES) {
+      setAttachment(null);
+      setAttachmentError("파일은 5MB 이하만 첨부할 수 있습니다.");
+      event.target.value = "";
+      return;
+    }
+    setAttachment(selected);
+  }
+
+  function clearAttachment(): void {
+    setAttachment(null);
+    setAttachmentError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault();
     const text = draft.trim();
-    if (!text || sending) return;
-    const pending: PendingMessage = {
-      clientMessageId: crypto.randomUUID(),
-      plaintext: text,
-    };
-    pendingRef.current = pending;
-    setDraft("");
-    void deliver(pending);
+    if ((!text && !attachment) || sending) return;
+
+    setSending(true);
+    setSendError(null);
+    setAttachmentError(null);
+    try {
+      let plaintext = text;
+      if (attachment) {
+        // 파일은 1회용 키로 암호화하고, 키는 메시지 암호문 안에 넣어 전달한다.
+        const encrypted = await encryptAttachment(attachment);
+        const uploaded = await api<{ attachment: { id: string; size: number } }>(
+          `/api/conversations/${conversation.id}/attachments`,
+          {
+            method: "POST",
+            rawBody: new Blob([encrypted.ciphertext], {
+              type: "application/octet-stream",
+            }),
+          },
+        );
+        plaintext = encodeAttachmentPayload({
+          id: uploaded.attachment.id,
+          name: attachment.name,
+          mime: attachment.type || "application/octet-stream",
+          size: attachment.size,
+          key: encrypted.key,
+          iv: encrypted.iv,
+          text,
+        });
+      }
+
+      const pending: PendingMessage = {
+        clientMessageId: crypto.randomUUID(),
+        plaintext,
+      };
+      pendingRef.current = pending;
+      setDraft("");
+      if (attachment) clearAttachment();
+      await deliver(pending);
+    } catch (error) {
+      if (error instanceof AttachmentError) {
+        setAttachmentError(error.message);
+      } else if (error instanceof ApiError) {
+        setSendError(
+          error.code === "PAYLOAD_TOO_LARGE"
+            ? "첨부 파일이 너무 큽니다."
+            : error.message,
+        );
+      } else {
+        setSendError("첨부 파일을 보낼 수 없습니다. 잠시 후 다시 시도해 주세요.");
+      }
+    } finally {
+      setSending(false);
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key !== "Enter" || event.shiftKey) return;
     if (event.nativeEvent.isComposing) return;
     event.preventDefault();
-    handleSubmit();
+    void handleSubmit();
   }
 
   function handleDraftChange(value: string) {
@@ -460,12 +560,56 @@ export function ChatView({
           </div>
         ) : null}
 
+        {attachment || attachmentError ? (
+          <div className="mb-2">
+            {attachment ? (
+              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                <Paperclip className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">
+                  {attachment.name}
+                </span>
+                <span className="shrink-0 text-xs text-zinc-500">
+                  {formatBytes(attachment.size)}
+                </span>
+                <button
+                  type="button"
+                  onClick={clearAttachment}
+                  aria-label="첨부 제거"
+                  className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
+            {attachmentError ? (
+              <p className="mt-1 text-xs text-red-600">{attachmentError}</p>
+            ) : null}
+          </div>
+        ) : null}
+
         {peerDeleted ? (
           <p className="py-2 text-center text-sm text-zinc-500">
             이 사용자는 계정을 삭제했습니다.
           </p>
         ) : (
           <div className="flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              aria-label="파일 선택"
+              onChange={handleAttachmentChange}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={sending}
+              aria-label="파일 첨부"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Textarea
               id="message-input"
               rows={1}
@@ -479,7 +623,7 @@ export function ChatView({
             <Button
               type="submit"
               size="icon"
-              disabled={sending || !draft.trim()}
+              disabled={sending || (!draft.trim() && !attachment)}
               aria-label="전송"
             >
               {sending ? <Spinner /> : <Send className="h-4 w-4" />}

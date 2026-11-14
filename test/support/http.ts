@@ -8,7 +8,7 @@ export interface ApiResponse {
 
 export interface RequestOptions {
   body?: unknown;
-  rawBody?: string;
+  rawBody?: string | Uint8Array;
   headers?: Record<string, string>;
   csrf?: boolean;
 }
@@ -38,7 +38,7 @@ export class TestClient {
       headers["x-csrf-token"] = this.csrfToken;
     }
 
-    let body: string | undefined;
+    let body: string | Uint8Array | undefined;
     if (options.rawBody !== undefined) {
       body = options.rawBody;
       headers["content-type"] ??= "application/json";
@@ -47,7 +47,11 @@ export class TestClient {
       headers["content-type"] = "application/json";
     }
 
-    const response = await fetch(`${this.baseUrl}${path}`, { method, headers, body });
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method,
+      headers,
+      body: body as unknown as RequestInit["body"],
+    });
     const getSetCookie = (
       response.headers as unknown as { getSetCookie?: () => string[] }
     ).getSetCookie;

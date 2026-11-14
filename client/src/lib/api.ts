@@ -23,13 +23,17 @@ export function getCsrfToken(): string | null {
 export interface RequestOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
+  /** 바이너리 업로드(application/octet-stream). body 와 동시에 쓰지 않는다. */
+  rawBody?: Blob | ArrayBuffer;
   csrf?: boolean;
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
   const headers: Record<string, string> = {};
-  if (options.body !== undefined) headers["content-type"] = "application/json";
+  const isRaw = options.rawBody !== undefined;
+  if (isRaw) headers["content-type"] = "application/octet-stream";
+  else if (options.body !== undefined) headers["content-type"] = "application/json";
   const needsCsrf = method !== "GET" && (options.csrf ?? true);
   if (needsCsrf && csrfToken) headers["x-csrf-token"] = csrfToken;
 
@@ -37,7 +41,11 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     method,
     headers,
     credentials: "same-origin",
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: isRaw
+      ? options.rawBody
+      : options.body === undefined
+        ? undefined
+        : JSON.stringify(options.body),
   });
 
   const text = await response.text();

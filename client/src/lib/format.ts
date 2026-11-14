@@ -13,6 +13,12 @@ export function formatListTime(value: string | null): string {
   return date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
 }
 
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function formatDayLabel(value: string): string {
   const date = new Date(value);
   const now = new Date();

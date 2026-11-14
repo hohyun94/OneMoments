@@ -13,6 +13,7 @@ import { renderMetrics } from "./metrics.js";
 import { originGuard } from "./http/middleware.js";
 import type { MessageBus } from "./realtime/bus.js";
 import { createAuthRouter } from "./routes/auth.js";
+import { createAttachmentsRouter } from "./routes/attachments.js";
 import { createConversationsRouter } from "./routes/conversations.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
 
@@ -111,6 +112,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/auth", createAuthRouter(db, config));
   app.use("/api/devices", createDevicesRouter(db, config));
   app.use("/api/users", createUsersRouter(db, config));
+  app.use("/api/attachments", createAttachmentsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));
 
   // 프로덕션: 클라이언트 빌드(dist)를 같은 서버에서 서빙한다.

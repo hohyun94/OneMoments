@@ -1,17 +1,127 @@
-import { ShieldAlert } from "lucide-react";
+import { Download, FileText, ShieldAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
   DecryptionError,
+  decryptAttachment,
   decryptMessage,
+  parseAttachmentPayload,
+  type AttachmentPayload,
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
-import { formatClock } from "../lib/format.ts";
+import { formatBytes, formatClock } from "../lib/format.ts";
 import type { MessageView } from "../types.ts";
 import { cn } from "./ui.tsx";
 
+function AttachmentCard({
+  attachment,
+  own,
+}: {
+  attachment: AttachmentPayload;
+  own: boolean;
+}) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function download(): Promise<void> {
+    setDownloading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/attachments/${attachment.id}`, {
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        throw new Error(
+          response.status === 404
+            ? "첨부 파일을 찾을 수 없습니다."
+            : "첨부 파일을 내려받지 못했습니다.",
+        );
+      }
+      const plaintext = await decryptAttachment(
+        await response.arrayBuffer(),
+        attachment.key,
+        attachment.iv,
+      );
+      const blob = new Blob([plaintext], {
+        type: attachment.mime || "application/octet-stream",
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = attachment.name.replace(/[\\/:*?"<>|]/g, "_") || "attachment";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "첨부 파일을 열 수 없습니다.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border p-2.5",
+        own ? "border-violet-400/40 bg-violet-500/20" : "border-zinc-200 bg-zinc-50",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+            own ? "bg-violet-500/30 text-white" : "bg-violet-100 text-violet-700",
+          )}
+        >
+          <FileText className="h-4 w-4" aria-hidden />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn(
+              "block truncate text-sm font-medium",
+              own ? "text-white" : "text-zinc-900",
+            )}
+          >
+            {attachment.name}
+          </span>
+          <span className={cn("text-[11px]", own ? "text-violet-100" : "text-zinc-500")}>
+            {formatBytes(attachment.size)} · 종단간 암호화
+          </span>
+        </span>
+        <button
+          type="button"
+          onClick={() => void download()}
+          disabled={downloading}
+          aria-label="다운로드"
+          className={cn(
+            "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium transition-colors disabled:opacity-50",
+            own
+              ? "bg-white/20 text-white hover:bg-white/30"
+              : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
+          )}
+        >
+          {downloading ? (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <Download className="h-3.5 w-3.5" aria-hidden />
+          )}
+          다운로드
+        </button>
+      </div>
+      {error ? (
+        <p className={cn("mt-1.5 text-[11px]", own ? "text-violet-100" : "text-red-600")}>
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 type Result =
-  | { status: "ok"; text: string }
+  | { status: "ok"; text: string; attachment: AttachmentPayload | null }
   | { status: "error"; detail: string };
 
 const cache = new Map<string, Result>();
@@ -34,7 +144,14 @@ function decryptCached(identity: StoredIdentity, message: MessageView): Promise<
   if (pending) return pending;
 
   const promise = decryptMessage({ identity, message })
-    .then((text): Result => ({ status: "ok", text }))
+    .then((decrypted): Result => {
+      const attachment = parseAttachmentPayload(decrypted);
+      return {
+        status: "ok",
+        text: attachment ? attachment.text : decrypted,
+        attachment,
+      };
+    })
     .catch((error): Result => ({ status: "error", detail: failureDetail(error) }))
     .then((result) => {
       cache.set(cacheKey, result);
@@ -46,6 +163,10 @@ function decryptCached(identity: StoredIdentity, message: MessageView): Promise<
 
   inFlight.set(cacheKey, promise);
   return promise;
+}
+
+function parseAttachment(text: string): AttachmentPayload | null {
+  return parseAttachmentPayload(text);
 }
 
 export function MessageBubble({
@@ -87,7 +208,16 @@ export function MessageBubble({
         ) : null}
 
         {result?.status === "ok" ? (
-          <p className="whitespace-pre-wrap break-words leading-relaxed">{result.text}</p>
+          <div className="space-y-1.5">
+            {result.text ? (
+              <p className="whitespace-pre-wrap break-words leading-relaxed">
+                {result.text}
+              </p>
+            ) : null}
+            {result.attachment ? (
+              <AttachmentCard attachment={result.attachment} own={own} />
+            ) : null}
+          </div>
         ) : result?.status === "error" ? (
           <p
             className={cn(

@@ -25,6 +25,11 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       REDIS_CHANNEL: ${REDIS_CHANNEL:-onemoments:events}
       MIGRATE_ON_START: ${MIGRATE_ON_START:-true}
+      ATTACHMENT_MAX_BYTES: ${ATTACHMENT_MAX_BYTES:-8388608}
+      ATTACHMENT_DIR: /app/data/attachments
+    # 첨부 암호문은 DB 밖에 있으므로 반드시 영속 볼륨을 붙인다.
+    volumes:
+      - attachments:/app/data/attachments
     # Coolify 도메인을 이 서비스의 8080 포트에 연결한다.
     ports:
       - "8080"
@@ -100,4 +105,5 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  attachments:
   # postgres-backups:

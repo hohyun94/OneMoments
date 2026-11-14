@@ -100,3 +100,12 @@ BASE_URL=http://127.0.0.1:3900 MESSAGE_COUNT=100 pnpm db:load-test
 ## 6. 백업/복구
 
 [`docs/07-backup-restore.md`](07-backup-restore.md) 참고.
+
+## 7. 첨부 저장소
+
+- 첨부 암호문은 DB가 아니라 `ATTACHMENT_DIR`(기본 `./data/attachments`, compose `attachments` 볼륨)에 저장된다.
+- 컨테이너는 `node` 사용자로 실행되며 이미지 빌드 시 `/app/data/attachments` 소유권을 맞춘다.
+  볼륨을 붙일 때도 쓰기 권한을 확인한다.
+- 제한: 서버 암호문 8MB(`ATTACHMENT_MAX_BYTES`), 업로드 레이트리밋은 메시지 한도의 1/4.
+- 디스크 사용량을 모니터링한다. 메시지 전송 실패로 생긴 고아 블롭은 자동 정리되지 않는다.
+- **DB 백업과 볼륨을 함께 백업**한다. 상세: [`docs/10-attachments.md`](10-attachments.md)

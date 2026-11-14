@@ -86,6 +86,7 @@
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, version (PK: message_id+recipient_device_id) | 기기별 키 봉투 |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
+| `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
 | `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at | 읽음 표시(P1) |
 
 - 인덱스: `messages(conversation_id, created_at desc)`, `message_keys(recipient_device_id)`.
@@ -107,6 +108,13 @@
 - 메시지는 **참여자 전원의 활성 기기마다 봉투**를 만든다(현재는 Sender Keys 아님).
 - 참여자 추가 후 기기 집합이 바뀌면 `409 DEVICE_SET_CHANGED` → 클라이언트가 재암호화한다.
 - 새 참여자는 참여 이후 메시지만 복호화할 수 있다.
+
+### 파일 첨부
+
+- 파일은 클라이언트에서 파일별 AES-256-GCM 키로 암호화해 업로드한다. 서버는 암호문 블롭만 저장한다.
+- 파일 이름·MIME·파일 키는 **메시지 암호문 안**에 넣어 기존 기기별 봉투로 전달한다.
+- 다운로드는 대화 참여자만 가능하며, 서버는 `ATTACHMENT_DIR` 의 UUID 파일만 읽는다.
+- 상세·한계: `docs/10-attachments.md`
 
 ### 키 백업·기기 복구
 
@@ -149,6 +157,8 @@
 | GET | `/api/conversations/:id` | 대화 요약(참여자만) |
 | POST | `/api/conversations/:id/members` | 그룹 참여자 추가(멱등) |
 | GET | `/api/conversations/:id/devices` | **대화 참여자 전체** 활성 기기 공개키(암호화 대상 목록) |
+| POST | `/api/conversations/:id/attachments` | 암호화된 파일 업로드(`application/octet-stream`) |
+| GET | `/api/attachments/:attachmentId` | 참여자만 첨부 암호문 다운로드 |
 | DELETE | `/api/conversations/:id` | 내 화면에서 숨김 |
 
 ### 메시지
@@ -213,6 +223,8 @@
 | 스팸·검색 남용 | 서비스 품질 저하 | 검색/메시지 레이트리밋, 차단(P1) |
 | 백업 블롭 유출 + 약한 복구 암호 | 오프라인 대입으로 기기 키 복원 | PBKDF2 600k, 10자 이상 권장, `key_backups` 접근 최소화 |
 | 백업 복구 악용 | 기기 세션 탈취 | 일회용 챌린지 + Ed25519 서명, 폐기 기기 복구 금지, 기존 세션 폐기 |
+| 첨부 블롭 유출 | 파일 내용 노출 | 파일별 AES-GCM, 키는 메시지 암호문 안, 참여자만 다운로드 |
+| 첨부 저장소 고갈 | 서비스 장애 | 크기 제한(8MB), 업로드 레이트리밋, 디스크 모니터링 |
 | 메타데이터 분석 | 대화 패턴 추론 | 패딩·커버 트래픽은 M4 이후 검토 |
 
 ## 기술 선택 (잠정)

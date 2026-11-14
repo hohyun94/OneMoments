@@ -9,6 +9,11 @@ coverage
 .github
 docs
 test
+data
+backups
+test-results
+playwright-report
+.test-artifacts
 *.log
 .env
 .env.*

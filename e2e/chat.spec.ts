@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import pg from "pg";
 
 const PASSWORD = "password-12345";
@@ -317,3 +318,74 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
   }
 });
 
+
+test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("alice");
+  const bobName = uniqueName("bob");
+  const fileName = "첨부-메모.txt";
+  const content = "파일 첨부 E2E 비밀 내용";
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice.getByLabel("파일 선택").setInputFiles({
+      name: fileName,
+      mimeType: "text/plain",
+      buffer: Buffer.from(content, "utf8"),
+    });
+    await expect(alice.getByText(fileName)).toBeVisible();
+    await alice.getByLabel("메시지 입력").fill("첨부합니다");
+    await alice.getByRole("button", { name: "전송" }).click();
+    await expect(alice.getByText("첨부합니다")).toBeVisible();
+    await expect(alice.getByText(fileName)).toBeVisible();
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByText("첨부합니다")).toBeVisible();
+    await expect(bob.getByText(fileName)).toBeVisible();
+
+    const downloadPromise = bob.waitForEvent("download");
+    await bob.getByRole("button", { name: "다운로드" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(fileName);
+    const downloadPath = await download.path();
+    expect(downloadPath).not.toBeNull();
+    expect(await readFile(downloadPath as string, "utf8")).toBe(content);
+
+    // 서버 DB에는 파일 이름/내용이 없고, 저장 파일도 암호문이어야 한다.
+    const client = new pg.Client({ connectionString: DATABASE_URL });
+    await client.connect();
+    try {
+      const { rows } = await client.query<{ id: string }>(
+        "select id from attachments order by created_at desc limit 1",
+      );
+      expect(rows).toHaveLength(1);
+      const attachmentId = rows[0]?.id;
+      if (!attachmentId) throw new Error("missing attachment row");
+
+      const stored = await readFile(`data/attachments/${attachmentId}.bin`);
+      expect(stored.toString("utf8")).not.toContain(content);
+
+      const messages = await client.query<{ ciphertext: string }>(
+        "select ciphertext from messages",
+      );
+      for (const row of messages.rows) {
+        expect(row.ciphertext).not.toContain(content);
+        expect(row.ciphertext).not.toContain(fileName);
+      }
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});

@@ -71,6 +71,13 @@
       "when": 1794648193327,
       "tag": "0009_calm_zemo",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794657415393,
+      "tag": "0010_crazy_jubilee",
+      "breakpoints": true
     }
   ]
 }

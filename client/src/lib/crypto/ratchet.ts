@@ -13,13 +13,16 @@ import { encoder, fromBase64, toBase64, toBytes } from "./encoding.ts";
 import {
   importHistoryKeys,
   importRatchetSessions,
+  importSenderKeys,
   listHistoryKeys,
   listRatchetSessions,
+  listSenderKeys,
   loadHistoryKey,
   loadRatchetSession,
   saveHistoryKey,
   saveRatchetSession,
 } from "../keystore.ts";
+import type { SenderKeySession } from "./senderKey.ts";
 
 export const RATCHET_VERSION = 2 as const;
 const SESSION_VERSION = 1 as const;
@@ -78,6 +81,7 @@ export interface HistoryKeyRecord {
 export interface LocalCryptoState {
   sessions: RatchetSession[];
   historyKeys: HistoryKeyRecord[];
+  senderKeys: SenderKeySession[];
 }
 
 async function hmac(
@@ -418,19 +422,21 @@ export async function rememberHistoryKey(input: {
 
 /** 키 백업에 포함할 로컬 DR 세션/이력 키(최근 5000건). */
 export async function exportLocalCryptoState(localDevice: string): Promise<LocalCryptoState> {
-  const [sessions, historyKeys] = await Promise.all([
+  const [sessions, historyKeys, senderKeys] = await Promise.all([
     listRatchetSessions(localDevice),
     listHistoryKeys(localDevice),
+    listSenderKeys(localDevice),
   ]);
   const recent = [...historyKeys]
     .sort((left, right) => right.savedAt - left.savedAt)
     .slice(0, 5_000);
-  return { sessions, historyKeys: recent };
+  return { sessions, historyKeys: recent, senderKeys };
 }
 
 /** 복구 시 백업에 포함된 DR 세션/이력 키를 복원한다. */
 export async function importLocalCryptoState(state: LocalCryptoState): Promise<void> {
   await importRatchetSessions(state.sessions);
   await importHistoryKeys(state.historyKeys.slice(0, 5_000));
+  await importSenderKeys(state.senderKeys ?? []);
 }
 

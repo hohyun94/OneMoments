@@ -2,6 +2,7 @@ import { openDB, type DBSchema, type IDBPDatabase } from "idb";
 
 import type { StoredIdentity } from "./crypto/index.ts";
 import type { HistoryKeyRecord, RatchetSession } from "./crypto/ratchet.ts";
+import type { SenderKeySession } from "./crypto/senderKey.ts";
 
 interface KeystoreDB extends DBSchema {
   identities: {
@@ -16,13 +17,17 @@ interface KeystoreDB extends DBSchema {
     key: string;
     value: HistoryKeyRecord;
   };
+  senderKeys: {
+    key: string;
+    value: SenderKeySession;
+  };
 }
 
 const canUseIndexedDb = typeof indexedDB !== "undefined";
 let dbPromise: Promise<IDBPDatabase<KeystoreDB>> | null = null;
 
 function db(): Promise<IDBPDatabase<KeystoreDB>> {
-  dbPromise ??= openDB<KeystoreDB>("onemoments", 2, {
+  dbPromise ??= openDB<KeystoreDB>("onemoments", 3, {
     upgrade(database) {
       if (!database.objectStoreNames.contains("identities")) {
         database.createObjectStore("identities");
@@ -33,6 +38,9 @@ function db(): Promise<IDBPDatabase<KeystoreDB>> {
       if (!database.objectStoreNames.contains("historyKeys")) {
         database.createObjectStore("historyKeys");
       }
+      if (!database.objectStoreNames.contains("senderKeys")) {
+        database.createObjectStore("senderKeys");
+      }
     },
   });
   return dbPromise;
@@ -41,6 +49,7 @@ function db(): Promise<IDBPDatabase<KeystoreDB>> {
 const memoryIdentities = new Map<string, StoredIdentity>();
 const memorySessions = new Map<string, RatchetSession>();
 const memoryHistory = new Map<string, HistoryKeyRecord>();
+const memorySenderKeys = new Map<string, SenderKeySession>();
 
 function sessionKey(session: RatchetSession): string {
   return `${session.conversationId}:${session.remoteDeviceId}`;
@@ -155,6 +164,44 @@ export async function importHistoryKeys(records: HistoryKeyRecord[]): Promise<vo
     records.map((record) =>
       tx.store.put(record, historyKey(record.deviceId, record.messageId)),
     ),
+  );
+  await tx.done;
+}
+
+export async function loadSenderKey(
+  storageKey: string,
+): Promise<SenderKeySession | null> {
+  if (!canUseIndexedDb) return memorySenderKeys.get(storageKey) ?? null;
+  return (await (await db()).get("senderKeys", storageKey)) ?? null;
+}
+
+export async function saveSenderKey(session: SenderKeySession): Promise<void> {
+  if (!canUseIndexedDb) {
+    memorySenderKeys.set(session.storageKey, session);
+    return;
+  }
+  await (await db()).put("senderKeys", session, session.storageKey);
+}
+
+export async function listSenderKeys(localDeviceId: string): Promise<SenderKeySession[]> {
+  if (!canUseIndexedDb) {
+    return [...memorySenderKeys.values()].filter(
+      (session) => session.localDeviceId === localDeviceId,
+    );
+  }
+  const sessions = await (await db()).getAll("senderKeys");
+  return sessions.filter((session) => session.localDeviceId === localDeviceId);
+}
+
+export async function importSenderKeys(sessions: SenderKeySession[]): Promise<void> {
+  if (!canUseIndexedDb) {
+    for (const session of sessions) memorySenderKeys.set(session.storageKey, session);
+    return;
+  }
+  const database = await db();
+  const tx = database.transaction("senderKeys", "readwrite");
+  await Promise.all(
+    sessions.map((session) => tx.store.put(session, session.storageKey)),
   );
   await tx.done;
 }

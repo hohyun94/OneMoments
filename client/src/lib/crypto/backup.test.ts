@@ -113,6 +113,7 @@ describe("encrypted key backup", () => {
           savedAt: 123,
         },
       ],
+      senderKeys: [],
     };
 
     const blob = await exportKeyBackup(identity, PASSPHRASE, state);

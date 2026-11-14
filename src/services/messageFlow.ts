@@ -71,19 +71,35 @@ export async function sendEncryptedMessage(
   });
 
   const activeDevices = await listActiveDeviceKeys(db, input.conversationId);
-  if (!deviceKeySetsMatch(activeDevices, payload.keys.map((key) => key.deviceId))) {
+  const activeDeviceIds = new Set(activeDevices.map((device) => device.id));
+  if (payload.senderKeyId === null) {
+    if (payload.keys.some((key) => key.distribution !== undefined)) {
+      throw new AppError(
+        400,
+        "INVALID_ENVELOPE",
+        "Distribution payload is only allowed for sender-key messages",
+      );
+    }
+    if (!deviceKeySetsMatch(activeDevices, payload.keys.map((key) => key.deviceId))) {
+      throw new AppError(
+        409,
+        "DEVICE_SET_CHANGED",
+        "Re-encrypt the message for the current active devices",
+        {
+          devices: activeDevices.map((device) => ({
+            id: device.id,
+            userId: device.userId,
+            identityPublicKey: device.identityPublicKey,
+            signingPublicKey: device.signingPublicKey,
+          })),
+        },
+      );
+    }
+  } else if (payload.keys.some((key) => !activeDeviceIds.has(key.deviceId))) {
     throw new AppError(
       409,
       "DEVICE_SET_CHANGED",
-      "Re-encrypt the message for the current active devices",
-      {
-        devices: activeDevices.map((device) => ({
-          id: device.id,
-          userId: device.userId,
-          identityPublicKey: device.identityPublicKey,
-          signingPublicKey: device.signingPublicKey,
-        })),
-      },
+      "Sender key distribution targets an inactive device",
     );
   }
 
@@ -113,7 +129,7 @@ export async function sendEncryptedMessage(
   const ownKey = result.keys.find(
     (key) => key.recipientDeviceId === input.senderDeviceId,
   );
-  if (!ownKey) {
+  if (payload.senderKeyId === null && !ownKey) {
     throw new AppError(
       409,
       "DEVICE_SET_CHANGED",
@@ -151,7 +167,7 @@ export async function sendEncryptedMessage(
   }
 
   return {
-    message: toMessageView(result.message, ownKey),
+    message: toMessageView(result.message, ownKey ?? null),
     event: {
       conversationId: input.conversationId,
       message: result.message,

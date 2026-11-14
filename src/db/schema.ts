@@ -136,6 +136,9 @@ export const messages = pgTable(
     // Ed25519 서명 base64 (conversationId, clientMessageId, sha256(ciphertext))
     signature: text("signature").notNull(),
     clientMessageId: text("client_message_id").notNull(),
+    // 그룹 Sender Keys(v3): 발신자 체인 ID/반복. pairwise 메시지는 null.
+    senderKeyId: text("sender_key_id"),
+    senderKeyIteration: integer("sender_key_iteration"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -145,6 +148,10 @@ export const messages = pgTable(
       table.clientMessageId,
     ),
     index("messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+    check(
+      "messages_sender_key_chk",
+      sql`(${table.senderKeyId} is null and ${table.senderKeyIteration} is null) or (${table.senderKeyId} is not null and ${table.senderKeyIteration} is not null)`,
+    ),
   ],
 );
 
@@ -163,6 +170,9 @@ export const messageKeys = pgTable(
     ratchetPublicKey: text("ratchet_public_key"),
     previousChainLength: integer("previous_chain_length"),
     messageNumber: integer("message_number"),
+    // Sender Keys 최초 배포: sender key 체인 상태를 암호화한 블롭(수신 기기별 복호화)
+    distributionCiphertext: text("distribution_ciphertext"),
+    distributionNonce: text("distribution_nonce"),
     // AES-256-GCM(KEK 또는 ratchet message key, wrapNonce, contentKey) base64
     wrappedKey: text("wrapped_key").notNull(),
     wrapNonce: text("wrap_nonce").notNull(),
@@ -176,6 +186,10 @@ export const messageKeys = pgTable(
     check(
       "message_keys_envelope_chk",
       sql`(${table.version} = 1 and ${table.ephemeralPublicKey} is not null and ${table.ratchetPublicKey} is null) or (${table.version} = 2 and ${table.ephemeralPublicKey} is null and ${table.ratchetPublicKey} is not null and ${table.previousChainLength} is not null and ${table.messageNumber} is not null)`,
+    ),
+    check(
+      "message_keys_distribution_chk",
+      sql`(${table.distributionCiphertext} is null and ${table.distributionNonce} is null) or (${table.distributionCiphertext} is not null and ${table.distributionNonce} is not null)`,
     ),
   ],
 );

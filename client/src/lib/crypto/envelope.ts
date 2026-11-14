@@ -21,6 +21,10 @@ import {
   RATCHET_VERSION,
   RatchetError,
 } from "./ratchet.ts";
+import {
+  decryptSenderKeyMessage,
+  SenderKeyError,
+} from "./senderKey.ts";
 
 export interface RecipientDevice {
   deviceId: string;
@@ -34,6 +38,7 @@ export type DeviceKeyEnvelope =
       wrappedKey: string;
       wrapNonce: string;
       version: 1;
+      distribution?: { ciphertext: string; nonce: string };
     }
   | {
       deviceId: string;
@@ -43,6 +48,7 @@ export type DeviceKeyEnvelope =
       wrappedKey: string;
       wrapNonce: string;
       version: 2;
+      distribution?: { ciphertext: string; nonce: string };
     };
 
 export interface EncryptedPayload {
@@ -65,7 +71,9 @@ export interface DecryptableMessage {
   senderUserId?: string;
   senderDeviceId?: string;
   senderSigningPublicKey: string;
-  key: DecryptableKeyEnvelope;
+  senderKeyId?: string | null;
+  senderKeyIteration?: number | null;
+  key: DecryptableKeyEnvelope | null;
 }
 
 export type DecryptionFailure = "key" | "ciphertext" | "signature";
@@ -180,7 +188,36 @@ export async function decryptMessage(input: {
   message: DecryptableMessage;
 }): Promise<string> {
   const { identity, message } = input;
-  const isRatchet = message.key.version === RATCHET_VERSION;
+
+  if (message.senderKeyId) {
+    try {
+      return await decryptSenderKeyMessage({
+        identity,
+        message: {
+          id: message.id,
+          conversationId: message.conversationId,
+          clientMessageId: message.clientMessageId,
+          ciphertext: message.ciphertext,
+          nonce: message.nonce,
+          signature: message.signature,
+          senderDeviceId: message.senderDeviceId,
+          senderSigningPublicKey: message.senderSigningPublicKey,
+          senderKeyId: message.senderKeyId,
+          senderKeyIteration: message.senderKeyIteration ?? 0,
+          key: message.key,
+        },
+      });
+    } catch (error) {
+      if (error instanceof SenderKeyError && error.reason === "signature") {
+        throw new DecryptionError("signature");
+      }
+      throw new DecryptionError("key");
+    }
+  }
+
+  const key = message.key;
+  if (!key) throw new DecryptionError("key");
+  const isRatchet = key.version === RATCHET_VERSION;
 
   // v2는 서명을 먼저 확인해 변조 메시지가 ratchet 상태를 소모하지 않게 한다.
   if (isRatchet && !(await verifyMessageSignature(identity, message))) {
@@ -190,8 +227,7 @@ export async function decryptMessage(input: {
   let contentKeyRaw: Uint8Array<ArrayBuffer>;
   let newHistoryKey: string | null = null;
 
-  if (message.key.version === RATCHET_VERSION) {
-    const key = message.key;
+  if (key.version === RATCHET_VERSION) {
     const historyKey = await findHistoryKey(identity.deviceId, message.id);
     if (historyKey) {
       try {
@@ -229,13 +265,13 @@ export async function decryptMessage(input: {
       const shared = await deriveShared(
         identity.backend,
         identity.identityPrivate,
-        message.key.ephemeralPublicKey,
+        key.ephemeralPublicKey,
       );
       const kek = await deriveKek(shared);
       contentKeyRaw = await aesDecrypt(
         kek,
-        fromBase64(message.key.wrapNonce),
-        fromBase64(message.key.wrappedKey),
+        fromBase64(key.wrapNonce),
+        fromBase64(key.wrappedKey),
       );
     } catch {
       throw new DecryptionError("key");

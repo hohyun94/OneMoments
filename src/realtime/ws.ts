@@ -30,6 +30,11 @@ const envelopeKey = z.object({
   messageNumber: z.number().int().min(0).optional(),
   wrappedKey: z.string().min(1),
   wrapNonce: z.string().min(1),
+  distributionCiphertext: z.string().min(1).optional(),
+  distributionNonce: z.string().min(1).optional(),
+  distribution: z
+    .object({ ciphertext: z.string().min(1), nonce: z.string().min(1) })
+    .optional(),
   version: z.number().int().optional(),
 });
 
@@ -43,7 +48,9 @@ const clientFrameSchema = z.discriminatedUnion("type", [
     ciphertext: z.string().min(1),
     nonce: z.string().min(1),
     signature: z.string().min(1),
-    keys: z.array(envelopeKey).min(1).max(200),
+    keys: z.array(envelopeKey).max(200),
+    senderKeyId: z.string().uuid().optional(),
+    senderKeyIteration: z.number().int().min(0).optional(),
   }),
   z.object({
     type: z.literal("typing"),
@@ -115,13 +122,20 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
   const unsubscribeBus = bus.subscribe((event) => {
     // 구독하지 않은 참여자 연결에도 전달해 대화 목록이 즉시 갱신되게 한다.
     for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
+      // sender-key 메시지는 발신 기기에 봉투가 없으므로 REST 응답으로만 표시한다.
+      if (
+        event.message.senderKeyId &&
+        connection.deviceId === event.message.senderDeviceId
+      ) {
+        continue;
+      }
       const key = event.keys.find(
         (candidate) => candidate.recipientDeviceId === connection.deviceId,
       );
-      if (!key) continue;
+      if (!key && !event.message.senderKeyId) continue;
       hub.send(connection.socket, {
         type: "message.created",
-        message: toMessageView(event.message, key),
+        message: toMessageView(event.message, key ?? null),
       });
     }
   });

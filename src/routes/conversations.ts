@@ -263,6 +263,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
       const page = await listMessages(db, {
         conversationId,
         viewerDeviceId: auth.deviceId,
+        viewerUserId: auth.userId,
         before: query.before,
         limit: query.limit,
       });

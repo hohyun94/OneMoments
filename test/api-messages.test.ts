@@ -282,7 +282,121 @@ describe("encrypted direct messages", () => {
     expect(outsider.status).toBe(404);
   });
 
+  it("stores sender-key messages with optional distribution envelopes", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const carol = await registerAccount("carol");
+    const created = await alice.client.request("POST", "/api/conversations", {
+      body: {
+        kind: "group",
+        name: "sender key",
+        memberUserIds: [bob.userId, carol.userId],
+      },
+    });
+    expect(created.status).toBe(201);
+    const conversationId = created.body.conversation.id as string;
+    const devices = await activeDevices(alice.client, conversationId);
+    const base = encryptMessage({
+      conversationId,
+      clientMessageId: "sk-1",
+      plaintext: "sender key message",
+      sender: alice.identity,
+      recipients: recipients(devices),
+    });
+    const bobDevice = devices.find((device) => device.userId === bob.userId);
+    if (!bobDevice) throw new Error("missing bob device");
+    const distributionCiphertext = b64(64);
+    const distributionNonce = b64(12);
+
+    const noEnvelopes = await alice.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages`,
+      {
+        body: {
+          clientMessageId: "sk-1",
+          ciphertext: base.ciphertext,
+          nonce: base.nonce,
+          signature: base.signature,
+          keys: [],
+          senderKeyId: randomUUID(),
+          senderKeyIteration: 0,
+        },
+      },
+    );
+    expect(noEnvelopes.status).toBe(201);
+    expect(noEnvelopes.body.message.senderKeyId).toBeTruthy();
+
+    const history = await bob.client.request(
+      "GET",
+      `/api/conversations/${conversationId}/messages`,
+    );
+    expect(history.status).toBe(200);
+    expect(history.body.messages[0]).toMatchObject({
+      clientMessageId: "sk-1",
+      key: null,
+    });
+
+    const distribution = await alice.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages`,
+      {
+        body: {
+          clientMessageId: "sk-2",
+          ciphertext: base.ciphertext,
+          nonce: base.nonce,
+          signature: base.signature,
+          keys: [
+            {
+              deviceId: bobDevice.id,
+              ephemeralPublicKey: b64(32),
+              wrappedKey: b64(48),
+              wrapNonce: b64(12),
+              distributionCiphertext,
+              distributionNonce,
+              version: 1,
+            },
+          ],
+          senderKeyId: randomUUID(),
+          senderKeyIteration: 0,
+        },
+      },
+    );
+    expect(distribution.status).toBe(201);
+    const bobHistory = await bob.client.request(
+      "GET",
+      `/api/conversations/${conversationId}/messages`,
+    );
+    expect(
+      bobHistory.body.messages.find(
+        (message: { clientMessageId: string }) => message.clientMessageId === "sk-2",
+      ).key.distribution,
+    ).toEqual({ ciphertext: distributionCiphertext, nonce: distributionNonce });
+
+    const pairwiseWithDistribution = await alice.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages`,
+      {
+        body: {
+          ...base,
+          clientMessageId: "pairwise-distribution",
+          keys: [
+            {
+              deviceId: bobDevice.id,
+              ephemeralPublicKey: b64(32),
+              wrappedKey: b64(48),
+              wrapNonce: b64(12),
+              distributionCiphertext: b64(64),
+              distributionNonce: b64(12),
+              version: 1,
+            },
+          ],
+        },
+      },
+    );
+    expect(pairwiseWithDistribution.status).toBe(400);
+  });
   it("hides conversations and keys from non-participants", async () => {
+
 
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

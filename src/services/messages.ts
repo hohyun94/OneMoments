@@ -1,7 +1,8 @@
-import { and, desc, eq, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, lt, or, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
+  conversationParticipants,
   messageKeys,
   messages,
   type MessageKeyRow,
@@ -48,6 +49,8 @@ export async function createMessage(
         nonce: payload.nonce,
         signature: payload.signature,
         clientMessageId: payload.clientMessageId,
+        senderKeyId: payload.senderKeyId,
+        senderKeyIteration: payload.senderKeyIteration,
       })
       .onConflictDoNothing({
         target: [messages.conversationId, messages.senderUserId, messages.clientMessageId],
@@ -76,23 +79,29 @@ export async function createMessage(
       return { message: existing, keys: existingKeys, created: false };
     }
 
-    const keys = await tx
-      .insert(messageKeys)
-      .values(
-        payload.keys.map((key) => ({
-          messageId: inserted.id,
-          recipientDeviceId: key.deviceId,
-          ephemeralPublicKey: key.version === 1 ? key.ephemeralPublicKey : null,
-          ratchetPublicKey: key.version === 2 ? key.ratchetPublicKey : null,
-          previousChainLength:
-            key.version === 2 ? key.previousChainLength : null,
-          messageNumber: key.version === 2 ? key.messageNumber : null,
-          wrappedKey: key.wrappedKey,
-          wrapNonce: key.wrapNonce,
-          version: key.version,
-        })),
-      )
-      .returning();
+    const keys =
+      payload.keys.length === 0
+        ? []
+        : await tx
+            .insert(messageKeys)
+            .values(
+              payload.keys.map((key) => ({
+                messageId: inserted.id,
+                recipientDeviceId: key.deviceId,
+                ephemeralPublicKey: key.version === 1 ? key.ephemeralPublicKey : null,
+                ratchetPublicKey: key.version === 2 ? key.ratchetPublicKey : null,
+                previousChainLength:
+                  key.version === 2 ? key.previousChainLength : null,
+                messageNumber: key.version === 2 ? key.messageNumber : null,
+                distributionCiphertext:
+                  key.distribution !== undefined ? key.distribution.ciphertext : null,
+                distributionNonce: key.distribution !== undefined ? key.distribution.nonce : null,
+                wrappedKey: key.wrappedKey,
+                wrapNonce: key.wrapNonce,
+                version: key.version,
+              })),
+            )
+            .returning();
 
     return { message: inserted, keys, created: true };
   });
@@ -106,6 +115,7 @@ export interface MessagePage {
 export interface ListMessagesInput {
   conversationId: string;
   viewerDeviceId: string;
+  viewerUserId: string;
   before?: string | undefined;
   limit: number;
 }
@@ -130,10 +140,22 @@ export async function listMessages(
     cursor = row;
   }
 
+  const [participant] = await db
+    .select({ joinedAt: conversationParticipants.joinedAt })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, input.conversationId),
+        eq(conversationParticipants.userId, input.viewerUserId),
+      ),
+    )
+    .limit(1);
+  const joinedAt = participant?.joinedAt ?? new Date(0);
+
   const rows = await db
     .select({ message: messages, key: messageKeys })
     .from(messages)
-    .innerJoin(
+    .leftJoin(
       messageKeys,
       and(
         eq(messageKeys.messageId, messages.id),
@@ -143,6 +165,10 @@ export async function listMessages(
     .where(
       and(
         eq(messages.conversationId, input.conversationId),
+        or(
+          isNotNull(messageKeys.messageId),
+          and(isNotNull(messages.senderKeyId), gte(messages.createdAt, joinedAt)),
+        ),
         cursor
           ? or(
               lt(messages.createdAt, cursor.createdAt),
@@ -176,7 +202,7 @@ export async function getMessageViewForDevice(
   const [row] = await db
     .select({ message: messages, key: messageKeys })
     .from(messages)
-    .innerJoin(
+    .leftJoin(
       messageKeys,
       and(
         eq(messageKeys.messageId, messages.id),

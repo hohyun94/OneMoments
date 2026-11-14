@@ -94,11 +94,17 @@ export const sendMessageBodySchema = z.object({
         messageNumber: z.number().int().min(0).optional(),
         wrappedKey: z.string().min(1),
         wrapNonce: z.string().min(1),
+        distributionCiphertext: z.string().min(1).optional(),
+        distributionNonce: z.string().min(1).optional(),
+        distribution: z
+          .object({ ciphertext: z.string().min(1), nonce: z.string().min(1) })
+          .optional(),
         version: z.number().int().optional(),
       }),
     )
-    .min(1)
     .max(200),
+  senderKeyId: z.string().uuid().optional(),
+  senderKeyIteration: z.number().int().min(0).optional(),
 });
 
 export const deleteAccountBodySchema = z.object({

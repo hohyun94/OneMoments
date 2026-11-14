@@ -42,6 +42,7 @@ export type DeviceKeyEnvelope =
       ephemeralPublicKey: string;
       wrappedKey: string;
       wrapNonce: string;
+      distribution?: { ciphertext: string; nonce: string };
     }
   | {
       deviceId: string;
@@ -51,6 +52,7 @@ export type DeviceKeyEnvelope =
       messageNumber: number;
       wrappedKey: string;
       wrapNonce: string;
+      distribution?: { ciphertext: string; nonce: string };
     };
 
 export interface MessageView {
@@ -63,8 +65,10 @@ export interface MessageView {
   nonce: string;
   signature: string;
   clientMessageId: string;
+  senderKeyId: string | null;
+  senderKeyIteration: number | null;
   createdAt: string;
-  key: DeviceKeyEnvelope;
+  key: DeviceKeyEnvelope | null;
 }
 
 export interface MessagePage {

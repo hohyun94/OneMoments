@@ -31,9 +31,13 @@ import { ApiError, api } from "../lib/api.ts";
 import {
   AttachmentError,
   MAX_ATTACHMENT_BYTES,
+  commitSenderKeyMessage,
   encryptAttachment,
   encodeAttachmentPayload,
   encryptMessage,
+  prepareSenderKeyMessage,
+  rememberHistoryKey,
+  type PreparedSenderKeyMessage,
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatDayLabel } from "../lib/format.ts";
@@ -248,9 +252,29 @@ export function ChatView({
 
   async function postEncrypted(
     pending: PendingMessage,
-  ): Promise<{ message: MessageView }> {
+  ): Promise<{ message: MessageView; prepared: PreparedSenderKeyMessage | null }> {
+    let prepared: PreparedSenderKeyMessage | null = null;
     const send = async () => {
       const devices = await loadDevices();
+      if (conversation.kind === "group") {
+        prepared = await prepareSenderKeyMessage({
+          identity,
+          conversationId: conversation.id,
+          clientMessageId: pending.clientMessageId,
+          plaintext: pending.plaintext,
+          devices: devices.map((device) => ({
+            deviceId: device.id,
+            identityPublicKey: device.identityPublicKey,
+          })),
+          memberCount: conversation.memberCount,
+        });
+        const response = await api<{ message: MessageView }>(
+          `/api/conversations/${conversation.id}/messages`,
+          { method: "POST", body: prepared.payload },
+        );
+        return response;
+      }
+
       const payload = await encryptMessage({
         identity,
         conversationId: conversation.id,
@@ -261,17 +285,20 @@ export function ChatView({
           identityPublicKey: device.identityPublicKey,
         })),
       });
-      return api<{ message: MessageView }>(
+      const response = await api<{ message: MessageView }>(
         `/api/conversations/${conversation.id}/messages`,
         { method: "POST", body: payload },
       );
+      return response;
     };
 
     try {
-      return await send();
+      const response = await send();
+      return { ...response, prepared };
     } catch (error) {
       if (error instanceof ApiError && error.code === "DEVICE_SET_CHANGED") {
-        return send();
+        const response = await send();
+        return { ...response, prepared };
       }
       throw error;
     }
@@ -281,8 +308,16 @@ export function ChatView({
     setSending(true);
     setSendError(null);
     try {
-      const response = await postEncrypted(pending);
-      prependMessage(queryClient, conversation.id, response.message);
+      const { message, prepared } = await postEncrypted(pending);
+      if (prepared) {
+        await commitSenderKeyMessage(prepared);
+        await rememberHistoryKey({
+          deviceId: identity.deviceId,
+          messageId: message.id,
+          messageKey: prepared.messageKey,
+        });
+      }
+      prependMessage(queryClient, conversation.id, message);
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
       if (pendingRef.current === pending) pendingRef.current = null;
       sendTyping(conversation.id, "stop");

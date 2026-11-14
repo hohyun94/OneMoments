@@ -1,6 +1,7 @@
 import { subtle, type DeviceIdentity, type IdentityBackend } from "./keys.ts";
 import { fromBase64, randomBytes, toBase64 } from "./encoding.ts";
 import type { HistoryKeyRecord, LocalCryptoState, RatchetSession } from "./ratchet.ts";
+import type { SenderKeySession } from "./senderKey.ts";
 
 const VERSION = 1 as const;
 const PBKDF2_ITERATIONS = 600_000;
@@ -206,6 +207,14 @@ export async function importKeyBackup(
               typeof record.messageId === "string" &&
               typeof record.key === "string" &&
               typeof record.savedAt === "number",
+          ),
+          senderKeys: (payload.state.senderKeys ?? []).filter(
+            (session): session is SenderKeySession =>
+              typeof session === "object" &&
+              session !== null &&
+              typeof session.conversationId === "string" &&
+              typeof session.senderKeyId === "string" &&
+              typeof session.chainKey === "string",
           ),
         }
       : null;

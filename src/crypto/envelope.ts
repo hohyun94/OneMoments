@@ -82,6 +82,9 @@ export interface MessageKeyInput {
   ratchetPublicKey?: string | undefined;
   previousChainLength?: number | undefined;
   messageNumber?: number | undefined;
+  distributionCiphertext?: string | undefined;
+  distributionNonce?: string | undefined;
+  distribution?: { ciphertext: string; nonce: string } | undefined;
   wrappedKey: string;
   wrapNonce: string;
   version?: number | undefined;
@@ -93,7 +96,14 @@ export interface MessagePayloadInput {
   nonce: string;
   signature: string;
   keys: MessageKeyInput[];
+  senderKeyId?: string | undefined;
+  senderKeyIteration?: number | undefined;
 }
+
+export type NormalizedDeviceDistribution = {
+  ciphertext: string;
+  nonce: string;
+};
 
 export type NormalizedMessageKey =
   | {
@@ -102,6 +112,7 @@ export type NormalizedMessageKey =
       ephemeralPublicKey: string;
       wrappedKey: string;
       wrapNonce: string;
+      distribution?: NormalizedDeviceDistribution;
     }
   | {
       deviceId: string;
@@ -111,6 +122,7 @@ export type NormalizedMessageKey =
       messageNumber: number;
       wrappedKey: string;
       wrapNonce: string;
+      distribution?: NormalizedDeviceDistribution;
     };
 
 export interface NormalizedMessagePayload {
@@ -119,6 +131,8 @@ export interface NormalizedMessagePayload {
   nonce: string;
   signature: string;
   keys: NormalizedMessageKey[];
+  senderKeyId: string | null;
+  senderKeyIteration: number | null;
 }
 
 function requireRatchetIndex(value: number | undefined, field: string): number {
@@ -133,11 +147,37 @@ function requireRatchetIndex(value: number | undefined, field: string): number {
   return value;
 }
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_DISTRIBUTION_BYTES = 8192;
+
+function normalizeSenderKey(
+  input: Pick<MessagePayloadInput, "senderKeyId" | "senderKeyIteration">,
+): { senderKeyId: string | null; senderKeyIteration: number | null } {
+  const hasId = input.senderKeyId !== undefined;
+  const hasIteration = input.senderKeyIteration !== undefined;
+  if (hasId !== hasIteration) {
+    throw AppError.badRequest(
+      "INVALID_ENVELOPE",
+      "senderKeyId and senderKeyIteration must be provided together",
+    );
+  }
+  if (!hasId) return { senderKeyId: null, senderKeyIteration: null };
+  if (!UUID_PATTERN.test(input.senderKeyId ?? "")) {
+    throw AppError.badRequest("INVALID_ENVELOPE", "senderKeyId must be a UUID");
+  }
+  return {
+    senderKeyId: input.senderKeyId ?? null,
+    senderKeyIteration: requireRatchetIndex(input.senderKeyIteration, "senderKeyIteration"),
+  };
+}
+
 export function normalizeMessagePayload(
   input: MessagePayloadInput,
   options: { maxCiphertextBytes: number; maxEnvelopes: number },
 ): NormalizedMessagePayload {
-  if (input.keys.length === 0) {
+  const { senderKeyId, senderKeyIteration } = normalizeSenderKey(input);
+  if (input.keys.length === 0 && senderKeyId === null) {
     throw AppError.badRequest("INVALID_ENVELOPE", "At least one device key is required");
   }
   if (input.keys.length > options.maxEnvelopes) {
@@ -176,6 +216,39 @@ export function normalizeMessagePayload(
       MAX_WRAPPED_KEY_BYTES,
     );
     const wrapNonce = requireBytes(key.wrapNonce, "wrapNonce", GCM_NONCE_BYTES);
+    const distributionSource =
+      key.distribution ??
+      (key.distributionCiphertext !== undefined || key.distributionNonce !== undefined
+        ? {
+            ciphertext: key.distributionCiphertext,
+            nonce: key.distributionNonce,
+          }
+        : undefined);
+    const hasDistribution = distributionSource !== undefined;
+    if (
+      hasDistribution &&
+      (distributionSource.ciphertext === undefined || distributionSource.nonce === undefined)
+    ) {
+      throw AppError.badRequest(
+        "INVALID_ENVELOPE",
+        "distributionCiphertext and distributionNonce must be provided together",
+      );
+    }
+    const distribution = hasDistribution
+      ? {
+          ciphertext: requireBytesInRange(
+            distributionSource.ciphertext ?? "",
+            "distributionCiphertext",
+            GCM_TAG_BYTES + 1,
+            MAX_DISTRIBUTION_BYTES,
+          ),
+          nonce: requireBytes(
+            distributionSource.nonce ?? "",
+            "distributionNonce",
+            GCM_NONCE_BYTES,
+          ),
+        }
+      : undefined;
 
     if (version === ENVELOPE_VERSION) {
       keys.push({
@@ -188,6 +261,7 @@ export function normalizeMessagePayload(
         ),
         wrappedKey,
         wrapNonce,
+        ...(distribution ? { distribution } : {}),
       });
       continue;
     }
@@ -208,6 +282,7 @@ export function normalizeMessagePayload(
         messageNumber: requireRatchetIndex(key.messageNumber, "messageNumber"),
         wrappedKey,
         wrapNonce,
+        ...(distribution ? { distribution } : {}),
       });
       continue;
     }
@@ -224,5 +299,7 @@ export function normalizeMessagePayload(
     nonce: requireBytes(input.nonce, "nonce", GCM_NONCE_BYTES),
     signature: requireBytes(input.signature, "signature", ED25519_SIGNATURE_BYTES),
     keys,
+    senderKeyId,
+    senderKeyIteration,
   };
 }

@@ -43,6 +43,7 @@ export {
   decryptWithMessageKey,
   exportLocalCryptoState,
   importLocalCryptoState,
+  rememberHistoryKey,
   unwrapContentKey,
   wrapContentKey,
   type HistoryKeyRecord,
@@ -51,3 +52,12 @@ export {
   type RatchetSession,
   type WrappedContentKey,
 } from "./ratchet.ts";
+export {
+  SenderKeyError,
+  commitSenderKeyMessage,
+  decryptSenderKeyMessage,
+  prepareSenderKeyMessage,
+  type PreparedSenderKeyMessage,
+  type SenderKeyDistribution,
+  type SenderKeySession,
+} from "./senderKey.ts";

@@ -55,6 +55,7 @@ export type DeviceKeyEnvelope =
       ephemeralPublicKey: string;
       wrappedKey: string;
       wrapNonce: string;
+      distribution?: { ciphertext: string; nonce: string };
     }
   | {
       deviceId: string;
@@ -64,6 +65,7 @@ export type DeviceKeyEnvelope =
       messageNumber: number;
       wrappedKey: string;
       wrapNonce: string;
+      distribution?: { ciphertext: string; nonce: string };
     };
 
 /** 서버가 보관·중계하는 메시지 + 내 기기 봉투. 서버는 복호화하지 않는다. */
@@ -77,8 +79,10 @@ export interface MessageView {
   nonce: string;
   signature: string;
   clientMessageId: string;
+  senderKeyId: string | null;
+  senderKeyIteration: number | null;
   createdAt: string;
-  key: DeviceKeyEnvelope;
+  key: DeviceKeyEnvelope | null;
 }
 
 export interface DeviceKeySet {

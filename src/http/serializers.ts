@@ -79,6 +79,10 @@ export function toConversationSummary(
 }
 
 export function toDeviceKeyEnvelope(row: MessageKeyRow): DeviceKeyEnvelope {
+  const distribution =
+    row.distributionCiphertext && row.distributionNonce
+      ? { ciphertext: row.distributionCiphertext, nonce: row.distributionNonce }
+      : undefined;
   if (row.version === 2 && row.ratchetPublicKey) {
     return {
       deviceId: row.recipientDeviceId,
@@ -88,6 +92,7 @@ export function toDeviceKeyEnvelope(row: MessageKeyRow): DeviceKeyEnvelope {
       messageNumber: row.messageNumber ?? 0,
       wrappedKey: row.wrappedKey,
       wrapNonce: row.wrapNonce,
+      ...(distribution ? { distribution } : {}),
     };
   }
   return {
@@ -96,11 +101,12 @@ export function toDeviceKeyEnvelope(row: MessageKeyRow): DeviceKeyEnvelope {
     ephemeralPublicKey: row.ephemeralPublicKey ?? "",
     wrappedKey: row.wrappedKey,
     wrapNonce: row.wrapNonce,
+    ...(distribution ? { distribution } : {}),
   };
 }
 
 /** 평문·대화 키는 포함하지 않는다. 봉투와 서명만 전달한다. */
-export function toMessageView(row: MessageRow, key: MessageKeyRow): MessageView {
+export function toMessageView(row: MessageRow, key: MessageKeyRow | null): MessageView {
   return {
     id: row.id,
     conversationId: row.conversationId,
@@ -111,7 +117,9 @@ export function toMessageView(row: MessageRow, key: MessageKeyRow): MessageView 
     nonce: row.nonce,
     signature: row.signature,
     clientMessageId: row.clientMessageId,
+    senderKeyId: row.senderKeyId,
+    senderKeyIteration: row.senderKeyIteration,
     createdAt: row.createdAt.toISOString(),
-    key: toDeviceKeyEnvelope(key),
+    key: key ? toDeviceKeyEnvelope(key) : null,
   };
 }

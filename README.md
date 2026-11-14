@@ -2,7 +2,7 @@
 
 개인용 **1:1 종단간 암호화(E2E) 메신저**, 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: M2 웹 클라이언트 구현 완료** (브라우저 E2E 자동화는 다음 단계)
+**현재 단계: M2 웹 클라이언트 완료 (브라우저 E2E 포함)**
 
 ## 구현된 것
 
@@ -13,7 +13,7 @@
 - **대화**: 1:1 중복 방지, 숨김(내 화면만), 실시간 수신·타이핑·presence, 재연결
 - **메시지**: AES-256-GCM 암호문 + 기기별 키 봉투, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시
 - **운영**: `/healthz`, `/readyz`, 마이그레이션, 레이트리밋, 프로덕션에서 클라이언트 정적 서빙
-- **테스트 36개**: 서버 32(단위·API·WS) + 클라이언트 암호화 4
+- **테스트 38개**: 서버 33(단위·API·WS) + 클라이언트 암호화 4 + 브라우저 E2E 1
 
 ## 빠른 시작
 
@@ -65,7 +65,11 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 
 ```bash
 pnpm verify:full   # 서버 타입 체크 + 서버 테스트 + 클라이언트 테스트 + 서버·클라이언트 빌드
+pnpm test:e2e      # 빌드 후 Chrome 2개로 가입→대화→새로고침→DB 평문 부재 검증
+pnpm verify:all    # 위 두 가지를 순차 실행
 # 외부 DB: TEST_DATABASE_URL=postgres://... pnpm test
+# E2E DB: E2E_DATABASE_URL=postgres://... pnpm test:e2e (이름에 'e2e' 포함 필요)
+# E2E는 시스템 Chrome(channel)을 사용한다. 브라우저 바이너리는 내려받지 않는다.
 ```
 
 프로덕션 빌드는 `pnpm build` 하나로 서버(`dist/`)와 클라이언트(`client/dist/`)를 모두 만들고,

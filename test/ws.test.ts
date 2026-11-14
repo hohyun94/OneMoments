@@ -148,6 +148,44 @@ describe("websocket realtime", () => {
     }
   });
 
+  it("pushes new conversations to peers even before they subscribe", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+    const devices = await activeDevices(alice.client, conversationId);
+
+    const bobSocket = await openSocket(bob);
+    try {
+      // 구독하지 않은 상태에서도 참여자에게는 메시지 이벤트가 간다.
+      const envelope = encryptMessage({
+        conversationId,
+        clientMessageId: "unsubscribed-1",
+        plaintext: "첫 메시지",
+        sender: alice.identity,
+        recipients: recipients(devices),
+      });
+      const sent = await alice.client.request(
+        "POST",
+        `/api/conversations/${conversationId}/messages`,
+        { body: envelope },
+      );
+      expect(sent.status).toBe(201);
+
+      const event = await bobSocket.frames.next((frame) => frame.type === "message.created");
+      expect(event.message.conversationId).toBe(conversationId);
+      expect(event.message.key.deviceId).toBe(bob.deviceId);
+      expect(
+        decryptMessage({
+          identity: bob.identity,
+          senderSigningPublicKey: alice.identity.signing.publicKeyBase64,
+          message: event.message,
+        }),
+      ).toBe("첫 메시지");
+    } finally {
+      await closeSocket(bobSocket.socket);
+    }
+  });
+
   it("accepts encrypted frames and acknowledges them", async () => {
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

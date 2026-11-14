@@ -249,6 +249,17 @@ export interface ActiveDeviceKey {
   signingPublicKey: string;
 }
 
+export async function listParticipantUserIds(
+  db: Database,
+  conversationId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ userId: conversationParticipants.userId })
+    .from(conversationParticipants)
+    .where(eq(conversationParticipants.conversationId, conversationId));
+  return rows.map((row) => row.userId);
+}
+
 /** 암호화 대상: 두 참여자의 활성 기기 전체(발신자 자신의 다른 기기 포함). */
 export async function listActiveDeviceKeys(
   db: Database,

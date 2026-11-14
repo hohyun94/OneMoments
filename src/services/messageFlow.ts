@@ -13,6 +13,7 @@ import type { MessageView } from "../types/protocol.js";
 import type { MessageEvent } from "../realtime/bus.js";
 import {
   listActiveDeviceKeys,
+  listParticipantUserIds,
   requireParticipant,
   unhideConversation,
   type ActiveDeviceKey,
@@ -124,12 +125,15 @@ export async function sendEncryptedMessage(
     });
   }
 
+  const participantUserIds = await listParticipantUserIds(db, input.conversationId);
+
   return {
     message: toMessageView(result.message, ownKey),
     event: {
       conversationId: input.conversationId,
       message: result.message,
       keys: result.keys,
+      participantUserIds,
     },
     created: result.created,
     devices: activeDevices,

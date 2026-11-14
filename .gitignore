@@ -4,6 +4,8 @@ coverage/
 .pnpm-store/
 data/
 test-results/
+playwright-report/
+blob-report/
 *.log
 .pnpm-install*
 .vitest*
@@ -11,6 +13,7 @@ test-results/
 .docker-build*
 .client-build*
 .ui-smoke*
+.e2e*
 .env
 .env.local
 .DS_Store

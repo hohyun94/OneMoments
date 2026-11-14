@@ -20,11 +20,14 @@
     "check:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
     "test:client": "pnpm --filter @onemoments/client test",
+    "test:e2e": "pnpm build && playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "verify": "pnpm check && pnpm build",
-    "verify:full": "pnpm check:test && pnpm test && pnpm test:client && pnpm verify"
+    "verify:full": "pnpm check:test && pnpm test && pnpm test:client && pnpm verify",
+    "verify:all": "pnpm verify:full && pnpm test:e2e"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",
@@ -35,6 +38,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.55.0",
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.1",
     "@types/node": "^24.7.0",

@@ -166,6 +166,9 @@
 | S→C | `{type:"message.ack", clientMessageId, message}` |
 | S→C | `{type:"typing"|"presence"}`, `{type:"error", code, message}` |
 
+> `message.created` 는 **대화 참여자의 모든 연결**에 전달된다(구독 전이어도 대화 목록이 즉시 갱신된다).
+> 타이핑·presence 는 구독한 대화에만 전달한다.
+
 ## 위협 모델
 
 | 위협 | 영향 | 완화 |

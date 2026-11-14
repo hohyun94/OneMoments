@@ -109,7 +109,8 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
   const frameLog = new Map<WebSocket, number[]>();
 
   const unsubscribeBus = bus.subscribe((event) => {
-    for (const connection of hub.connectionsFor(event.conversationId)) {
+    // 구독하지 않은 참여자 연결에도 전달해 대화 목록이 즉시 갱신되게 한다.
+    for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
       const key = event.keys.find(
         (candidate) => candidate.recipientDeviceId === connection.deviceId,
       );

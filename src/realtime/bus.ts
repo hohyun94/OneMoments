@@ -4,6 +4,7 @@ export interface MessageEvent {
   conversationId: string;
   message: MessageRow;
   keys: MessageKeyRow[];
+  participantUserIds: string[];
 }
 
 export type MessageListener = (event: MessageEvent) => void;

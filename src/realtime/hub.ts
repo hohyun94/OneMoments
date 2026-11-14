@@ -16,12 +16,16 @@ export interface ChatConnection {
 export class ChatHub {
   readonly #connections = new Map<WebSocket, ChatConnection>();
   readonly #conversationConnections = new Map<string, Set<ChatConnection>>();
+  readonly #userConnections = new Map<string, Set<ChatConnection>>();
   /** conversationId → userId → 연결 수 */
   readonly #presence = new Map<string, Map<string, number>>();
 
   add(socket: WebSocket, userId: string, deviceId: string): ChatConnection {
     const connection: ChatConnection = { socket, userId, deviceId, conversations: new Set() };
     this.#connections.set(socket, connection);
+    const userConnections = this.#userConnections.get(userId) ?? new Set<ChatConnection>();
+    userConnections.add(connection);
+    this.#userConnections.set(userId, userConnections);
     return connection;
   }
 
@@ -106,7 +110,23 @@ export class ChatHub {
       connection.conversations.delete(conversationId);
       this.#detach(connection, conversationId);
     }
+    const userConnections = this.#userConnections.get(connection.userId);
+    userConnections?.delete(connection);
+    if (userConnections && userConnections.size === 0) {
+      this.#userConnections.delete(connection.userId);
+    }
     this.#connections.delete(socket);
+  }
+
+  /** 구독 여부와 무관하게 사용자에게 연결된 모든 기기(대화 목록 갱신용). */
+  connectionsForUsers(userIds: Iterable<string>): Iterable<ChatConnection> {
+    const result = new Set<ChatConnection>();
+    for (const userId of userIds) {
+      for (const connection of this.#userConnections.get(userId) ?? []) {
+        result.add(connection);
+      }
+    }
+    return result;
   }
 
   connectionsFor(conversationId: string): Iterable<ChatConnection> {
@@ -143,6 +163,7 @@ export class ChatHub {
     }
     this.#connections.clear();
     this.#conversationConnections.clear();
+    this.#userConnections.clear();
     this.#presence.clear();
   }
 }

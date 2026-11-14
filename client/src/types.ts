@@ -74,6 +74,14 @@ export interface MessageView {
   key: DeviceKeyEnvelope | null;
 }
 
+export interface ReadReceipt {
+  userId: string;
+  lastReadMessageId: string;
+  /** 읽음 커서 메시지의 작성 시각 */
+  readAt: string;
+  updatedAt: string;
+}
+
 export interface MessagePage {
   messages: MessageView[];
   nextCursor: string | null;

@@ -47,6 +47,7 @@ import type {
   ConversationSummary,
   MessagePage,
   MessageView,
+  ReadReceipt,
 } from "../types.ts";
 import { Alert, Avatar, Button, Dialog, Spinner, Textarea, cn } from "./ui.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
@@ -106,6 +107,16 @@ export function ChatView({
     getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 
+  const readsQuery = useQuery({
+    queryKey: ["conversation-reads", conversation.id],
+    queryFn: () =>
+      api<{ reads: ReadReceipt[] }>(
+        `/api/conversations/${conversation.id}/reads`,
+      ).then((response) => response.reads),
+    staleTime: 2_000,
+    refetchInterval: 5_000,
+  });
+
   const devicesQuery = useQuery({
     queryKey: ["conversation-devices", conversation.id],
     queryFn: () =>
@@ -152,6 +163,25 @@ export function ChatView({
   const latestId = messages[0]?.id;
   const typing = typingUsers(conversation.id);
   const isGroup = conversation.kind === "group";
+  const otherReads = useMemo(
+    () => (readsQuery.data ?? []).filter((read) => read.userId !== currentUserId),
+    [readsQuery.data, currentUserId],
+  );
+
+  function readLabelFor(message: MessageView): string | undefined {
+    if (!readsQuery.isSuccess) return undefined;
+    const createdAt = Date.parse(message.createdAt);
+    if (isGroup) {
+      const count = otherReads.filter(
+        (read) => Date.parse(read.readAt) >= createdAt,
+      ).length;
+      return count > 0 ? `${count}명 읽음` : "안 읽음";
+    }
+    const peerRead = otherReads[0];
+    return peerRead && Date.parse(peerRead.readAt) >= createdAt
+      ? "읽음"
+      : "안 읽음";
+  }
   const peer = conversation.peer;
   const peerName = isGroup
     ? (conversation.name ?? "그룹")
@@ -636,6 +666,11 @@ export function ChatView({
                       message.senderUserId === currentUserId
                         ? "나"
                         : (memberNames.get(message.senderUserId) ?? "알 수 없는 사용자")
+                    }
+                    readLabel={
+                      message.senderUserId === currentUserId
+                        ? readLabelFor(message)
+                        : undefined
                     }
                   />
                 ))}

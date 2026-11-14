@@ -235,11 +235,13 @@ export function MessageBubble({
   identity,
   own,
   senderName,
+  readLabel,
 }: {
   message: MessageView;
   identity: StoredIdentity;
   own: boolean;
   senderName: string;
+  readLabel?: string;
 }) {
   const [result, setResult] = useState<Result | null>(() => cache.get(message.id) ?? null);
 
@@ -302,6 +304,7 @@ export function MessageBubble({
           )}
         >
           {formatClock(message.createdAt)}
+          {own && readLabel ? ` · ${readLabel}` : ""}
         </p>
       </div>
     </div>

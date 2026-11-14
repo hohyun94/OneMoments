@@ -80,6 +80,8 @@ test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 �
     await bobConversation.click();
     await expect(bob.getByText(first)).toBeVisible();
     await expect(bob.getByLabel(/읽지 않은 메시지/)).toHaveCount(0);
+    // Bob이 대화를 열면 Alice의 발신 메시지에 읽음 표시가 갱신된다.
+    await expect(alice.getByText(/· 읽음/).last()).toBeVisible({ timeout: 15_000 });
 
     const reply = "잘 도착했어요!";
     await sendMessage(bob, reply);

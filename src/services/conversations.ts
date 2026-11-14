@@ -384,6 +384,37 @@ export async function markConversationRead(
     });
 }
 
+export interface ConversationReadReceipt {
+  userId: string;
+  lastReadMessageId: string;
+  readAt: Date;
+  updatedAt: Date;
+}
+
+/** 현재 참여자들의 읽음 커서. readAt은 커서 메시지의 작성 시각이다. */
+export async function listConversationReadReceipts(
+  db: Database,
+  conversationId: string,
+): Promise<ConversationReadReceipt[]> {
+  return db
+    .select({
+      userId: conversationReads.userId,
+      lastReadMessageId: conversationReads.lastReadMessageId,
+      readAt: messages.createdAt,
+      updatedAt: conversationReads.updatedAt,
+    })
+    .from(conversationReads)
+    .innerJoin(messages, eq(messages.id, conversationReads.lastReadMessageId))
+    .innerJoin(
+      conversationParticipants,
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.userId, conversationReads.userId),
+      ),
+    )
+    .where(eq(conversationReads.conversationId, conversationId));
+}
+
 async function lastMessageAt(
   db: Database,
   conversationId: string,

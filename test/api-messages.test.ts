@@ -251,6 +251,23 @@ describe("encrypted direct messages", () => {
     );
     expect(read.status).toBe(200);
 
+    const receipts = await alice.client.request(
+      "GET",
+      `/api/conversations/${conversationId}/reads`,
+    );
+    expect(receipts.status).toBe(200);
+    expect(receipts.body.reads).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: bob.userId,
+          lastReadMessageId: latest.id,
+        }),
+      ]),
+    );
+    expect(
+      Date.parse(receipts.body.reads[0].readAt),
+    ).toBeGreaterThanOrEqual(Date.parse(latest.createdAt));
+
     const afterRead = await bob.client.request("GET", "/api/conversations");
     expect(
       afterRead.body.conversations.find(

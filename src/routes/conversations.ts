@@ -24,6 +24,7 @@ import {
   hideConversation,
   listActiveDeviceKeys,
   listConversations,
+  listConversationReadReceipts,
   markConversationRead,
   leaveGroup,
   renameGroup,
@@ -128,6 +129,25 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
       const { conversationId } = conversationIdParamsSchema.parse(req.params);
       await leaveGroup(db, { conversationId, userId: auth.userId });
       res.status(204).end();
+    }),
+  );
+
+  router.get(
+    "/:conversationId/reads",
+    session,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      const reads = await listConversationReadReceipts(db, conversationId);
+      res.json({
+        reads: reads.map((read) => ({
+          userId: read.userId,
+          lastReadMessageId: read.lastReadMessageId,
+          readAt: read.readAt.toISOString(),
+          updatedAt: read.updatedAt.toISOString(),
+        })),
+      });
     }),
   );
 

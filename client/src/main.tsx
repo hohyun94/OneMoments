@@ -7,6 +7,13 @@ import { App } from "./App.tsx";
 import "./index.css";
 import { SessionProvider } from "./session.tsx";
 
+// 설치형 PWA/오프라인 앱 셸: HTTPS(localhost 포함)에서만 등록된다. 실패해도 앱 사용에는 영향이 없다.
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  });
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

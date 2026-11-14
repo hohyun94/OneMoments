@@ -24,5 +24,6 @@ backups/
 .redis-pull*
 .env
 .env.local
+.web.out
 .DS_Store
 package-lock.json

@@ -1,4 +1,4 @@
-import { LogOut, MessageSquarePlus, ShieldCheck, Smartphone } from "lucide-react";
+import { LogOut, MessageSquarePlus, ShieldCheck, Smartphone, Users } from "lucide-react";
 
 import { formatListTime } from "../lib/format.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
@@ -59,7 +59,11 @@ export function ConversationSidebar({
         ) : (
           <ul className="space-y-1">
             {conversations.map((conversation) => {
-              const name = conversation.peer.username ?? "삭제된 사용자";
+              const isGroup = conversation.kind === "group";
+              const name = isGroup
+                ? (conversation.name ?? "그룹")
+                : (conversation.peer?.username ?? "삭제된 사용자");
+              const deleted = !isGroup && Boolean(conversation.peer?.deleted);
               const active = conversation.id === selectedId;
               return (
                 <li key={conversation.id}>
@@ -78,7 +82,7 @@ export function ConversationSidebar({
                         <span
                           className={cn(
                             "truncate text-sm font-medium",
-                            conversation.peer.deleted ? "text-zinc-400" : "text-zinc-900",
+                            deleted ? "text-zinc-400" : "text-zinc-900",
                           )}
                         >
                           {name}
@@ -88,8 +92,14 @@ export function ConversationSidebar({
                         </span>
                       </span>
                       <span className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
-                        <ShieldCheck className="h-3 w-3" aria-hidden />
-                        종단간 암호화
+                        {isGroup ? (
+                          <Users className="h-3 w-3" aria-hidden />
+                        ) : (
+                          <ShieldCheck className="h-3 w-3" aria-hidden />
+                        )}
+                        {isGroup
+                          ? `${conversation.memberCount}명 · 종단간 암호화`
+                          : "종단간 암호화"}
                       </span>
                     </span>
                   </button>

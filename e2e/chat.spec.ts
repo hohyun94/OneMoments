@@ -35,6 +35,22 @@ async function sendMessage(page: Page, text: string): Promise<void> {
   await page.getByRole("button", { name: "전송" }).click();
 }
 
+async function startGroup(page: Page, name: string, members: string[]): Promise<void> {
+  await page.getByRole("button", { name: "새 대화", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "새 대화" });
+  await dialog.getByRole("tab", { name: "그룹" }).click();
+  await dialog.getByLabel("그룹 이름").fill(name);
+  for (const member of members) {
+    await dialog.getByLabel("사용자 아이디").fill(member);
+    await dialog.getByRole("button", { name: "검색" }).click();
+    await expect(dialog.getByText(`@${member}`)).toBeVisible();
+    await dialog.getByRole("button", { name: "추가", exact: true }).click();
+  }
+  await dialog.getByRole("button", { name: "그룹 만들기" }).click();
+  await expect(page.getByLabel("메시지 입력")).toBeVisible();
+}
+
+
 test("두 브라우저가 종단간 암호화 메시지를 주고받고 키가 유지된다", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();
@@ -205,3 +221,99 @@ test("키 백업으로 새 브라우저에서 기기와 이력을 복구한다",
     await bobContext.close();
   }
 });
+
+test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const carolContext = await browser.newContext();
+  const daveContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const carol = await carolContext.newPage();
+  const dave = await daveContext.newPage();
+  const aliceName = uniqueName("alice");
+  const bobName = uniqueName("bob");
+  const carolName = uniqueName("carol");
+  const daveName = uniqueName("dave");
+  const groupName = `group-${Date.now().toString(36)}`;
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await register(carol, carolName);
+    await register(dave, daveName);
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+
+    await startGroup(alice, groupName, [bobName, carolName]);
+    await expect(alice.getByRole("heading", { name: groupName })).toBeVisible();
+    await expect(alice.getByText("3명 · 종단간 암호화").first()).toBeVisible();
+
+    const first = "그룹 첫 메시지";
+    await sendMessage(alice, first);
+    await expect(alice.getByText(first)).toBeVisible();
+
+    // 새 참여자는 다음 목록 갱신 전에 새로고침으로 즉시 확인한다.
+    await bob.reload();
+    const bobGroup = bob
+      .getByRole("navigation", { name: "대화 목록" })
+      .getByRole("button", { name: new RegExp(groupName) });
+    await expect(bobGroup).toBeVisible();
+    await bobGroup.click();
+    await expect(bob.getByRole("heading", { name: groupName })).toBeVisible();
+    await expect(bob.getByText(first)).toBeVisible();
+
+    const reply = "그룹 답장";
+    await sendMessage(bob, reply);
+    await expect(alice.getByText(reply)).toBeVisible();
+    // 그룹 메시지에는 발신자 이름이 표시된다.
+    await expect(alice.getByText(bobName)).toBeVisible();
+
+    await carol.reload();
+    const carolGroup = carol
+      .getByRole("navigation", { name: "대화 목록" })
+      .getByRole("button", { name: new RegExp(groupName) });
+    await expect(carolGroup).toBeVisible();
+    await carolGroup.click();
+    await expect(carol.getByText(first)).toBeVisible();
+    await expect(carol.getByText(reply)).toBeVisible();
+
+    const safetyButton = carol.getByRole("button", { name: "안전번호" });
+    await expect(safetyButton).toBeEnabled();
+    await safetyButton.click();
+    const safetyDialog = carol.getByRole("dialog", { name: "안전번호" });
+    const digits = (await safetyDialog.getByTestId("safety-number").innerText()).replace(
+      /\s/g,
+      "",
+    );
+    expect(digits).toMatch(/^\d{60}$/);
+
+    // 그룹 참여자 추가: 새 참여자는 이후 메시지만 볼 수 있다.
+    await alice.getByRole("button", { name: "참여자 추가" }).click();
+    const membersDialog = alice.getByRole("dialog", { name: "참여자 추가" });
+    await membersDialog.getByLabel("사용자 아이디").fill(daveName);
+    await membersDialog.getByRole("button", { name: "검색" }).click();
+    await expect(membersDialog.getByText(`@${daveName}`)).toBeVisible();
+    await membersDialog.getByRole("button", { name: "추가", exact: true }).click();
+    await membersDialog.getByRole("button", { name: "참여자 추가하기" }).click();
+    await expect(alice.getByText("4명 · 종단간 암호화").first()).toBeVisible();
+
+    await dave.reload();
+    const daveGroup = dave
+      .getByRole("navigation", { name: "대화 목록" })
+      .getByRole("button", { name: new RegExp(groupName) });
+    await expect(daveGroup).toBeVisible();
+    await daveGroup.click();
+    await expect(dave.getByText("첫 메시지를 보내보세요.")).toBeVisible();
+    await expect(dave.getByTitle("실시간 연결됨")).toBeVisible();
+
+    const welcome = "새 참여자 환영";
+    await sendMessage(alice, welcome);
+    await expect(dave.getByText(welcome)).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+    await carolContext.close();
+    await daveContext.close();
+  }
+});
+

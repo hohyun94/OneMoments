@@ -80,8 +80,8 @@
 | `users` | id(uuid), username(unique, 소문자), password_hash, created_at, deleted_at | 계정. 이메일 미수집(MVP). 삭제 시 익명화 |
 | `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent | 쿠키 세션(원문 토큰 저장 안 함) |
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, created_at, last_seen_at, revoked_at | 기기 공개키 |
-| `conversations` | id, kind('direct'), created_at | 1:1 대화 |
-| `conversation_participants` | conversation_id, user_id, joined_at (PK) | 참여자. 1:1은 항상 2명 |
+| `conversations` | id, kind('direct'\|'group'), name, created_at | 1:1 또는 그룹. 그룹은 name 필수 |
+| `conversation_participants` | conversation_id, user_id, joined_at, hidden_at (PK) | 참여자. 그룹은 최대 20명 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, created_at | 암호문 1건 + 발신 기기 서명 공개키 스냅샷(기기 폐기 후에도 검증 가능). `(conversation_id, sender_user_id, client_message_id)` 유니크 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, version (PK: message_id+recipient_device_id) | 기기별 키 봉투 |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
@@ -100,6 +100,13 @@
 5. 삭제된 사용자와의 대화는 **읽기 전용**(전송 불가)
 
 > 대화 삭제는 `conversation_participants` 에 숨김 표시(예: `hidden_at`)만 남기고 데이터는 유지한다.
+
+### 그룹 대화
+
+- `kind='group'`, 이름(1~64자), 참여자 N명(최대 20명). 상세: `docs/09-groups.md`
+- 메시지는 **참여자 전원의 활성 기기마다 봉투**를 만든다(현재는 Sender Keys 아님).
+- 참여자 추가 후 기기 집합이 바뀌면 `409 DEVICE_SET_CHANGED` → 클라이언트가 재암호화한다.
+- 새 참여자는 참여 이후 메시지만 복호화할 수 있다.
 
 ### 키 백업·기기 복구
 
@@ -137,9 +144,11 @@
 | POST | `/api/devices` | 기기 추가(로그인 상태) |
 | DELETE | `/api/devices/:id` | 기기 폐기 → 해당 세션 무효 |
 | GET | `/api/users/search?username=` | 정확 일치 검색(스로틀) |
-| POST | `/api/conversations` | `{peerUserId}` → 기존 1:1 재사용 |
-| GET | `/api/conversations` | 대화 목록(최근 메시지 시각) |
-| GET | `/api/conversations/:id/devices` | 양쪽 **활성 기기 공개키**(암호화 대상 목록) |
+| POST | `/api/conversations` | `{peerUserId}`(1:1 재사용) 또는 `{kind:"group", name, memberUserIds}` |
+| GET | `/api/conversations` | 대화 목록(최근 메시지 시각, 그룹 이름·인원 포함) |
+| GET | `/api/conversations/:id` | 대화 요약(참여자만) |
+| POST | `/api/conversations/:id/members` | 그룹 참여자 추가(멱등) |
+| GET | `/api/conversations/:id/devices` | **대화 참여자 전체** 활성 기기 공개키(암호화 대상 목록) |
 | DELETE | `/api/conversations/:id` | 내 화면에서 숨김 |
 
 ### 메시지

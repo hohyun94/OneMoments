@@ -18,8 +18,11 @@ import type { ConversationSummary } from "../types/protocol.js";
 export interface ConversationContext {
   conversation: ConversationRow;
   participant: ParticipantRow;
-  peer: UserRow;
+  peer: UserRow | null;
 }
+
+/** 그룹 최대 인원(생성자 포함). 기기 수가 MAX_ENVELOPES 를 넘지 않도록 보수적으로 제한한다. */
+export const MAX_GROUP_MEMBERS = 20;
 
 async function participantCount(db: Database, conversationId: string): Promise<number> {
   const [row] = await db
@@ -134,20 +137,133 @@ export async function requireParticipant(
   // 비참여자에게 대화 존재 여부를 노출하지 않는다.
   if (!row) throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
 
-  const [peer] = await db
+  let peer: UserRow | null = null;
+  if (row.conversation.kind === "direct") {
+    const [peerRow] = await db
+      .select({ user: users })
+      .from(conversationParticipants)
+      .innerJoin(users, eq(users.id, conversationParticipants.userId))
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, input.conversationId),
+          ne(conversationParticipants.userId, input.userId),
+        ),
+      )
+      .limit(1);
+    if (!peerRow) throw AppError.conflict("INVALID_CONVERSATION", "Conversation has no peer");
+    peer = peerRow.user;
+  }
+
+  return { conversation: row.conversation, participant: row.participant, peer };
+}
+
+/** 나를 제외한 참여자(그룹 포함)를 가져온다. */
+async function listConversationMembers(
+  db: Database,
+  conversationId: string,
+  excludeUserId: string,
+): Promise<UserRow[]> {
+  const rows = await db
     .select({ user: users })
     .from(conversationParticipants)
     .innerJoin(users, eq(users.id, conversationParticipants.userId))
     .where(
       and(
-        eq(conversationParticipants.conversationId, input.conversationId),
-        ne(conversationParticipants.userId, input.userId),
+        eq(conversationParticipants.conversationId, conversationId),
+        ne(conversationParticipants.userId, excludeUserId),
       ),
     )
-    .limit(1);
+    .orderBy(users.createdAt, users.id);
+  return rows.map((row) => row.user);
+}
 
-  if (!peer) throw AppError.conflict("INVALID_CONVERSATION", "Conversation has no peer");
-  return { conversation: row.conversation, participant: row.participant, peer: peer.user };
+function normalizeGroupName(name: string): string {
+  return name.trim();
+}
+
+function normalizeMemberIds(creatorUserId: string, memberUserIds: string[]): string[] {
+  const unique = [...new Set(memberUserIds)];
+  if (unique.length === 0 || unique.length > MAX_GROUP_MEMBERS - 1) {
+    throw AppError.badRequest(
+      "INVALID_GROUP_MEMBERS",
+      `A group needs between 1 and ${MAX_GROUP_MEMBERS - 1} members`,
+    );
+  }
+  if (unique.includes(creatorUserId)) {
+    throw AppError.badRequest("INVALID_GROUP_MEMBERS", "You are already a participant");
+  }
+  return unique;
+}
+
+async function assertActiveUsers(db: Database, userIds: string[]): Promise<void> {
+  const rows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, userIds), isNull(users.deletedAt)));
+  if (rows.length !== userIds.length) {
+    throw AppError.badRequest("USER_NOT_FOUND", "One or more users were not found");
+  }
+}
+
+export async function createGroupConversation(
+  db: Database,
+  input: { creatorUserId: string; name: string; memberUserIds: string[] },
+): Promise<ConversationRow> {
+  const memberIds = normalizeMemberIds(input.creatorUserId, input.memberUserIds);
+  await assertActiveUsers(db, memberIds);
+
+  return db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(conversations)
+      .values({ kind: "group", name: normalizeGroupName(input.name) })
+      .returning();
+    if (!created) throw new Error("Failed to insert conversation");
+    await tx.insert(conversationParticipants).values(
+      [input.creatorUserId, ...memberIds].map((userId) => ({
+        conversationId: created.id,
+        userId,
+      })),
+    );
+    return created;
+  });
+}
+
+/** 그룹에 참여자를 추가한다. 이미 참여 중인 사용자는 무시한다(멱등). */
+export async function addGroupMembers(
+  db: Database,
+  input: { conversationId: string; requesterUserId: string; userIds: string[] },
+): Promise<{ conversation: ConversationRow; added: number }> {
+  const context = await requireParticipant(db, {
+    conversationId: input.conversationId,
+    userId: input.requesterUserId,
+  });
+  if (context.conversation.kind !== "group") {
+    throw AppError.badRequest("NOT_GROUP_CONVERSATION", "Only group conversations have members");
+  }
+
+  const unique = [...new Set(input.userIds)];
+  if (unique.includes(input.requesterUserId)) {
+    throw AppError.badRequest("INVALID_GROUP_MEMBERS", "You are already a participant");
+  }
+
+  const current = await listParticipantUserIds(db, input.conversationId);
+  const existing = new Set(current);
+  const toAdd = unique.filter((userId) => !existing.has(userId));
+  if (toAdd.length === 0) return { conversation: context.conversation, added: 0 };
+  if (current.length + toAdd.length > MAX_GROUP_MEMBERS) {
+    throw AppError.conflict(
+      "GROUP_FULL",
+      `A group can have at most ${MAX_GROUP_MEMBERS} members`,
+    );
+  }
+  await assertActiveUsers(db, toAdd);
+
+  await db
+    .insert(conversationParticipants)
+    .values(toAdd.map((userId) => ({ conversationId: input.conversationId, userId })))
+    .onConflictDoNothing();
+
+  return { conversation: context.conversation, added: toAdd.length };
 }
 
 async function lastMessageAt(
@@ -165,9 +281,16 @@ export async function getConversationSummary(
   db: Database,
   context: ConversationContext,
 ): Promise<ConversationSummary> {
+  const members = await listConversationMembers(
+    db,
+    context.conversation.id,
+    context.participant.userId,
+  );
   return toConversationSummary(
     context.conversation,
+    members,
     context.peer,
+    members.length + 1,
     await lastMessageAt(db, context.conversation.id),
   );
 }
@@ -193,7 +316,7 @@ export async function listConversations(
   if (rows.length === 0) return [];
   const conversationIds = rows.map((row) => row.conversation.id);
 
-  const [peers, lastMessages] = await Promise.all([
+  const [participants, lastMessages] = await Promise.all([
     db
       .select({
         conversationId: conversationParticipants.conversationId,
@@ -206,7 +329,8 @@ export async function listConversations(
           inArray(conversationParticipants.conversationId, conversationIds),
           ne(conversationParticipants.userId, userId),
         ),
-      ),
+      )
+      .orderBy(users.createdAt, users.id),
     db
       .select({
         conversationId: messages.conversationId,
@@ -217,19 +341,28 @@ export async function listConversations(
       .groupBy(messages.conversationId),
   ]);
 
-  const peerByConversation = new Map(peers.map((row) => [row.conversationId, row.user]));
+  const membersByConversation = new Map<string, UserRow[]>();
+  for (const row of participants) {
+    const list = membersByConversation.get(row.conversationId) ?? [];
+    list.push(row.user);
+    membersByConversation.set(row.conversationId, list);
+  }
   const lastByConversation = new Map(
     lastMessages.map((row) => [row.conversationId, row.lastMessageAt]),
   );
 
   const summaries: ConversationSummary[] = [];
   for (const row of rows) {
-    const peer = peerByConversation.get(row.conversation.id);
-    if (!peer) continue;
+    const members = membersByConversation.get(row.conversation.id) ?? [];
+    if (members.length === 0) continue;
+    const peer = row.conversation.kind === "direct" ? (members[0] ?? null) : null;
+    if (row.conversation.kind === "direct" && !peer) continue;
     summaries.push(
       toConversationSummary(
         row.conversation,
+        members,
         peer,
+        members.length + 1,
         lastByConversation.get(row.conversation.id) ?? null,
       ),
     );

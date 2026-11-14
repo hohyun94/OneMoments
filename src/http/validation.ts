@@ -45,8 +45,26 @@ export const loginBodySchema = z.object({
 
 export const registerDeviceBodySchema = deviceKeysSchema;
 
-export const createConversationBodySchema = z.object({
-  peerUserId: z.string().uuid(),
+export const groupNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Group name is required")
+  .max(64, "Group name must be at most 64 characters");
+
+export const createConversationBodySchema = z.union([
+  z.object({
+    kind: z.literal("direct").optional(),
+    peerUserId: z.string().uuid(),
+  }),
+  z.object({
+    kind: z.literal("group"),
+    name: groupNameSchema,
+    memberUserIds: z.array(z.string().uuid()).min(1).max(19),
+  }),
+]);
+
+export const addConversationMembersBodySchema = z.object({
+  userIds: z.array(z.string().uuid()).min(1).max(19),
 });
 
 export const sendMessageBodySchema = z.object({

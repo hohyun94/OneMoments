@@ -23,8 +23,12 @@ export interface Device {
 
 export interface ConversationSummary {
   id: string;
+  kind: "direct" | "group";
+  name: string | null;
   createdAt: string;
-  peer: PeerUser;
+  peer: PeerUser | null;
+  members: PeerUser[];
+  memberCount: number;
   lastMessageAt: string | null;
 }
 

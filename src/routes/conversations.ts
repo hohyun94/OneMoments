@@ -5,6 +5,7 @@ import type { Database } from "../db/client.js";
 import { asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import {
+  addConversationMembersBodySchema,
   conversationIdParamsSchema,
   createConversationBodySchema,
   listMessagesQuerySchema,
@@ -12,6 +13,8 @@ import {
 } from "../http/validation.js";
 import type { MessageBus } from "../realtime/bus.js";
 import {
+  addGroupMembers,
+  createGroupConversation,
   findOrCreateDirectConversation,
   getConversationSummary,
   hideConversation,
@@ -47,17 +50,27 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       const body = createConversationBodySchema.parse(req.body);
-      const { conversation, created } = await findOrCreateDirectConversation(db, {
-        creatorUserId: auth.userId,
-        peerUserId: body.peerUserId,
-      });
+      const result =
+        "peerUserId" in body
+          ? await findOrCreateDirectConversation(db, {
+              creatorUserId: auth.userId,
+              peerUserId: body.peerUserId,
+            })
+          : {
+              conversation: await createGroupConversation(db, {
+                creatorUserId: auth.userId,
+                name: body.name,
+                memberUserIds: body.memberUserIds,
+              }),
+              created: true,
+            };
       const context = await requireParticipant(db, {
-        conversationId: conversation.id,
+        conversationId: result.conversation.id,
         userId: auth.userId,
       });
-      res.status(created ? 201 : 200).json({
+      res.status(result.created ? 201 : 200).json({
         conversation: await getConversationSummary(db, context),
-        created,
+        created: result.created,
       });
     }),
   );
@@ -68,6 +81,35 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       res.json({ conversations: await listConversations(db, auth.userId) });
+    }),
+  );
+
+  router.get(
+    "/:conversationId",
+    session,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const context = await requireParticipant(db, { conversationId, userId: auth.userId });
+      res.json({ conversation: await getConversationSummary(db, context) });
+    }),
+  );
+
+  router.post(
+    "/:conversationId/members",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const body = addConversationMembersBodySchema.parse(req.body);
+      const { added } = await addGroupMembers(db, {
+        conversationId,
+        requesterUserId: auth.userId,
+        userIds: body.userIds,
+      });
+      const context = await requireParticipant(db, { conversationId, userId: auth.userId });
+      res.json({ conversation: await getConversationSummary(db, context), added });
     }),
   );
 

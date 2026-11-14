@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { AlertCircle, ArrowLeft, Send, ShieldCheck } from "lucide-react";
+import { AlertCircle, ArrowLeft, Send, ShieldCheck, UserPlus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 
 import { ApiError, api } from "../lib/api.ts";
@@ -19,6 +19,7 @@ import type {
 } from "../types.ts";
 import { Alert, Avatar, Button, Dialog, Spinner, Textarea, cn } from "./ui.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
+import { GroupMembersDialog } from "./GroupMembersDialog.tsx";
 import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
 
 interface PendingMessage {
@@ -87,6 +88,7 @@ export function ChatView({
   const [safety, setSafety] = useState<SafetyNumber | null>(null);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [safetyChanged, setSafetyChanged] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const pendingRef = useRef<PendingMessage | null>(null);
   const typingTimerRef = useRef<number | undefined>(undefined);
   const lastTypingAtRef = useRef(0);
@@ -99,8 +101,27 @@ export function ChatView({
   const chronological = useMemo(() => [...messages].reverse(), [messages]);
   const latestId = messages[0]?.id;
   const typing = typingUsers(conversation.id);
-  const peerOnline = onlineUsers(conversation.id).includes(conversation.peer.id);
-  const peerName = conversation.peer.username ?? "삭제된 사용자";
+  const isGroup = conversation.kind === "group";
+  const peer = conversation.peer;
+  const peerName = isGroup
+    ? (conversation.name ?? "그룹")
+    : (peer?.username ?? "삭제된 사용자");
+  const peerDeleted = !isGroup && Boolean(peer?.deleted);
+  const memberNames = useMemo(
+    () =>
+      new Map(
+        conversation.members.map((member) => [
+          member.id,
+          member.username ?? "삭제된 사용자",
+        ]),
+      ),
+    [conversation.members],
+  );
+  const typingNames = typing
+    .map((userId) => memberNames.get(userId))
+    .filter((name): name is string => Boolean(name));
+  const peerOnline =
+    !isGroup && peer ? onlineUsers(conversation.id).includes(peer.id) : false;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -268,16 +289,27 @@ export function ChatView({
           <h2
             className={cn(
               "truncate text-sm font-semibold",
-              conversation.peer.deleted ? "text-zinc-400" : "text-zinc-900",
+              peerDeleted ? "text-zinc-400" : "text-zinc-900",
             )}
           >
             {peerName}
           </h2>
           <p className="flex items-center gap-1.5 text-xs text-zinc-500">
-            {typing.length > 0 ? (
-              <span className="text-violet-600">입력 중…</span>
-            ) : conversation.peer.deleted ? (
+            {typingNames.length > 0 ? (
+              <span className="text-violet-600">
+                {isGroup
+                  ? `${typingNames.slice(0, 2).join(", ")}${
+                      typingNames.length > 2 ? ` 외 ${typingNames.length - 2}명` : ""
+                    } 입력 중…`
+                  : "입력 중…"}
+              </span>
+            ) : peerDeleted ? (
               <span>계정 삭제됨</span>
+            ) : isGroup ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                {conversation.memberCount}명 · 종단간 암호화
+              </>
             ) : (
               <>
                 <span
@@ -291,6 +323,17 @@ export function ChatView({
             )}
           </p>
         </div>
+        {isGroup ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setMembersOpen(true)}
+            aria-label="참여자 추가"
+          >
+            <UserPlus className="h-4 w-4" aria-hidden />
+            <span className="hidden sm:inline">참여자 추가</span>
+          </Button>
+        ) : null}
         <Button
           variant="ghost"
           size="sm"
@@ -312,7 +355,9 @@ export function ChatView({
         <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
           <span className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" aria-hidden />
-            상대의 기기 키가 변경되었습니다. 안전번호를 확인하세요.
+            {isGroup
+              ? "참여자의 기기 키가 변경되었습니다. 안전번호를 확인하세요."
+              : "상대의 기기 키가 변경되었습니다. 안전번호를 확인하세요."}
           </span>
           <Button size="sm" variant="outline" onClick={acknowledgeSafetyChange}>
             확인
@@ -372,7 +417,9 @@ export function ChatView({
                     identity={identity}
                     own={message.senderUserId === currentUserId}
                     senderName={
-                      message.senderUserId === currentUserId ? "나" : peerName
+                      message.senderUserId === currentUserId
+                        ? "나"
+                        : (memberNames.get(message.senderUserId) ?? "알 수 없는 사용자")
                     }
                   />
                 ))}
@@ -413,7 +460,7 @@ export function ChatView({
           </div>
         ) : null}
 
-        {conversation.peer.deleted ? (
+        {peerDeleted ? (
           <p className="py-2 text-center text-sm text-zinc-500">
             이 사용자는 계정을 삭제했습니다.
           </p>
@@ -446,8 +493,9 @@ export function ChatView({
 
       <Dialog open={safetyOpen} onClose={() => setSafetyOpen(false)} title="안전번호">
         <p className="text-sm leading-relaxed text-zinc-600">
-          {peerName}님과 대면 또는 음성으로 아래 숫자를 대조하세요. 기기 키가 바뀌면
-          번호도 바뀝니다.
+          {isGroup
+            ? `그룹 참여자 ${conversation.memberCount}명의 기기 키로 만든 번호입니다. 참여자가 기기를 추가하거나 바꾸면 번호도 바뀝니다.`
+            : `${peerName}님과 대면 또는 음성으로 아래 숫자를 대조하세요. 기기 키가 바뀌면 번호도 바뀝니다.`}
         </p>
         {safety ? (
           <div
@@ -465,6 +513,24 @@ export function ChatView({
           번호가 예상과 다르면 대화를 중단하고 상대에게 직접 확인하세요.
         </p>
       </Dialog>
+
+      {isGroup ? (
+        <GroupMembersDialog
+          open={membersOpen}
+          onClose={() => setMembersOpen(false)}
+          conversationId={conversation.id}
+          existingMemberIds={[
+            currentUserId,
+            ...conversation.members.map((member) => member.id),
+          ]}
+          onAdded={() => {
+            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            void queryClient.invalidateQueries({
+              queryKey: ["conversation-devices", conversation.id],
+            });
+          }}
+        />
+      ) : null}
     </section>
   );
 }

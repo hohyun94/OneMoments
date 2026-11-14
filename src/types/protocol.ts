@@ -29,8 +29,16 @@ export interface OwnDevice extends PublicDevice {
 
 export interface ConversationSummary {
   id: string;
+  kind: "direct" | "group";
+  /** 그룹 이름. 1:1 은 null */
+  name: string | null;
   createdAt: string;
-  peer: PeerUser;
+  /** 1:1 상대. 그룹은 null */
+  peer: PeerUser | null;
+  /** 나를 제외한 참여자(그룹 포함) */
+  members: PeerUser[];
+  /** 나를 포함한 전체 인원 */
+  memberCount: number;
   lastMessageAt: string | null;
 }
 

@@ -75,9 +75,17 @@ export const conversations = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     kind: text("kind").notNull().default("direct"),
+    // 그룹 이름(direct 는 null)
+    name: text("name"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [check("conversations_kind_chk", sql`${table.kind} = 'direct'`)],
+  (table) => [
+    check("conversations_kind_chk", sql`${table.kind} in ('direct', 'group')`),
+    check(
+      "conversations_group_name_chk",
+      sql`${table.kind} = 'direct' or (${table.name} is not null and char_length(${table.name}) between 1 and 64)`,
+    ),
+  ],
 );
 
 export const conversationParticipants = pgTable(

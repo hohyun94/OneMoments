@@ -55,13 +55,19 @@ export function toOwnDevice(row: DeviceRow): OwnDevice {
 
 export function toConversationSummary(
   conversation: ConversationRow,
-  peer: UserRow,
+  members: UserRow[],
+  peer: UserRow | null,
+  memberCount: number,
   lastMessageAt: Date | string | null,
 ): ConversationSummary {
   return {
     id: conversation.id,
+    kind: conversation.kind === "group" ? "group" : "direct",
+    name: conversation.kind === "group" ? conversation.name : null,
     createdAt: conversation.createdAt.toISOString(),
-    peer: toPeerUser(peer),
+    peer: peer ? toPeerUser(peer) : null,
+    members: members.map(toPeerUser),
+    memberCount,
     lastMessageAt: iso(lastMessageAt),
   };
 }

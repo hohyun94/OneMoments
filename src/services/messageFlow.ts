@@ -59,7 +59,7 @@ export async function sendEncryptedMessage(
     conversationId: input.conversationId,
     userId: input.senderUserId,
   });
-  if (context.peer.deletedAt !== null) {
+  if (context.peer?.deletedAt) {
     throw new AppError(403, "PEER_DELETED", "This account no longer exists");
   }
 

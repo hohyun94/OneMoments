@@ -73,7 +73,7 @@
 
 | 테이블 | 주요 컬럼 | 설명 |
 |---|---|---|
-| `users` | id(uuid), username(unique, 소문자), password_hash, created_at | 계정. 이메일 미수집(MVP) |
+| `users` | id(uuid), username(unique, 소문자), password_hash, created_at, deleted_at | 계정. 이메일 미수집(MVP). 삭제 시 익명화 |
 | `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent | 쿠키 세션(원문 토큰 저장 안 함) |
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, created_at, last_seen_at, revoked_at | 기기 공개키 |
 | `conversations` | id, kind('direct'), created_at | 1:1 대화 |
@@ -85,6 +85,16 @@
 - 인덱스: `messages(conversation_id, created_at desc)`, `message_keys(recipient_device_id)`.
 - 대화 이력 조회는 `messages ⋈ message_keys ON recipient_device_id = 내 기기`로 필요한 봉투만 가져온다.
 - 서버는 `ciphertext`·`wrapped_key`의 **형식과 크기**만 검증한다.
+
+### 계정 삭제(익명화) 절차
+
+1. 해당 사용자의 **모든 세션 삭제** → 즉시 로그아웃
+2. `devices.revoked_at` 설정. 과거 메시지 서명 검증에 필요한 공개키는 보존
+3. `users.deleted_at` 설정, `password_hash` 무효화. username 행은 유지되어 **재사용 불가**(사칭 방지)
+4. `messages`·`message_keys` 는 유지 → 상대 UI에서 발신자를 **"삭제된 사용자"** 로 표시
+5. 삭제된 사용자와의 대화는 **읽기 전용**(전송 불가)
+
+> 대화 삭제는 `conversation_participants` 에 숨김 표시(예: `hidden_at`)만 남기고 데이터는 유지한다.
 
 ## API 초안
 
@@ -194,13 +204,13 @@
 | D-1 | 다중 기기 지원 | 지원 — 기기별 키 봉투, 내 다른 기기도 수신 대상 |
 | D-2 | 계정 식별 | username만 (이메일 미수집, MVP) |
 | D-3 | 발신자 서명 | Ed25519 기기 서명 포함 |
+| D-4 | 새 기기 로그인 | 새 키 생성 + "이후 메시지만" 안내 (키 백업·이력 이전은 이후) |
+| D-5 | 삭제 정책 | 대화=내 화면 숨김, 계정=익명화 후 상대 이력 유지 |
+| D-6 | UI 스택 | React 19 + Vite + Tailwind + shadcn/ui |
+| D-8 | 브라우저/폴백 | 최신 2개 메이저 + `@noble/curves` 폴백 |
 
 **남은 결정**
 
 | # | 항목 | 권장 | 영향 |
 |---|---|---|---|
-| D-4 | 새 기기 로그인 UX | 로그인 시 키 생성, 과거 이력 없음 안내 | 사용자 기대 관리 |
-| D-5 | 메시지 삭제 정책 | 내 화면 숨김 + 계정 삭제 시 서버 삭제 | 상대 화면 처리 |
-| D-6 | UI 스택 | Tailwind + shadcn/ui | M2 일정 |
 | D-7 | 다중 인스턴스 | M4에 Redis 팬아웃 | 운영 구조 |
-| D-8 | 최소 브라우저/폴백 | 최신 2개 버전 + `@noble/curves` | 테스트 매트릭스 |

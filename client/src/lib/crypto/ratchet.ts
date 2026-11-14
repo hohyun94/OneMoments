@@ -46,6 +46,7 @@ export interface RatchetHeader {
   /** X3DH 최초 봉투에서만 존재한다. */
   senderIdentityPublicKey?: string;
   signedPreKeyId?: string;
+  oneTimePreKeyId?: string;
 }
 
 export interface RatchetSession {
@@ -166,30 +167,46 @@ async function createInitiatorSession(
   remoteDeviceId: string,
   remoteIdentityPublicKey: string,
   remoteSignedPreKey?: { id: string; publicKey: string },
+  remoteOneTimePreKey?: { id: string; publicKey: string },
 ): Promise<{
   session: RatchetSession;
-  x3dh?: { senderIdentityPublicKey: string; signedPreKeyId: string };
+  x3dh?: {
+    senderIdentityPublicKey: string;
+    signedPreKeyId: string;
+    oneTimePreKeyId?: string;
+  };
 }> {
   const ephemeral = await generateEphemeral(identity.backend);
   const dhSelfPrivate = await serializeX25519Private(identity.backend, ephemeral.privateKey);
   let shared: Uint8Array<ArrayBuffer>;
   let dhRemote = remoteIdentityPublicKey;
-  let x3dh: { senderIdentityPublicKey: string; signedPreKeyId: string } | undefined;
+  let x3dh:
+    | {
+        senderIdentityPublicKey: string;
+        signedPreKeyId: string;
+        oneTimePreKeyId?: string;
+      }
+    | undefined;
 
   if (remoteSignedPreKey) {
     const identityPrivate = await serializeX25519Private(
       identity.backend,
       identity.identityPrivate,
     );
-    shared = concatBytes([
+    const parts = [
       await dh(identity, dhSelfPrivate, remoteSignedPreKey.publicKey),
       await dh(identity, dhSelfPrivate, remoteIdentityPublicKey),
       await dh(identity, identityPrivate, remoteSignedPreKey.publicKey),
-    ]);
+    ];
+    if (remoteOneTimePreKey) {
+      parts.push(await dh(identity, dhSelfPrivate, remoteOneTimePreKey.publicKey));
+    }
+    shared = concatBytes(parts);
     dhRemote = remoteSignedPreKey.publicKey;
     x3dh = {
       senderIdentityPublicKey: identity.identityPublicKey,
       signedPreKeyId: remoteSignedPreKey.id,
+      ...(remoteOneTimePreKey ? { oneTimePreKeyId: remoteOneTimePreKey.id } : {}),
     };
   } else {
     shared = await dh(identity, dhSelfPrivate, remoteIdentityPublicKey);
@@ -228,27 +245,46 @@ async function createResponderSession(
   let shared: Uint8Array<ArrayBuffer>;
 
   if (header.senderIdentityPublicKey && header.signedPreKeyId) {
-    if (
-      !identity.signedPreKeyPrivate ||
-      !identity.signedPreKeyPublicKey ||
-      identity.signedPreKeyId !== header.signedPreKeyId
-    ) {
+    const signedPreKey =
+      identity.signedPreKeyId === header.signedPreKeyId &&
+      identity.signedPreKeyPrivate &&
+      identity.signedPreKeyPublicKey
+        ? {
+            privateKey: identity.signedPreKeyPrivate,
+            publicKey: identity.signedPreKeyPublicKey,
+          }
+        : identity.signedPreKeyHistory?.find(
+            (key) => key.id === header.signedPreKeyId,
+          );
+    if (!signedPreKey) {
       throw new RatchetError("key");
     }
     dhSelfPrivate = await serializeX25519Private(
       identity.backend,
-      identity.signedPreKeyPrivate,
+      signedPreKey.privateKey,
     );
-    dhSelfPublic = identity.signedPreKeyPublicKey;
+    dhSelfPublic = signedPreKey.publicKey;
     const identityPrivate = await serializeX25519Private(
       identity.backend,
       identity.identityPrivate,
     );
-    shared = concatBytes([
+    const parts = [
       await dh(identity, dhSelfPrivate, header.ratchetPublicKey),
       await dh(identity, identityPrivate, header.ratchetPublicKey),
       await dh(identity, dhSelfPrivate, header.senderIdentityPublicKey),
-    ]);
+    ];
+    if (header.oneTimePreKeyId) {
+      const oneTime = identity.oneTimePreKeys?.find(
+        (key) => key.id === header.oneTimePreKeyId,
+      );
+      if (!oneTime) throw new RatchetError("key");
+      const oneTimePrivate = await serializeX25519Private(
+        identity.backend,
+        oneTime.privateKey,
+      );
+      parts.push(await dh(identity, oneTimePrivate, header.ratchetPublicKey));
+    }
+    shared = concatBytes(parts);
   } else {
     dhSelfPrivate = await serializeX25519Private(identity.backend, identity.identityPrivate);
     dhSelfPublic = identity.identityPublicKey;
@@ -310,13 +346,21 @@ export async function wrapContentKey(input: {
   remoteIdentityPublicKey: string;
   remoteSignedPreKeyId?: string | null;
   remoteSignedPreKeyPublicKey?: string | null;
+  remoteOneTimePreKeyId?: string | null;
+  remoteOneTimePreKeyPublicKey?: string | null;
   contentKey: Uint8Array<ArrayBuffer>;
 }): Promise<WrappedContentKey> {
   return withLock(
     sessionLockKey(input.conversationId, input.remoteDeviceId),
     async () => {
       let session = await loadRatchetSession(input.conversationId, input.remoteDeviceId);
-      let initialHeader: { senderIdentityPublicKey: string; signedPreKeyId: string } | undefined;
+      let initialHeader:
+        | {
+            senderIdentityPublicKey: string;
+            signedPreKeyId: string;
+            oneTimePreKeyId?: string;
+          }
+        | undefined;
       if (!session) {
         const created = await createInitiatorSession(
           input.identity,
@@ -327,6 +371,12 @@ export async function wrapContentKey(input: {
             ? {
                 id: input.remoteSignedPreKeyId,
                 publicKey: input.remoteSignedPreKeyPublicKey,
+              }
+            : undefined,
+          input.remoteOneTimePreKeyId && input.remoteOneTimePreKeyPublicKey
+            ? {
+                id: input.remoteOneTimePreKeyId,
+                publicKey: input.remoteOneTimePreKeyPublicKey,
               }
             : undefined,
         );

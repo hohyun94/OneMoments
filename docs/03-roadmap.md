@@ -78,7 +78,7 @@
 - [x] `/healthz`·`/readyz` 모니터링 + `/metrics`(Prometheus)
 - [x] 다중 인스턴스 팬아웃(Redis/Dragonfly) + 테스트
 - [x] 부하 테스트 스크립트·기준 측정
-- [x] 슬림 런타임 이미지(`pnpm deploy`, 556MB → 288MB)
+- [x] 슬림 런타임 이미지(`pnpm deploy`, 556MB → 288MB, S3 SDK 포함 312MB)
 
 ## Post-MVP 진행
 
@@ -94,8 +94,8 @@ MVP 이후 과제를 순차 진행한다.
 3. **Double Ratchet(v2)** — 완료
    - **X3DH**: 최초 v2 세션은 상대 signed prekey가 있으면 X3DH(3-DH)로 초기화한다. SPK private는 백업에 포함한다.
    - **X3DH signed prekey** 최초 세션 — 완료 · `docs/15-x3dh.md`
-   - 원타임 프리키(OPK)·SPK 주기 회전 — 대기
-   - 백업에 DR 세션·이력 키·SPK private 포함 · `docs/11-double-ratchet.md`
+   - **원타임 프리키(OPK)·SPK 30일 회전 — 완료**
+   - 백업에 DR 세션·이력 키·SPK/OPK private 포함 · `docs/11-double-ratchet.md`
 4. 푸시 알림·웹/PWA
    - **Web Push(VAPID)·PWA(오프라인 앱 셸, PNG 아이콘)·대화별 음소거 — 완료** · `docs/12-push-mobile.md`
    - **네이티브 앱 — 현재 제품 범위에서 제외**(참고 평가만 유지) · `docs/16-native-app.md`
@@ -103,6 +103,9 @@ MVP 이후 과제를 순차 진행한다.
    - Node `CONCURRENCY`, k6 HTTP 시나리오, `bench:crypto`
    - 로컬 200건/동시성 20: 302.6 msg/s, REST p95 103.5ms · `docs/13-performance.md`
 6. 후속: 읽지 않은 메시지 배지·읽음 커서, 그룹 관리(owner 역할), 대화 음소거, PWA 오프라인 — 완료
+   - 그룹 초대 링크 — 완료 · `docs/09-groups.md`
+   - 첨부 S3 옵션·고아 TTL 정리 — 완료 · `docs/10-attachments.md`
+   - 오프라인 캐시 버전 E2E — 완료 · `docs/12-push-mobile.md`
 
 ## 리스크
 

@@ -29,14 +29,18 @@ import {
   recoveryLookupBodySchema,
   registerBodySchema,
   signedPreKeyBodySchema,
+  oneTimePreKeysBodySchema,
 } from "../http/validation.js";
 import {
+  addOneTimePreKeys,
+  countUnusedOneTimePreKeys,
   deleteAccount,
   deleteSession,
   deleteSessionsForDevice,
   findActiveDevice,
   findUserById,
   listDevices,
+  listUnusedOneTimePreKeyIds,
   registerAccount,
   registerDevice,
   updateDeviceSignedPreKey,
@@ -172,6 +176,33 @@ export function createAuthRouter(db: Database, config: Config): Router {
         signedPreKey: keys.signedPreKey,
       });
       res.json({ device: toPublicDevice(device) });
+    }),
+  );
+
+  router.get(
+    "/device/prekeys/status",
+    session,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const count = await countUnusedOneTimePreKeys(db, auth.deviceId);
+      const oneTimePreKeyIds = await listUnusedOneTimePreKeyIds(db, auth.deviceId);
+      res.json({ oneTimePreKeyCount: count, oneTimePreKeyIds });
+    }),
+  );
+
+  router.post(
+    "/device/one-time-prekeys",
+    session,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = oneTimePreKeysBodySchema.parse(req.body);
+      await addOneTimePreKeys(db, {
+        deviceId: auth.deviceId,
+        keys: body.oneTimePreKeys,
+      });
+      const count = await countUnusedOneTimePreKeys(db, auth.deviceId);
+      const oneTimePreKeyIds = await listUnusedOneTimePreKeyIds(db, auth.deviceId);
+      res.status(201).json({ oneTimePreKeyCount: count, oneTimePreKeyIds });
     }),
   );
 

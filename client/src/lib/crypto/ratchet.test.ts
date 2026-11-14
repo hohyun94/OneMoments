@@ -5,6 +5,7 @@ import {
   decryptMessage,
   encryptMessage,
   fromBase64,
+  rotateSignedPreKeyIfNeeded,
   toBase64,
   type DecryptableMessage,
   type DeviceKeyEnvelope,
@@ -177,7 +178,53 @@ describe("double ratchet", () => {
     }
   });
 
+  it("rotates a signed prekey but keeps old envelopes decryptable", async () => {
+    const alice = withDevice(await createIdentityWithBackend("noble"), "rotate-alice");
+    const bob = withDevice(await createIdentityWithBackend("noble"), "rotate-bob");
+    const conversationId = crypto.randomUUID();
+    const oldSignedPreKeyId = bob.signedPreKeyId;
+    const oldOneTime = bob.oneTimePreKeys?.[0];
+    if (!oldOneTime) throw new Error("missing one-time prekey");
+
+    const payload = await encryptMessage({
+      identity: alice,
+      conversationId,
+      clientMessageId: "rotate-1",
+      plaintext: "회전 전 메시지",
+      recipients: [
+        {
+          deviceId: "rotate-bob",
+          identityPublicKey: bob.identityPublicKey,
+          signedPreKeyId: bob.signedPreKeyId,
+          signedPreKeyPublicKey: bob.signedPreKeyPublicKey,
+          oneTimePreKeyId: oldOneTime.id,
+          oneTimePreKeyPublicKey: oldOneTime.publicKey,
+        },
+      ],
+    });
+
+    const rotated = await rotateSignedPreKeyIfNeeded(bob, 0);
+    expect(rotated.signedPreKeyId).not.toBe(oldSignedPreKeyId);
+    expect(rotated.signedPreKeyHistory?.[0]?.id).toBe(oldSignedPreKeyId);
+    expect(rotated.oneTimePreKeys?.some((key) => key.id === oldOneTime.id)).toBe(true);
+
+    await expect(
+      decryptMessage({
+        identity: rotated,
+        message: message({
+          payload,
+          key: keyFor(payload, "rotate-bob"),
+          conversationId,
+          senderSigningPublicKey: alice.signingPublicKey,
+          senderDeviceId: "rotate-alice",
+          messageId: "rotate-m1",
+        }),
+      }),
+    ).resolves.toBe("회전 전 메시지");
+  });
+
   it("does not consume ratchet state for tampered messages", async () => {
+
     const alice = withDevice(await createIdentityWithBackend("noble"), "alice-device");
     const bob = withDevice(await createIdentityWithBackend("noble"), "bob-device");
     const conversationId = crypto.randomUUID();
@@ -234,6 +281,8 @@ describe("double ratchet", () => {
           identityPublicKey: bob.identityPublicKey,
           signedPreKeyId: bob.signedPreKeyId,
           signedPreKeyPublicKey: bob.signedPreKeyPublicKey,
+          oneTimePreKeyId: bob.oneTimePreKeys?.[0]?.id,
+          oneTimePreKeyPublicKey: bob.oneTimePreKeys?.[0]?.publicKey,
         },
       ];
 
@@ -249,6 +298,7 @@ describe("double ratchet", () => {
       if (bobKey.version !== 2) throw new Error("expected v2 envelope");
       expect(bobKey.senderIdentityPublicKey).toBe(alice.identityPublicKey);
       expect(bobKey.signedPreKeyId).toBe(bob.signedPreKeyId);
+      expect(bobKey.oneTimePreKeyId).toBe(bob.oneTimePreKeys?.[0]?.id);
 
       await expect(
         decryptMessage({

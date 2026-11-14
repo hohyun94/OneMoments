@@ -267,6 +267,8 @@ export function ChatView({
             identityPublicKey: device.identityPublicKey,
             signedPreKeyId: device.signedPreKeyId,
             signedPreKeyPublicKey: device.signedPreKeyPublicKey,
+            oneTimePreKeyId: device.oneTimePreKeyId,
+            oneTimePreKeyPublicKey: device.oneTimePreKeyPublicKey,
           })),
           memberCount: conversation.memberCount,
         });
@@ -287,6 +289,8 @@ export function ChatView({
           identityPublicKey: device.identityPublicKey,
           signedPreKeyId: device.signedPreKeyId,
           signedPreKeyPublicKey: device.signedPreKeyPublicKey,
+          oneTimePreKeyId: device.oneTimePreKeyId,
+          oneTimePreKeyPublicKey: device.oneTimePreKeyPublicKey,
         })),
       });
       const response = await api<{ message: MessageView }>(
@@ -375,6 +379,7 @@ export function ChatView({
     setSendError(null);
     setAttachmentError(null);
     try {
+      const clientMessageId = crypto.randomUUID();
       let plaintext = text;
       if (attachment) {
         // 파일은 1회용 키로 암호화하고, 키는 메시지 암호문 안에 넣어 전달한다.
@@ -386,6 +391,9 @@ export function ChatView({
             rawBody: new Blob([encrypted.ciphertext], {
               type: "application/octet-stream",
             }),
+            headers: {
+              "x-attachment-client-message-id": clientMessageId,
+            },
           },
         );
         plaintext = encodeAttachmentPayload({
@@ -400,7 +408,7 @@ export function ChatView({
       }
 
       const pending: PendingMessage = {
-        clientMessageId: crypto.randomUUID(),
+        clientMessageId,
         plaintext,
       };
       pendingRef.current = pending;

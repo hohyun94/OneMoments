@@ -1,4 +1,10 @@
-import { subtle, type DeviceIdentity, type IdentityBackend } from "./keys.ts";
+import {
+  subtle,
+  type DeviceIdentity,
+  type IdentityBackend,
+  type LocalOneTimePreKey,
+  type SignedPreKeyRecord,
+} from "./keys.ts";
 import { fromBase64, randomBytes, toBase64 } from "./encoding.ts";
 import type { HistoryKeyRecord, LocalCryptoState, RatchetSession } from "./ratchet.ts";
 import type { SenderKeySession } from "./senderKey.ts";
@@ -43,6 +49,15 @@ interface BackupPayload {
   signedPreKeyPublicKey?: string;
   signedPreKeyId?: string;
   signedPreKeySignature?: string;
+  signedPreKeyCreatedAt?: number;
+  signedPreKeyHistory?: Array<{
+    id: string;
+    privateKey: string;
+    publicKey: string;
+    signature: string;
+    createdAt: number;
+  }>;
+  oneTimePreKeys?: Array<{ id: string; privateKey: string; publicKey: string }>;
   /** Double Ratchet 세션 + 이력 키. 복구 후 기존 DR 이력을 읽기 위해 필요하다. */
   state?: LocalCryptoState;
   createdAt: string;
@@ -83,7 +98,7 @@ async function exportPrivateKey(key: CryptoKey | string): Promise<string> {
 async function importPrivateKey(
   backend: IdentityBackend,
   value: string,
-  kind: "identity" | "signing" | "signedPreKey",
+  kind: "identity" | "signing" | "signedPreKey" | "oneTimePreKey",
 ): Promise<CryptoKey | string> {
   if (backend === "noble") return value;
   return subtle().importKey(
@@ -121,6 +136,31 @@ export async function exportKeyBackup(
           signedPreKeyPublicKey: identity.signedPreKeyPublicKey,
           signedPreKeyId: identity.signedPreKeyId,
           signedPreKeySignature: identity.signedPreKeySignature,
+          signedPreKeyCreatedAt: identity.signedPreKeyCreatedAt,
+        }
+      : {}),
+    ...(identity.signedPreKeyHistory && identity.signedPreKeyHistory.length > 0
+      ? {
+          signedPreKeyHistory: await Promise.all(
+            identity.signedPreKeyHistory.map(async (record) => ({
+              id: record.id,
+              privateKey: await exportPrivateKey(record.privateKey),
+              publicKey: record.publicKey,
+              signature: record.signature,
+              createdAt: record.createdAt,
+            })),
+          ),
+        }
+      : {}),
+    ...(identity.oneTimePreKeys && identity.oneTimePreKeys.length > 0
+      ? {
+          oneTimePreKeys: await Promise.all(
+            identity.oneTimePreKeys.map(async (key) => ({
+              id: key.id,
+              privateKey: await exportPrivateKey(key.privateKey),
+              publicKey: key.publicKey,
+            })),
+          ),
         }
       : {}),
     ...(state ? { state } : {}),
@@ -201,10 +241,69 @@ export async function importKeyBackup(
       (typeof payload.signedPreKeyPrivate !== "string" ||
         typeof payload.signedPreKeyPublicKey !== "string" ||
         typeof payload.signedPreKeyId !== "string" ||
-        typeof payload.signedPreKeySignature !== "string"))
+        typeof payload.signedPreKeySignature !== "string")) ||
+    (payload.signedPreKeyCreatedAt !== undefined &&
+      typeof payload.signedPreKeyCreatedAt !== "number") ||
+    (payload.signedPreKeyHistory !== undefined &&
+      !Array.isArray(payload.signedPreKeyHistory)) ||
+    (payload.oneTimePreKeys !== undefined && !Array.isArray(payload.oneTimePreKeys))
   ) {
     throw new BackupError("format");
   }
+
+  const signedPreKeyHistory: SignedPreKeyRecord[] | undefined =
+    payload.signedPreKeyHistory?.map((record) => {
+      if (
+        typeof record.id !== "string" ||
+        typeof record.privateKey !== "string" ||
+        typeof record.publicKey !== "string" ||
+        typeof record.signature !== "string" ||
+        typeof record.createdAt !== "number"
+      ) {
+        throw new BackupError("format");
+      }
+      return {
+        id: record.id,
+        privateKey: record.privateKey,
+        publicKey: record.publicKey,
+        signature: record.signature,
+        createdAt: record.createdAt,
+      };
+    });
+  const importedHistory: SignedPreKeyRecord[] | undefined = signedPreKeyHistory
+    ? await Promise.all(
+        signedPreKeyHistory.map(async (record) => ({
+          ...record,
+          privateKey: await importPrivateKey(
+            payload.backend,
+            record.privateKey as string,
+            "signedPreKey",
+          ),
+        })),
+      )
+    : undefined;
+  const oneTimePreKeys: LocalOneTimePreKey[] | undefined = payload.oneTimePreKeys
+    ? await Promise.all(
+        payload.oneTimePreKeys.map(async (key) => {
+          if (
+            typeof key.id !== "string" ||
+            typeof key.privateKey !== "string" ||
+            typeof key.publicKey !== "string"
+          ) {
+            throw new BackupError("format");
+          }
+          return {
+            id: key.id,
+            privateKey: await importPrivateKey(
+              payload.backend,
+              key.privateKey,
+              "oneTimePreKey",
+            ),
+            publicKey: key.publicKey,
+          };
+        }),
+      )
+    : undefined;
 
   const state: LocalCryptoState | null =
     payload.state &&
@@ -268,7 +367,10 @@ export async function importKeyBackup(
           signedPreKeyPublicKey: payload.signedPreKeyPublicKey,
           signedPreKeyId: payload.signedPreKeyId,
           signedPreKeySignature: payload.signedPreKeySignature,
+          signedPreKeyCreatedAt: payload.signedPreKeyCreatedAt,
         }
       : {}),
+    ...(importedHistory ? { signedPreKeyHistory: importedHistory } : {}),
+    ...(oneTimePreKeys ? { oneTimePreKeys } : {}),
   };
 }

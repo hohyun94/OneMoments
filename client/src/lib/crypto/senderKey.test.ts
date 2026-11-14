@@ -48,6 +48,8 @@ describe("sender keys", () => {
       identityPublicKey: identity.identityPublicKey,
       signedPreKeyId: identity.signedPreKeyId,
       signedPreKeyPublicKey: identity.signedPreKeyPublicKey,
+      oneTimePreKeyId: identity.oneTimePreKeys?.[0]?.id,
+      oneTimePreKeyPublicKey: identity.oneTimePreKeys?.[0]?.publicKey,
     }));
 
     const first = await prepareSenderKeyMessage({

@@ -25,12 +25,13 @@ export interface RequestOptions {
   body?: unknown;
   /** 바이너리 업로드(application/octet-stream). body 와 동시에 쓰지 않는다. */
   rawBody?: Blob | ArrayBuffer;
+  headers?: Record<string, string>;
   csrf?: boolean;
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const method = options.method ?? "GET";
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...options.headers };
   const isRaw = options.rawBody !== undefined;
   if (isRaw) {
     headers["content-type"] =

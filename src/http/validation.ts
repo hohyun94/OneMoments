@@ -30,11 +30,21 @@ export const signedPreKeySchema = z.object({
   signature: publicKeySchema,
 });
 
+export const oneTimePreKeysSchema = z
+  .array(
+    z.object({
+      id: z.string().uuid(),
+      publicKey: publicKeySchema,
+    }),
+  )
+  .max(200);
+
 export const deviceKeysSchema = z.object({
   name: deviceNameSchema,
   identityPublicKey: publicKeySchema,
   signingPublicKey: publicKeySchema,
   signedPreKey: signedPreKeySchema.optional(),
+  oneTimePreKeys: oneTimePreKeysSchema.optional(),
 });
 
 export const registerBodySchema = z.object({
@@ -45,6 +55,10 @@ export const registerBodySchema = z.object({
 
 export const signedPreKeyBodySchema = z.object({
   signedPreKey: signedPreKeySchema,
+});
+
+export const oneTimePreKeysBodySchema = z.object({
+  oneTimePreKeys: oneTimePreKeysSchema.min(1),
 });
 
 export const loginBodySchema = z.object({
@@ -105,6 +119,7 @@ export const sendMessageBodySchema = z.object({
         messageNumber: z.number().int().min(0).optional(),
         senderIdentityPublicKey: z.string().min(1).optional(),
         signedPreKeyId: z.string().uuid().optional(),
+        oneTimePreKeyId: z.string().uuid().optional(),
         wrappedKey: z.string().min(1),
         wrapNonce: z.string().min(1),
         distributionCiphertext: z.string().min(1).optional(),
@@ -118,6 +133,15 @@ export const sendMessageBodySchema = z.object({
     .max(200),
   senderKeyId: z.string().uuid().optional(),
   senderKeyIteration: z.number().int().min(0).optional(),
+});
+
+export const createInviteBodySchema = z.object({
+  expiresInSeconds: z.number().int().min(300).max(30 * 24 * 60 * 60).optional(),
+  maxUses: z.number().int().min(1).max(20).optional(),
+});
+
+export const inviteTokenParamsSchema = z.object({
+  token: z.string().min(20).max(120),
 });
 
 export const deleteAccountBodySchema = z.object({

@@ -30,7 +30,9 @@
 | GET | `/api/conversations` | 요약: `kind`, `name`, `peer`(direct), `members`(나 제외), `memberCount` |
 | GET | `/api/conversations/:id` | 단일 요약(참여자만) |
 | POST | `/api/conversations/:id/members` | `{userIds:[...]}` 참여자 추가(멱등) |
-| GET | `/api/conversations/:id/devices` | 참여자 전체 활성 기기 공개키 |
+| GET | `/api/conversations/:id/devices` | 참여자 전체 활성 기기 공개키 + SPK/OPK |
+| POST | `/api/conversations/:id/invites` | 소유자만. 7일·최대 10명 초대 토큰 생성 |
+| POST | `/api/invites/:token/accept` | 로그인 사용자가 초대 수락(멱등) |
 
 오류: `INVALID_GROUP_MEMBERS`(400, 자기 자신/빈 목록), `USER_NOT_FOUND`(400),
 `NOT_GROUP_CONVERSATION`(400), `GROUP_FULL`(409), `CONVERSATION_NOT_FOUND`(404, 비참여자).
@@ -43,6 +45,7 @@
 - 말풍선: 발신자 이름 표시. 삭제된 계정은 “삭제된 사용자”.
 - 안전번호: 참여자 전체 기기 공개키로 계산. 기기/참여자가 바뀌면 번호가 바뀐다.
 - 헤더의 **알림 켜짐/꺼짐**: 대화별 푸시 음소거(사용자별).
+- 그룹 설정의 **초대 링크 만들기**: `/join/:token` 링크를 복사해 공유. 링크를 연 사용자는 수락 후 그룹으로 이동.
 
 ## 5. 한계
 
@@ -52,7 +55,7 @@
 - **소유자(owner)**: 그룹 생성자. 참여자 추가·이름 변경 가능. 나가면 가장 먼저 참여한 남은 참여자에게 자동 이전.
 - 일반 참여자는 메시지 전송·나가기만 가능하고, 이름 변경·참여자 추가는 403.
 - 새 참여자는 role='member'로 추가된다.
-- 관리자 역할 세분화·초대 링크는 아직 없다.
+- **초대 링크**: 7일·최대 10명 기본, 소유자만 생성. 링크를 아는 사람은 참여 가능하므로 신뢰 범위에서 공유한다.
 - 그룹 이름·참여자 목록은 서버 메타데이터로 노출된다(메시지 내용만 E2E).
 - 새 참여자는 과거 이력을 받지 못한다. 이력 이전은 별도 설계가 필요하다.
 

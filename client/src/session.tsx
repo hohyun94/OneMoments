@@ -11,7 +11,8 @@ import {
 import { ApiError, api, setCsrfToken } from "./lib/api.ts";
 import {
   createIdentity,
-  ensureSignedPreKey,
+  replenishOneTimePreKeys,
+  rotateSignedPreKeyIfNeeded,
   importKeyBackup,
   importLocalCryptoState,
   signPayload,
@@ -59,7 +60,12 @@ function deviceName(): string {
 
 function signedPreKeyBody(identity: StoredIdentity): {
   signedPreKey?: { id: string; publicKey: string; signature: string };
+  oneTimePreKeys?: Array<{ id: string; publicKey: string }>;
 } {
+  const oneTimePreKeys = (identity.oneTimePreKeys ?? []).map((key) => ({
+    id: key.id,
+    publicKey: key.publicKey,
+  }));
   if (
     identity.signedPreKeyId &&
     identity.signedPreKeyPublicKey &&
@@ -71,9 +77,10 @@ function signedPreKeyBody(identity: StoredIdentity): {
         publicKey: identity.signedPreKeyPublicKey,
         signature: identity.signedPreKeySignature,
       },
+      ...(oneTimePreKeys.length > 0 ? { oneTimePreKeys } : {}),
     };
   }
-  return {};
+  return oneTimePreKeys.length > 0 ? { oneTimePreKeys } : {};
 }
 
 async function uploadSignedPreKey(identity: StoredIdentity): Promise<void> {
@@ -97,6 +104,37 @@ async function uploadSignedPreKey(identity: StoredIdentity): Promise<void> {
   }).catch(() => undefined);
 }
 
+async function uploadOneTimePreKeys(identity: StoredIdentity): Promise<void> {
+  const oneTimePreKeys = (identity.oneTimePreKeys ?? []).map((key) => ({
+    id: key.id,
+    publicKey: key.publicKey,
+  }));
+  if (oneTimePreKeys.length === 0) return;
+  await api("/api/auth/device/one-time-prekeys", {
+    method: "POST",
+    csrf: false,
+    body: { oneTimePreKeys },
+  }).catch(() => undefined);
+}
+
+interface PreKeyStatus {
+  oneTimePreKeyCount: number;
+  oneTimePreKeyIds: string[];
+}
+
+async function syncPreKeys(identity: StoredIdentity): Promise<StoredIdentity> {
+  let serverIds: string[] = [];
+  try {
+    const status = await api<PreKeyStatus>("/api/auth/device/prekeys/status");
+    serverIds = status.oneTimePreKeyIds ?? [];
+  } catch {
+    // 상태 조회 실패 시 로컬 보유분을 유지한 채 보충한다.
+  }
+  const rotated = await rotateSignedPreKeyIfNeeded(identity);
+  const replenished = await replenishOneTimePreKeys(rotated, serverIds);
+  return { ...replenished, username: identity.username };
+}
+
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [session, setSession] = useState<Session | null>(null);
@@ -116,24 +154,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           setStatus("missing-keys");
           return;
         }
-        const ensured: StoredIdentity = {
-          ...(await ensureSignedPreKey(stored)),
-          username: stored.username,
-        };
+        const ensured = await syncPreKeys(stored);
         const updated: StoredIdentity = {
           ...ensured,
           deviceId: me.deviceId,
           userId: me.user.id,
         };
-        if (
+        const keysChanged =
           updated.signedPreKeyId !== stored.signedPreKeyId ||
-          stored.deviceId !== me.deviceId ||
-          stored.userId !== me.user.id
-        ) {
+          (updated.oneTimePreKeys ?? []).map((key) => key.id).join(",") !==
+            (stored.oneTimePreKeys ?? []).map((key) => key.id).join(",");
+        if (keysChanged || stored.deviceId !== me.deviceId || stored.userId !== me.user.id) {
           await saveIdentity(updated);
         }
-        if (updated.signedPreKeyId !== stored.signedPreKeyId) {
+        if (keysChanged) {
           void uploadSignedPreKey(updated);
+          void uploadOneTimePreKeys(updated);
         }
         setIdentity(updated);
         setSession({ user: me.user, deviceId: me.deviceId });

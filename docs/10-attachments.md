@@ -31,7 +31,23 @@ onemoments:attachment:v1:<base64(JSON)>
 | 경로 | `ATTACHMENT_DIR/<attachmentId>.bin` (UUID만 사용) |
 | 크기 제한 | 클라이언트 5MB, 서버 암호문 `ATTACHMENT_MAX_BYTES` 기본 8MB |
 
-## 3. API
+## 3. 저장소
+
+| 항목 | 로컬(기본) | S3 호환 |
+|---|---|---|
+| 설정 | `ATTACHMENT_STORAGE=local` | `ATTACHMENT_STORAGE=s3` |
+| 경로 | `ATTACHMENT_DIR/<id>.bin` | `s3://<bucket>/attachments/<id>.bin` |
+| 자격 | 파일 시스템 볼륨 | IAM 역할 또는 `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY` |
+| 엔드포인트 | - | `S3_ENDPOINT`(MinIO/R2 등), `S3_FORCE_PATH_STYLE` |
+
+- 업로드 시 `x-attachment-client-message-id` 헤더로 메시지와 예약 연결한다.
+- 메시지가 저장되면 서버가 `attachments.message_id`를 채운다(파일 내용·이름은 여전히 모른다).
+- `pnpm attachments:cleanup`은 **메시지에 연결되지 않은 채 TTL이 지난 업로드**만 삭제한다.
+  - `ATTACHMENT_TTL_DAYS` 기본 30일.
+  - 구버전(연결 정보 없는) 첨부는 삭제 대상이 아니다.
+- S3를 쓰면 로컬 `attachments` 볼륨은 필요 없지만, DB 백업은 여전히 필요하다.
+
+## 4. API
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
@@ -51,11 +67,10 @@ onemoments:attachment:v1:<base64(JSON)>
 
 ## 5. 한계·운영
 
-- **첨부는 DB 밖에 있다.** PostgreSQL 백업과 `ATTACHMENT_DIR`(compose `attachments` 볼륨)을 함께 백업해야 한다.
+- **첨부는 DB 밖에 있다.** PostgreSQL 백업과 첨부 저장소(로컬 `ATTACHMENT_DIR` 또는 S3 버킷)를 함께 백업해야 한다.
   `docs/07-backup-restore.md` 참고.
-- 업로드 후 메시지 전송이 실패하면 **고아 암호문**이 남을 수 있다. 주기적 정리 작업은 아직 없다.
-- 첨부 ID는 암호화된 메시지에만 있어 서버가 메시지↔첨부를 연결하지 않는다(메타데이터 최소화).
-  대신 같은 대화 참여자면 ID를 아는 경우 다운로드할 수 있다(UUID 추측 불가).
+- 업로드 후 메시지 전송이 실패하면 고아 암호문이 남을 수 있다. `pnpm attachments:cleanup`을 주기적으로 실행한다.
+- 첨부 ID는 암호화된 메시지에만 있고, 서버는 `clientMessageId → message_id` 연결만 안다(파일 이름·MIME·키는 모른다).
 - 사진 미리보기·스트리밍·Range 요청은 없다(최대 8MB 전체 메모리 로드).
 - 악성코드 검사는 하지 않는다(E2E라 서버가 내용을 볼 수 없음). 다운로드 후 사용자 책임.
 - 파일 크기·업로드 횟수 제한은 있지만 사용자별 저장 용량 쿼터는 없다.

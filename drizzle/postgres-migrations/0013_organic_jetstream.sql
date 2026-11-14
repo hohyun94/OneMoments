@@ -1,0 +1,1 @@
+ALTER TABLE "message_keys" ADD COLUMN "one_time_pre_key_id" text;

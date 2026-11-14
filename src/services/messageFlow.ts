@@ -94,6 +94,8 @@ export async function sendEncryptedMessage(
             signedPreKeyId: device.signedPreKeyId,
             signedPreKeyPublicKey: device.signedPreKeyPublicKey,
             signedPreKeySignature: device.signedPreKeySignature,
+            oneTimePreKeyId: device.oneTimePreKeyId,
+            oneTimePreKeyPublicKey: device.oneTimePreKeyPublicKey,
           })),
         },
       );

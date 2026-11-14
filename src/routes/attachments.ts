@@ -6,12 +6,17 @@ import { AppError, asyncHandler } from "../http/errors.js";
 import { getAuth, requireSession } from "../http/middleware.js";
 import { attachmentIdParamsSchema } from "../http/validation.js";
 import { requireParticipant } from "../services/conversations.js";
-import { findAttachment, readAttachmentBlob } from "../services/attachments.js";
+import {
+  createAttachmentStorage,
+  findAttachment,
+  markAttachmentAccessed,
+} from "../services/attachments.js";
 
 /** 참여자만 첨부 암호문을 내려받을 수 있다. 서버는 복호화하지 않는다. */
 export function createAttachmentsRouter(db: Database, config: Config): Router {
   const router = Router();
   const session = requireSession(db);
+  const storage = createAttachmentStorage(config);
 
   router.get(
     "/:attachmentId",
@@ -30,10 +35,11 @@ export function createAttachmentsRouter(db: Database, config: Config): Router {
 
       let data: Buffer;
       try {
-        data = await readAttachmentBlob(config.attachmentDir, attachment.id);
+        data = await storage.get(attachment.id);
       } catch {
         throw AppError.notFound("ATTACHMENT_NOT_FOUND", "Attachment not found");
       }
+      await markAttachmentAccessed(db, attachment.id);
 
       res.setHeader("Content-Type", "application/octet-stream");
       res.setHeader("Content-Length", String(data.byteLength));

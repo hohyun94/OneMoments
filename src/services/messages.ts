@@ -1,8 +1,10 @@
-import { and, desc, eq, gte, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
+  attachments,
   conversationParticipants,
+  deviceOneTimePreKeys,
   messageKeys,
   messages,
   type MessageKeyRow,
@@ -76,7 +78,53 @@ export async function createMessage(
         .select()
         .from(messageKeys)
         .where(eq(messageKeys.messageId, existing.id));
+      await tx
+        .update(attachments)
+        .set({ messageId: existing.id })
+        .where(
+          and(
+            eq(attachments.conversationId, input.conversationId),
+            eq(attachments.uploaderUserId, input.senderUserId),
+            eq(attachments.messageClientId, payload.clientMessageId),
+            isNull(attachments.messageId),
+          ),
+        );
       return { message: existing, keys: existingKeys, created: false };
+    }
+
+    for (const key of payload.keys) {
+      if (key.version !== 2 || !key.oneTimePreKeyId) continue;
+      const [preKey] = await tx
+        .select({
+          keyId: deviceOneTimePreKeys.keyId,
+          usedAt: deviceOneTimePreKeys.usedAt,
+        })
+        .from(deviceOneTimePreKeys)
+        .where(
+          and(
+            eq(deviceOneTimePreKeys.deviceId, key.deviceId),
+            eq(deviceOneTimePreKeys.keyId, key.oneTimePreKeyId),
+          ),
+        )
+        .limit(1);
+      if (!preKey) {
+        throw AppError.conflict(
+          "PREKEY_CONSUMED",
+          "Unknown one-time prekey; refresh the device bundle",
+        );
+      }
+      if (!preKey.usedAt) {
+        await tx
+          .update(deviceOneTimePreKeys)
+          .set({ usedAt: new Date() })
+          .where(
+            and(
+              eq(deviceOneTimePreKeys.deviceId, key.deviceId),
+              eq(deviceOneTimePreKeys.keyId, key.oneTimePreKeyId),
+              isNull(deviceOneTimePreKeys.usedAt),
+            ),
+          );
+      }
     }
 
     const keys =
@@ -97,6 +145,8 @@ export async function createMessage(
                   key.version === 2 ? (key.senderIdentityPublicKey ?? null) : null,
                 signedPreKeyId:
                   key.version === 2 ? (key.signedPreKeyId ?? null) : null,
+                oneTimePreKeyId:
+                  key.version === 2 ? (key.oneTimePreKeyId ?? null) : null,
                 distributionCiphertext:
                   key.distribution !== undefined ? key.distribution.ciphertext : null,
                 distributionNonce: key.distribution !== undefined ? key.distribution.nonce : null,
@@ -106,6 +156,18 @@ export async function createMessage(
               })),
             )
             .returning();
+
+    await tx
+      .update(attachments)
+      .set({ messageId: inserted.id })
+      .where(
+        and(
+          eq(attachments.conversationId, input.conversationId),
+          eq(attachments.uploaderUserId, input.senderUserId),
+          eq(attachments.messageClientId, payload.clientMessageId),
+          isNull(attachments.messageId),
+        ),
+      );
 
     return { message: inserted, keys, created: true };
   });

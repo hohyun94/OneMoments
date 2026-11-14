@@ -251,14 +251,17 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
   const bobContext = await browser.newContext();
   const carolContext = await browser.newContext();
   const daveContext = await browser.newContext();
+  const erinContext = await browser.newContext();
   const alice = await aliceContext.newPage();
   const bob = await bobContext.newPage();
   const carol = await carolContext.newPage();
   const dave = await daveContext.newPage();
+  const erin = await erinContext.newPage();
   const aliceName = uniqueName("alice");
   const bobName = uniqueName("bob");
   const carolName = uniqueName("carol");
   const daveName = uniqueName("dave");
+  const erinName = uniqueName("erin");
   let groupName = `group-${Date.now().toString(36)}`;
 
   try {
@@ -266,6 +269,7 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
     await register(bob, bobName);
     await register(carol, carolName);
     await register(dave, daveName);
+    await register(erin, erinName);
     await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
 
     await startGroup(alice, groupName, [bobName, carolName]);
@@ -353,11 +357,26 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
         .getByRole("navigation", { name: "대화 목록" })
         .getByRole("button", { name: new RegExp(groupName) }),
     ).toHaveCount(0);
+
+    // 초대 링크로 새 참여자 합류
+    await alice.getByRole("button", { name: "그룹 설정" }).click();
+    const inviteSettings = alice.getByRole("dialog", { name: "그룹 설정" });
+    await inviteSettings.getByRole("button", { name: "초대 링크 만들기" }).click();
+    const inviteInput = inviteSettings.getByLabel("그룹 초대 링크");
+    await expect(inviteInput).toBeVisible();
+    const inviteUrl = await inviteInput.inputValue();
+    expect(inviteUrl).toContain("/join/");
+    await alice.keyboard.press("Escape");
+
+    await erin.goto(inviteUrl);
+    await expect(erin.getByRole("heading", { name: groupName })).toBeVisible();
+    await expect(erin.getByText("4명 · 종단간 암호화").first()).toBeVisible();
   } finally {
     await aliceContext.close();
     await bobContext.close();
     await carolContext.close();
     await daveContext.close();
+    await erinContext.close();
   }
 });
 
@@ -400,6 +419,7 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe(fileName);
     const downloadPath = await download.path();
+
     expect(downloadPath).not.toBeNull();
     expect(await readFile(downloadPath as string, "utf8")).toBe(content);
 
@@ -407,12 +427,13 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
     const client = new pg.Client({ connectionString: DATABASE_URL });
     await client.connect();
     try {
-      const { rows } = await client.query<{ id: string }>(
-        "select id from attachments order by created_at desc limit 1",
+      const { rows } = await client.query<{ id: string; message_id: string | null }>(
+        "select id, message_id from attachments order by created_at desc limit 1",
       );
       expect(rows).toHaveLength(1);
       const attachmentId = rows[0]?.id;
       if (!attachmentId) throw new Error("missing attachment row");
+      expect(rows[0]?.message_id).toBeTruthy();
 
       const stored = await readFile(`data/attachments/${attachmentId}.bin`);
       expect(stored.toString("utf8")).not.toContain(content);
@@ -432,3 +453,27 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
     await bobContext.close();
   }
 });
+
+test("offline: 오프라인 앱 셸과 서비스 워커 캐시 버전을 검증한다", async ({
+  context,
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  const cacheNames = await page.evaluate(() => caches.keys());
+  expect(cacheNames).toContain("onemoments-static-v3");
+  const cachedPaths = await page.evaluate(async () => {
+    const cache = await caches.open("onemoments-static-v3");
+    return (await cache.keys()).map((request) => new URL(request.url).pathname);
+  });
+  expect(cachedPaths).toContain("/");
+  expect(cachedPaths.some((path) => path.startsWith("/assets/"))).toBe(true);
+
+  await context.setOffline(true);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "OneMoments" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "로그인" }).last(),
+  ).toBeVisible();
+});
+

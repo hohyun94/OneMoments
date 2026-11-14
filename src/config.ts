@@ -26,8 +26,14 @@ const envSchema = z.object({
   MESSAGE_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000),
   SEARCH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(30),
   SEARCH_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(1000).default(60000),
-  METRICS_TOKEN: z.string().min(16).optional(),
-  REDIS_URL: z.string().url().optional(),
+  METRICS_TOKEN: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(16).optional(),
+  ),
+  REDIS_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
   REDIS_CHANNEL: z.string().min(1).default("onemoments:events"),
   BACKUP_MAX_BYTES: z.coerce
     .number()
@@ -43,6 +49,26 @@ const envSchema = z.object({
     .max(25 * 1024 * 1024)
     .default(8 * 1024 * 1024),
   ATTACHMENT_DIR: z.string().min(1).default("./data/attachments"),
+  ATTACHMENT_STORAGE: z.enum(["local", "s3"]).default("local"),
+  ATTACHMENT_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(30),
+  S3_BUCKET: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  S3_REGION: z.string().min(1).default("us-east-1"),
+  S3_ENDPOINT: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
+  S3_ACCESS_KEY_ID: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  S3_SECRET_ACCESS_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  S3_FORCE_PATH_STYLE: z.enum(["true", "false"]).default("false"),
   VAPID_PUBLIC_KEY: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().min(1).optional(),
@@ -81,6 +107,14 @@ export interface Config {
   recoveryChallengeTtlSeconds: number;
   attachmentMaxBytes: number;
   attachmentDir: string;
+  attachmentStorage: "local" | "s3";
+  attachmentTtlDays: number;
+  s3Bucket: string | null;
+  s3Region: string;
+  s3Endpoint: string | null;
+  s3AccessKeyId: string | null;
+  s3SecretAccessKey: string | null;
+  s3ForcePathStyle: boolean;
   vapidPublicKey: string | null;
   vapidPrivateKey: string | null;
   vapidSubject: string;
@@ -102,6 +136,12 @@ export function loadConfig(env: Env = process.env): Config {
   const value = parsed.data;
   if (Boolean(value.VAPID_PUBLIC_KEY) !== Boolean(value.VAPID_PRIVATE_KEY)) {
     throw new Error("VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY must be set together");
+  }
+  if (value.ATTACHMENT_STORAGE === "s3" && !value.S3_BUCKET) {
+    throw new Error("S3_BUCKET is required when ATTACHMENT_STORAGE=s3");
+  }
+  if (Boolean(value.S3_ACCESS_KEY_ID) !== Boolean(value.S3_SECRET_ACCESS_KEY)) {
+    throw new Error("S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY must be set together");
   }
   if (!/^(mailto:|https:\/\/)/.test(value.VAPID_SUBJECT)) {
     throw new Error("VAPID_SUBJECT must start with mailto: or https://");
@@ -143,6 +183,14 @@ export function loadConfig(env: Env = process.env): Config {
     recoveryChallengeTtlSeconds: value.RECOVERY_CHALLENGE_TTL_SECONDS,
     attachmentMaxBytes: value.ATTACHMENT_MAX_BYTES,
     attachmentDir: value.ATTACHMENT_DIR,
+    attachmentStorage: value.ATTACHMENT_STORAGE,
+    attachmentTtlDays: value.ATTACHMENT_TTL_DAYS,
+    s3Bucket: value.S3_BUCKET ?? null,
+    s3Region: value.S3_REGION,
+    s3Endpoint: value.S3_ENDPOINT ?? null,
+    s3AccessKeyId: value.S3_ACCESS_KEY_ID ?? null,
+    s3SecretAccessKey: value.S3_SECRET_ACCESS_KEY ?? null,
+    s3ForcePathStyle: value.S3_FORCE_PATH_STYLE === "true",
     vapidPublicKey: value.VAPID_PUBLIC_KEY ?? null,
     vapidPrivateKey: value.VAPID_PRIVATE_KEY ?? null,
     vapidSubject: value.VAPID_SUBJECT,

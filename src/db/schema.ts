@@ -75,6 +75,24 @@ export const devices = pgTable(
   (table) => [index("devices_user_idx").on(table.userId)],
 );
 
+export const deviceOneTimePreKeys = pgTable(
+  "device_one_time_pre_keys",
+  {
+    deviceId: uuid("device_id")
+      .notNull()
+      .references(() => devices.id, { onDelete: "cascade" }),
+    keyId: uuid("key_id").notNull(),
+    publicKey: text("public_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // 메시지 저장 트랜잭션에서 한 번만 소비한다.
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.deviceId, table.keyId] }),
+    index("device_one_time_pre_keys_device_idx").on(table.deviceId, table.usedAt),
+  ],
+);
+
 export const conversations = pgTable(
   "conversations",
   {
@@ -177,6 +195,8 @@ export const messageKeys = pgTable(
     // X3DH 초기 봉투: 발신자 IK와 사용한 signed prekey ID(둘 다 없으면 legacy v2)
     senderIdentityPublicKey: text("sender_identity_public_key"),
     signedPreKeyId: text("signed_pre_key_id"),
+    // X3DH 원타임 프리키(서버가 메시지 저장 시 1회 소비)
+    oneTimePreKeyId: text("one_time_pre_key_id"),
     // Sender Keys 최초 배포: sender key 체인 상태를 암호화한 블롭(수신 기기별 복호화)
     distributionCiphertext: text("distribution_ciphertext"),
     distributionNonce: text("distribution_nonce"),
@@ -252,9 +272,18 @@ export const attachments = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     // 암호문 크기만 저장한다. 파일 이름·MIME·키는 메시지 암호문 안에만 있다.
     size: integer("size").notNull(),
+    // 업로드 시 예약한 메시지 clientMessageId. 메시지 저장 시 messageId로 연결된다.
+    messageClientId: text("message_client_id"),
+    messageId: uuid("message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("attachments_conversation_idx").on(table.conversationId)],
+  (table) => [
+    index("attachments_conversation_idx").on(table.conversationId),
+    index("attachments_message_client_idx").on(table.messageClientId),
+  ],
 );
 
 export const pushSubscriptions = pgTable(
@@ -278,6 +307,29 @@ export const pushSubscriptions = pgTable(
   (table) => [
     uniqueIndex("push_subscriptions_endpoint_uq").on(table.endpoint),
     index("push_subscriptions_user_idx").on(table.userId),
+  ],
+);
+
+export const conversationInvites = pgTable(
+  "conversation_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    maxUses: integer("max_uses").notNull().default(10),
+    uses: integer("uses").notNull().default(0),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("conversation_invites_token_uq").on(table.tokenHash),
+    index("conversation_invites_conversation_idx").on(table.conversationId),
   ],
 );
 

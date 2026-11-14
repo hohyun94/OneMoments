@@ -52,6 +52,7 @@ export type DeviceKeyEnvelope =
       messageNumber: number;
       senderIdentityPublicKey?: string;
       signedPreKeyId?: string;
+      oneTimePreKeyId?: string;
       wrappedKey: string;
       wrapNonce: string;
       distribution?: { ciphertext: string; nonce: string };
@@ -86,6 +87,8 @@ export interface ActiveDevice {
   signedPreKeyId?: string | null;
   signedPreKeyPublicKey?: string | null;
   signedPreKeySignature?: string | null;
+  oneTimePreKeyId?: string | null;
+  oneTimePreKeyPublicKey?: string | null;
 }
 
 export interface AuthResponse {

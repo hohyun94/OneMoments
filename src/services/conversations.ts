@@ -5,6 +5,7 @@ import {
   conversationParticipants,
   conversationReads,
   conversations,
+  deviceOneTimePreKeys,
   devices,
   messages,
   users,
@@ -514,6 +515,8 @@ export interface ActiveDeviceKey {
   signedPreKeyId: string | null;
   signedPreKeyPublicKey: string | null;
   signedPreKeySignature: string | null;
+  oneTimePreKeyId: string | null;
+  oneTimePreKeyPublicKey: string | null;
 }
 
 export async function listParticipantUserIds(
@@ -551,7 +554,39 @@ export async function listActiveDeviceKeys(
     })
     .from(devices)
     .where(and(inArray(devices.userId, userIds), isNull(devices.revokedAt)))
-    .orderBy(devices.createdAt, devices.id);
+    .orderBy(devices.createdAt, devices.id)
+    .then(async (activeDevices) => {
+      if (activeDevices.length === 0) return [];
+      const preKeys = await db
+        .select({
+          deviceId: deviceOneTimePreKeys.deviceId,
+          keyId: deviceOneTimePreKeys.keyId,
+          publicKey: deviceOneTimePreKeys.publicKey,
+        })
+        .from(deviceOneTimePreKeys)
+        .where(
+          and(
+            inArray(
+              deviceOneTimePreKeys.deviceId,
+              activeDevices.map((device) => device.id),
+            ),
+            isNull(deviceOneTimePreKeys.usedAt),
+          ),
+        )
+        .orderBy(deviceOneTimePreKeys.createdAt, deviceOneTimePreKeys.keyId);
+      const firstPreKey = new Map<string, { keyId: string; publicKey: string }>();
+      for (const preKey of preKeys) {
+        if (!firstPreKey.has(preKey.deviceId)) firstPreKey.set(preKey.deviceId, preKey);
+      }
+      return activeDevices.map((device) => {
+        const preKey = firstPreKey.get(device.id);
+        return {
+          ...device,
+          oneTimePreKeyId: preKey?.keyId ?? null,
+          oneTimePreKeyPublicKey: preKey?.publicKey ?? null,
+        };
+      });
+    });
 }
 
 export async function isParticipant(

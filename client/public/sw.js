@@ -1,5 +1,5 @@
 /* OneMoments 서비스 워커 — 정적 앱 셸 캐시와 Web Push 알림을 담당한다. */
-const CACHE_NAME = "onemoments-static-v2";
+const CACHE_NAME = "onemoments-static-v3";
 const PRECACHE = [
   "/",
   "/manifest.webmanifest",
@@ -9,13 +9,35 @@ const PRECACHE = [
   "/apple-touch-icon.png",
 ];
 
+async function precache() {
+  const cache = await caches.open(CACHE_NAME);
+  await cache.addAll(PRECACHE);
+  // 첫 방문에서도 오프라인 앱 셸이 동작하도록 index.html의 해시 자산을 함께 캐시한다.
+  try {
+    const response = await fetch("/");
+    if (!response.ok) return;
+    await cache.put("/", response.clone());
+    const html = await response.text();
+    const assets = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    await Promise.all(
+      assets.map(async (asset) => {
+        try {
+          const assetResponse = await fetch(asset);
+          if (assetResponse.ok) await cache.put(asset, assetResponse);
+        } catch {
+          // 한 자산 실패가 전체 설치를 막지 않게 한다.
+        }
+      }),
+    );
+  } catch {
+    // 오프라인 설치 시도는 다음 방문에서 보완된다.
+  }
+}
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil(precache().then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {

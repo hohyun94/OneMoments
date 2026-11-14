@@ -17,6 +17,7 @@ import { createAttachmentsRouter } from "./routes/attachments.js";
 import { createConversationsRouter } from "./routes/conversations.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
 import { createPushRouter } from "./routes/push.js";
+import { createInvitesRouter } from "./routes/invites.js";
 
 export interface AppOptions {
   db: Database;
@@ -33,9 +34,9 @@ function corsMiddleware(origins: string[]): RequestHandler {
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader(
         "Access-Control-Allow-Headers",
-        "Content-Type, X-CSRF-Token",
+        "Content-Type, X-CSRF-Token, X-Attachment-Client-Message-Id",
       );
-      res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
       res.setHeader("Access-Control-Max-Age", "600");
     }
     if (req.method === "OPTIONS") {
@@ -114,6 +115,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/devices", createDevicesRouter(db, config));
   app.use("/api/users", createUsersRouter(db, config));
   app.use("/api/push", createPushRouter(db, config));
+  app.use("/api/invites", createInvitesRouter({ db, config }));
   app.use("/api/attachments", createAttachmentsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));
 

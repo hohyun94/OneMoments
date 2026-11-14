@@ -110,12 +110,11 @@ pnpm bench:crypto
 
 ## 7. 첨부 저장소
 
-- 첨부 암호문은 DB가 아니라 `ATTACHMENT_DIR`(기본 `./data/attachments`, compose `attachments` 볼륨)에 저장된다.
-- 컨테이너는 `node` 사용자로 실행되며 이미지 빌드 시 `/app/data/attachments` 소유권을 맞춘다.
-  볼륨을 붙일 때도 쓰기 권한을 확인한다.
-- 제한: 서버 암호문 8MB(`ATTACHMENT_MAX_BYTES`), 업로드 레이트리밋은 메시지 한도의 1/4.
-- 디스크 사용량을 모니터링한다. 메시지 전송 실패로 생긴 고아 블롭은 자동 정리되지 않는다.
-- **DB 백업과 볼륨을 함께 백업**한다. 상세: [`docs/10-attachments.md`](10-attachments.md)
+- `ATTACHMENT_STORAGE=local|s3`, `ATTACHMENT_TTL_DAYS`(기본 30)로 저장소와 고아 TTL을 설정한다.
+- 로컬 모드는 `ATTACHMENT_DIR`(compose `attachments` 볼륨)에 저장하며 컨테이너 `node` 사용자 쓰기 권한이 필요하다.
+- S3는 `S3_BUCKET`/`S3_REGION`/`S3_ENDPOINT`/`S3_FORCE_PATH_STYLE`, IAM 역할 또는 access/secret 키를 사용한다.
+- 고아 정리: `pnpm attachments:cleanup` (메시지에 연결되지 않은 업로드만, 하루 1회 권장).
+- **DB와 첨부 저장소를 함께 백업**한다. 상세: `docs/10-attachments.md`.
 
 ## 8. 푸시 알림
 

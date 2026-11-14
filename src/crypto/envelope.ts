@@ -73,6 +73,11 @@ export interface SignedPreKeyInput {
   signature: string;
 }
 
+export interface OneTimePreKeyInput {
+  id: string;
+  publicKey: string;
+}
+
 export interface NormalizedDeviceKeys {
   identityPublicKey: string;
   signingPublicKey: string;
@@ -81,6 +86,7 @@ export interface NormalizedDeviceKeys {
     publicKey: string;
     signature: string;
   } | null;
+  oneTimePreKeys: Array<{ id: string; publicKey: string }>;
 }
 
 const SIGNED_PREKEY_UUID_PATTERN =
@@ -94,6 +100,7 @@ export function normalizeDeviceKeys(input: {
   identityPublicKey: string;
   signingPublicKey: string;
   signedPreKey?: SignedPreKeyInput | undefined;
+  oneTimePreKeys?: OneTimePreKeyInput[] | undefined;
 }): NormalizedDeviceKeys {
   const identityPublicKey = requireBytes(
     input.identityPublicKey,
@@ -106,7 +113,12 @@ export function normalizeDeviceKeys(input: {
     ED25519_KEY_BYTES,
   );
   if (!input.signedPreKey) {
-    return { identityPublicKey, signingPublicKey, signedPreKey: null };
+    return {
+      identityPublicKey,
+      signingPublicKey,
+      signedPreKey: null,
+      oneTimePreKeys: normalizeOneTimePreKeys(input.oneTimePreKeys),
+    };
   }
   if (!SIGNED_PREKEY_UUID_PATTERN.test(input.signedPreKey.id)) {
     throw AppError.badRequest("INVALID_ENVELOPE", "signedPreKey.id must be a UUID");
@@ -137,7 +149,31 @@ export function normalizeDeviceKeys(input: {
     identityPublicKey,
     signingPublicKey,
     signedPreKey: { id: input.signedPreKey.id, publicKey, signature },
+    oneTimePreKeys: normalizeOneTimePreKeys(input.oneTimePreKeys),
   };
+}
+
+function normalizeOneTimePreKeys(
+  keys: OneTimePreKeyInput[] | undefined,
+): Array<{ id: string; publicKey: string }> {
+  if (!keys) return [];
+  if (keys.length > 200) {
+    throw AppError.badRequest("INVALID_ENVELOPE", "At most 200 one-time prekeys are allowed");
+  }
+  const seen = new Set<string>();
+  return keys.map((key) => {
+    if (!SIGNED_PREKEY_UUID_PATTERN.test(key.id) || seen.has(key.id)) {
+      throw AppError.badRequest(
+        "INVALID_ENVELOPE",
+        "oneTimePreKeys ids must be unique UUIDs",
+      );
+    }
+    seen.add(key.id);
+    return {
+      id: key.id,
+      publicKey: requireBytes(key.publicKey, "oneTimePreKey.publicKey", X25519_KEY_BYTES),
+    };
+  });
 }
 
 export interface MessageKeyInput {
@@ -148,6 +184,7 @@ export interface MessageKeyInput {
   messageNumber?: number | undefined;
   senderIdentityPublicKey?: string | undefined;
   signedPreKeyId?: string | undefined;
+  oneTimePreKeyId?: string | undefined;
   distributionCiphertext?: string | undefined;
   distributionNonce?: string | undefined;
   distribution?: { ciphertext: string; nonce: string } | undefined;
@@ -188,6 +225,7 @@ export type NormalizedMessageKey =
       messageNumber: number;
       senderIdentityPublicKey?: string;
       signedPreKeyId?: string;
+      oneTimePreKeyId?: string;
       wrappedKey: string;
       wrapNonce: string;
       distribution?: NormalizedDeviceDistribution;
@@ -335,6 +373,15 @@ export function normalizeMessagePayload(
         "X3DH headers are only supported on ratchet envelopes",
       );
     }
+    if (key.oneTimePreKeyId !== undefined && !x3dhSenderIdentity) {
+      throw AppError.badRequest(
+        "INVALID_ENVELOPE",
+        "oneTimePreKeyId requires senderIdentityPublicKey and signedPreKeyId",
+      );
+    }
+    if (key.oneTimePreKeyId !== undefined && !UUID_PATTERN.test(key.oneTimePreKeyId)) {
+      throw AppError.badRequest("INVALID_ENVELOPE", "oneTimePreKeyId must be a UUID");
+    }
     const x3dhHeader = x3dhSenderIdentity
       ? {
           senderIdentityPublicKey: requireBytes(
@@ -352,6 +399,7 @@ export function normalizeMessagePayload(
             }
             return id;
           })(),
+          ...(key.oneTimePreKeyId ? { oneTimePreKeyId: key.oneTimePreKeyId } : {}),
         }
       : undefined;
 

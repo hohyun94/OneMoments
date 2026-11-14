@@ -6,6 +6,7 @@ import { Button, Card, Spinner } from "./components/ui.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { ChatPage } from "./pages/ChatPage.tsx";
 import { DevicesPage } from "./pages/DevicesPage.tsx";
+import { InvitePage } from "./pages/InvitePage.tsx";
 import { useSession } from "./session.tsx";
 
 function Splash() {
@@ -67,6 +68,14 @@ export function App() {
         element={
           <Guard>
             <ChatPage />
+          </Guard>
+        }
+      />
+      <Route
+        path="/join/:token"
+        element={
+          <Guard>
+            <InvitePage />
           </Guard>
         }
       />

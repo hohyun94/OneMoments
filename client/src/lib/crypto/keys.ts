@@ -4,6 +4,20 @@ import { encoder, fromBase64, randomBytes, toBase64, toBytes } from "./encoding.
 
 export type IdentityBackend = "webcrypto" | "noble";
 
+export interface SignedPreKeyRecord {
+  id: string;
+  privateKey: CryptoKey | string;
+  publicKey: string;
+  signature: string;
+  createdAt: number;
+}
+
+export interface LocalOneTimePreKey {
+  id: string;
+  privateKey: CryptoKey | string;
+  publicKey: string;
+}
+
 export interface DeviceIdentity {
   backend: IdentityBackend;
   identityPrivate: CryptoKey | string;
@@ -14,6 +28,9 @@ export interface DeviceIdentity {
   signedPreKeyPublicKey?: string;
   signedPreKeyId?: string;
   signedPreKeySignature?: string;
+  signedPreKeyCreatedAt?: number;
+  signedPreKeyHistory?: SignedPreKeyRecord[];
+  oneTimePreKeys?: LocalOneTimePreKey[];
   deviceId?: string;
   userId?: string;
 }
@@ -90,18 +107,9 @@ export function signedPreKeyMessage(
   return encoder.encode(`onemoments-signed-prekey:${id}:${publicKey}`);
 }
 
-/** X3DH signed prekey를 만들고 기기 서명키로 서명한다. */
-export async function ensureSignedPreKey(
+async function generateSignedPreKey(
   identity: DeviceIdentity,
-): Promise<DeviceIdentity> {
-  if (
-    identity.signedPreKeyPrivate &&
-    identity.signedPreKeyPublicKey &&
-    identity.signedPreKeyId &&
-    identity.signedPreKeySignature
-  ) {
-    return identity;
-  }
+): Promise<SignedPreKeyRecord> {
   const id = crypto.randomUUID();
   let privateKey: CryptoKey | string;
   let publicKey: string;
@@ -122,19 +130,137 @@ export async function ensureSignedPreKey(
     signedPreKeyMessage(id, publicKey),
   );
   return {
-    ...identity,
-    signedPreKeyPrivate: privateKey,
-    signedPreKeyPublicKey: publicKey,
-    signedPreKeyId: id,
-    signedPreKeySignature: toBase64(signature),
+    id,
+    privateKey,
+    publicKey,
+    signature: toBase64(signature),
+    createdAt: Date.now(),
   };
+}
+
+/** X3DH signed prekey를 만들고 기기 서명키로 서명한다. */
+export async function ensureSignedPreKey(
+  identity: DeviceIdentity,
+): Promise<DeviceIdentity> {
+  if (
+    identity.signedPreKeyPrivate &&
+    identity.signedPreKeyPublicKey &&
+    identity.signedPreKeyId &&
+    identity.signedPreKeySignature
+  ) {
+    return {
+      ...identity,
+      signedPreKeyCreatedAt: identity.signedPreKeyCreatedAt ?? Date.now(),
+    };
+  }
+  const record = await generateSignedPreKey(identity);
+  return {
+    ...identity,
+    signedPreKeyPrivate: record.privateKey,
+    signedPreKeyPublicKey: record.publicKey,
+    signedPreKeyId: record.id,
+    signedPreKeySignature: record.signature,
+    signedPreKeyCreatedAt: record.createdAt,
+  };
+}
+
+/** 30일이 지난 signed prekey를 회전하고 이전 private 키는 복호화용으로 보관한다. */
+export async function rotateSignedPreKeyIfNeeded(
+  identity: DeviceIdentity,
+  maxAgeMs = 30 * 24 * 60 * 60 * 1000,
+): Promise<DeviceIdentity> {
+  const ensured = await ensureSignedPreKey(identity);
+  if (Date.now() - (ensured.signedPreKeyCreatedAt ?? 0) < maxAgeMs) return ensured;
+  const previous: SignedPreKeyRecord | null =
+    ensured.signedPreKeyPrivate &&
+    ensured.signedPreKeyPublicKey &&
+    ensured.signedPreKeyId &&
+    ensured.signedPreKeySignature
+      ? {
+          id: ensured.signedPreKeyId,
+          privateKey: ensured.signedPreKeyPrivate,
+          publicKey: ensured.signedPreKeyPublicKey,
+          signature: ensured.signedPreKeySignature,
+          createdAt: ensured.signedPreKeyCreatedAt ?? Date.now(),
+        }
+      : null;
+  const next = await generateSignedPreKey(ensured);
+  return {
+    ...ensured,
+    signedPreKeyPrivate: next.privateKey,
+    signedPreKeyPublicKey: next.publicKey,
+    signedPreKeyId: next.id,
+    signedPreKeySignature: next.signature,
+    signedPreKeyCreatedAt: next.createdAt,
+    signedPreKeyHistory: previous
+      ? [previous, ...(ensured.signedPreKeyHistory ?? [])].slice(0, 5)
+      : ensured.signedPreKeyHistory,
+  };
+}
+
+async function createOneTimePreKeys(
+  identity: DeviceIdentity,
+  count: number,
+): Promise<LocalOneTimePreKey[]> {
+  const keys: LocalOneTimePreKey[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const generated = await generateEphemeral(identity.backend);
+    keys.push({
+      id: crypto.randomUUID(),
+      privateKey: generated.privateKey,
+      publicKey: generated.publicKey,
+    });
+  }
+  return keys;
+}
+
+/** X3DH 원타임 프리키를 목표 개수까지 생성한다. */
+export async function ensureOneTimePreKeys(
+  identity: DeviceIdentity,
+  target = 20,
+): Promise<DeviceIdentity> {
+  const current = identity.oneTimePreKeys ?? [];
+  if (current.length >= target) return identity;
+  return {
+    ...identity,
+    oneTimePreKeys: [
+      ...current,
+      ...(await createOneTimePreKeys(identity, target - current.length)),
+    ],
+  };
+}
+
+/** 서버에 남아 있는 ID만 유지하고 부족분을 새로 생성한다. */
+export async function replenishOneTimePreKeys(
+  identity: DeviceIdentity,
+  serverUnusedKeyIds: string[],
+  target = 20,
+): Promise<DeviceIdentity> {
+  const current = identity.oneTimePreKeys ?? [];
+  // 사용된 OPK private 키도 최근 메시지 복호화를 위해 보존한다.
+  const missing = Math.max(0, target - serverUnusedKeyIds.length);
+  return {
+    ...identity,
+    oneTimePreKeys: [
+      ...current,
+      ...(await createOneTimePreKeys(identity, missing)),
+    ].slice(-200),
+  };
+}
+
+/** 기기 로드/등록 시 SPK 회전 + OPK 보충. */
+export async function ensurePreKeys(
+  identity: DeviceIdentity,
+  target = 20,
+): Promise<DeviceIdentity> {
+  return ensureOneTimePreKeys(await rotateSignedPreKeyIfNeeded(identity), target);
 }
 
 export async function createIdentity(): Promise<DeviceIdentity> {
   if ((await detectBackend()) === "webcrypto") {
-    return ensureSignedPreKey(await createWebCryptoIdentity());
+    return ensurePreKeys(await createWebCryptoIdentity());
   }
-  return ensureSignedPreKey(createNobleIdentity());
+  return ensurePreKeys(createNobleIdentity());
 }
 
 /** 테스트·진단용: 백엔드를 명시해 키를 만든다. */
@@ -142,9 +268,9 @@ export async function createIdentityWithBackend(
   backend: IdentityBackend,
 ): Promise<DeviceIdentity> {
   if (backend === "webcrypto") {
-    return ensureSignedPreKey(await createWebCryptoIdentity());
+    return ensurePreKeys(await createWebCryptoIdentity());
   }
-  return ensureSignedPreKey(createNobleIdentity());
+  return ensurePreKeys(createNobleIdentity());
 }
 
 export async function generateEphemeral(

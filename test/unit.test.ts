@@ -80,7 +80,11 @@ describe("sessions and CSRF", () => {
 describe("device keys and message envelopes", () => {
   it("accepts 32-byte X25519/Ed25519 public keys", () => {
     const keys = { identityPublicKey: b64(32), signingPublicKey: b64(32) };
-    expect(normalizeDeviceKeys(keys)).toEqual({ ...keys, signedPreKey: null });
+    expect(normalizeDeviceKeys(keys)).toEqual({
+      ...keys,
+      signedPreKey: null,
+      oneTimePreKeys: [],
+    });
   });
 
   it("rejects wrong device key sizes", () => {
@@ -186,8 +190,10 @@ describe("signed prekeys", () => {
       identityPublicKey: identity.identity.publicKeyBase64,
       signingPublicKey: identity.signing.publicKeyBase64,
       signedPreKey: { id, publicKey, signature },
+      oneTimePreKeys: [{ id: randomUUID(), publicKey }],
     });
     expect(keys.signedPreKey).toEqual({ id, publicKey, signature });
+    expect(keys.oneTimePreKeys).toHaveLength(1);
 
     expect(() =>
       normalizeDeviceKeys({
@@ -198,6 +204,7 @@ describe("signed prekeys", () => {
     ).toThrow(AppError);
 
     const payload = validPayload();
+    const oneTimePreKeyId = randomUUID();
     payload.keys = [
       {
         deviceId: "11111111-1111-4111-8111-111111111111",
@@ -206,6 +213,7 @@ describe("signed prekeys", () => {
         messageNumber: 0,
         senderIdentityPublicKey: identity.identity.publicKeyBase64,
         signedPreKeyId: id,
+        oneTimePreKeyId,
         wrappedKey: b64(48),
         wrapNonce: b64(12),
         version: 2,
@@ -215,6 +223,7 @@ describe("signed prekeys", () => {
     expect(normalized.keys[0]).toMatchObject({
       senderIdentityPublicKey: identity.identity.publicKeyBase64,
       signedPreKeyId: id,
+      oneTimePreKeyId,
     });
   });
 });

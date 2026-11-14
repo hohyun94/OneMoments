@@ -31,6 +31,8 @@ export interface RecipientDevice {
   identityPublicKey: string;
   signedPreKeyId?: string | null;
   signedPreKeyPublicKey?: string | null;
+  oneTimePreKeyId?: string | null;
+  oneTimePreKeyPublicKey?: string | null;
 }
 
 export type DeviceKeyEnvelope =
@@ -49,6 +51,7 @@ export type DeviceKeyEnvelope =
       messageNumber: number;
       senderIdentityPublicKey?: string;
       signedPreKeyId?: string;
+      oneTimePreKeyId?: string;
       wrappedKey: string;
       wrapNonce: string;
       version: 2;
@@ -159,6 +162,8 @@ export async function encryptMessage(input: {
       remoteIdentityPublicKey: recipient.identityPublicKey,
       remoteSignedPreKeyId: recipient.signedPreKeyId,
       remoteSignedPreKeyPublicKey: recipient.signedPreKeyPublicKey,
+      remoteOneTimePreKeyId: recipient.oneTimePreKeyId,
+      remoteOneTimePreKeyPublicKey: recipient.oneTimePreKeyPublicKey,
       contentKey: contentKeyRaw,
     });
     keys.push({ deviceId: recipient.deviceId, ...wrapped });
@@ -259,6 +264,9 @@ export async function decryptMessage(input: {
               ? {
                   senderIdentityPublicKey: key.senderIdentityPublicKey,
                   signedPreKeyId: key.signedPreKeyId,
+                  ...(key.oneTimePreKeyId
+                    ? { oneTimePreKeyId: key.oneTimePreKeyId }
+                    : {}),
                 }
               : {}),
           },

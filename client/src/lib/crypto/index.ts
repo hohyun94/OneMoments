@@ -2,11 +2,17 @@ export {
   createIdentity,
   createIdentityWithBackend,
   detectBackend,
+  ensureOneTimePreKeys,
+  ensurePreKeys,
   ensureSignedPreKey,
+  replenishOneTimePreKeys,
+  rotateSignedPreKeyIfNeeded,
   signPayload,
   verifyPayload,
   type DeviceIdentity,
   type IdentityBackend,
+  type LocalOneTimePreKey,
+  type SignedPreKeyRecord,
   type StoredIdentity,
 } from "./keys.ts";
 export {

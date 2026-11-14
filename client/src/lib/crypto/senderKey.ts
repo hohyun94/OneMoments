@@ -76,6 +76,8 @@ export interface SenderKeyDevice {
   identityPublicKey: string;
   signedPreKeyId?: string | null;
   signedPreKeyPublicKey?: string | null;
+  oneTimePreKeyId?: string | null;
+  oneTimePreKeyPublicKey?: string | null;
 }
 
 function storageKey(
@@ -220,6 +222,8 @@ export async function prepareSenderKeyMessage(input: {
           remoteIdentityPublicKey: device.identityPublicKey,
           remoteSignedPreKeyId: device.signedPreKeyId,
           remoteSignedPreKeyPublicKey: device.signedPreKeyPublicKey,
+          remoteOneTimePreKeyId: device.oneTimePreKeyId,
+          remoteOneTimePreKeyPublicKey: device.oneTimePreKeyPublicKey,
           contentKey: distributionContentKey,
         });
         keys.push({
@@ -317,6 +321,9 @@ async function unwrapDistribution(
             ? {
                 senderIdentityPublicKey: key.senderIdentityPublicKey,
                 signedPreKeyId: key.signedPreKeyId,
+                ...(key.oneTimePreKeyId
+                  ? { oneTimePreKeyId: key.oneTimePreKeyId }
+                  : {}),
               }
             : {}),
         },

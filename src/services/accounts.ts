@@ -3,11 +3,13 @@ import {
   desc,
   eq,
   isNull,
+  sql,
 } from "drizzle-orm";
 
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import type { Database } from "../db/client.js";
 import {
+  deviceOneTimePreKeys,
   devices,
   pushSubscriptions,
   sessions,
@@ -26,6 +28,7 @@ export interface DeviceKeys {
     publicKey: string;
     signature: string;
   } | null;
+  oneTimePreKeys?: Array<{ id: string; publicKey: string }>;
 }
 
 export interface RegisterAccountInput extends DeviceKeys {
@@ -83,6 +86,15 @@ export async function registerAccount(
         })
         .returning();
       if (!device) throw new Error("Failed to insert device");
+      if (input.oneTimePreKeys && input.oneTimePreKeys.length > 0) {
+        await tx.insert(deviceOneTimePreKeys).values(
+          input.oneTimePreKeys.map((key) => ({
+            deviceId: device.id,
+            keyId: key.id,
+            publicKey: key.publicKey,
+          })),
+        );
+      }
       return { user, device };
     });
   } catch (error) {
@@ -207,20 +219,84 @@ export async function registerDevice(
   db: Database,
   input: { userId: string; name: string } & DeviceKeys,
 ): Promise<DeviceRow> {
-  const [device] = await db
-    .insert(devices)
-    .values({
-      userId: input.userId,
-      name: input.name,
-      identityPublicKey: input.identityPublicKey,
-      signingPublicKey: input.signingPublicKey,
-      signedPreKeyId: input.signedPreKey?.id ?? null,
-      signedPreKeyPublicKey: input.signedPreKey?.publicKey ?? null,
-      signedPreKeySignature: input.signedPreKey?.signature ?? null,
-    })
-    .returning();
-  if (!device) throw new Error("Failed to insert device");
-  return device;
+  return db.transaction(async (tx) => {
+    const [device] = await tx
+      .insert(devices)
+      .values({
+        userId: input.userId,
+        name: input.name,
+        identityPublicKey: input.identityPublicKey,
+        signingPublicKey: input.signingPublicKey,
+        signedPreKeyId: input.signedPreKey?.id ?? null,
+        signedPreKeyPublicKey: input.signedPreKey?.publicKey ?? null,
+        signedPreKeySignature: input.signedPreKey?.signature ?? null,
+      })
+      .returning();
+    if (!device) throw new Error("Failed to insert device");
+    if (input.oneTimePreKeys && input.oneTimePreKeys.length > 0) {
+      await tx.insert(deviceOneTimePreKeys).values(
+        input.oneTimePreKeys.map((key) => ({
+          deviceId: device.id,
+          keyId: key.id,
+          publicKey: key.publicKey,
+        })),
+      );
+    }
+    return device;
+  });
+}
+
+/** 사용하지 않은 원타임 프리키 수(클라이언트 보충 정책용). */
+export async function countUnusedOneTimePreKeys(
+  db: Database,
+  deviceId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(deviceOneTimePreKeys)
+    .where(
+      and(
+        eq(deviceOneTimePreKeys.deviceId, deviceId),
+        isNull(deviceOneTimePreKeys.usedAt),
+      ),
+    );
+  return row?.count ?? 0;
+}
+
+/** 사용하지 않은 원타임 프리키 ID(클라이언트 보충·정리 정책용). */
+export async function listUnusedOneTimePreKeyIds(
+  db: Database,
+  deviceId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ keyId: deviceOneTimePreKeys.keyId })
+    .from(deviceOneTimePreKeys)
+    .where(
+      and(
+        eq(deviceOneTimePreKeys.deviceId, deviceId),
+        isNull(deviceOneTimePreKeys.usedAt),
+      ),
+    )
+    .orderBy(deviceOneTimePreKeys.createdAt, deviceOneTimePreKeys.keyId);
+  return rows.map((row) => row.keyId);
+}
+
+/** 새 원타임 프리키를 추가한다. 이미 존재하는 keyId는 무시한다. */
+export async function addOneTimePreKeys(
+  db: Database,
+  input: { deviceId: string; keys: Array<{ id: string; publicKey: string }> },
+): Promise<void> {
+  if (input.keys.length === 0) return;
+  await db
+    .insert(deviceOneTimePreKeys)
+    .values(
+      input.keys.map((key) => ({
+        deviceId: input.deviceId,
+        keyId: key.id,
+        publicKey: key.publicKey,
+      })),
+    )
+    .onConflictDoNothing();
 }
 
 /** 기존 기기의 signed prekey만 갱신한다(키 백업/업그레이드 경로). */

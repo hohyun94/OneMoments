@@ -8,6 +8,7 @@ import {
   addConversationMembersBodySchema,
   conversationIdParamsSchema,
   createConversationBodySchema,
+  createInviteBodySchema,
   listMessagesQuerySchema,
   markReadBodySchema,
   sendMessageBodySchema,
@@ -31,7 +32,8 @@ import {
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
 import { listMessages } from "../services/messages.js";
-import { createAttachment } from "../services/attachments.js";
+import { createAttachment, createAttachmentStorage } from "../services/attachments.js";
+import { createConversationInvite } from "../services/invites.js";
 
 export interface ConversationsRouterOptions {
   db: Database;
@@ -56,6 +58,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     key: (req) => req.auth?.userId ?? req.ip ?? "unknown",
     message: "Attachment rate limit exceeded",
   });
+  const attachmentStorage = createAttachmentStorage(config);
 
   router.post(
     "/",
@@ -217,13 +220,44 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         throw AppError.payloadTooLarge("Attachment is too large");
       }
 
+      const clientMessageId = req.header("x-attachment-client-message-id");
+      if (
+        clientMessageId !== undefined &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          clientMessageId,
+        )
+      ) {
+        throw AppError.badRequest(
+          "INVALID_ATTACHMENT",
+          "x-attachment-client-message-id must be a UUID",
+        );
+      }
       const attachment = await createAttachment(db, {
         conversationId,
         uploaderUserId: auth.userId,
-        directory: config.attachmentDir,
+        messageClientId: clientMessageId ?? null,
+        storage: attachmentStorage,
         data: req.body,
       });
       res.status(201).json({ attachment: { id: attachment.id, size: attachment.size } });
+    }),
+  );
+
+  router.post(
+    "/:conversationId/invites",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const body = createInviteBodySchema.parse(req.body ?? {});
+      const invite = await createConversationInvite(db, {
+        conversationId,
+        userId: auth.userId,
+        expiresInSeconds: body.expiresInSeconds,
+        maxUses: body.maxUses,
+      });
+      res.status(201).json({ invite });
     }),
   );
 

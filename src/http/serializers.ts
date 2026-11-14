@@ -96,6 +96,7 @@ export function toDeviceKeyEnvelope(row: MessageKeyRow): DeviceKeyEnvelope {
             signedPreKeyId: row.signedPreKeyId,
           }
         : {}),
+      ...(row.oneTimePreKeyId ? { oneTimePreKeyId: row.oneTimePreKeyId } : {}),
       wrappedKey: row.wrappedKey,
       wrapNonce: row.wrapNonce,
       ...(distribution ? { distribution } : {}),

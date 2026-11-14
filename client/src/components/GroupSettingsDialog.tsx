@@ -1,4 +1,4 @@
-import { LogOut, Settings } from "lucide-react";
+import { Link2, LogOut, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ApiError, api } from "../lib/api.ts";
@@ -26,6 +26,8 @@ export function GroupSettingsDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +35,8 @@ export function GroupSettingsDialog({
     setBusy(false);
     setError(null);
     setConfirmLeave(false);
+    setInviteUrl(null);
+    setInviteBusy(false);
   }, [open, currentName]);
 
   async function rename(): Promise<void> {
@@ -66,6 +70,27 @@ export function GroupSettingsDialog({
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "그룹에서 나가지 못했습니다.");
       setBusy(false);
+    }
+  }
+
+  async function createInvite(): Promise<void> {
+    if (inviteBusy) return;
+    setInviteBusy(true);
+    setError(null);
+    try {
+      const response = await api<{ invite: { token: string } }>(
+        `/api/conversations/${conversationId}/invites`,
+        { method: "POST", body: {} },
+      );
+      const url = `${window.location.origin}/join/${response.invite.token}`;
+      setInviteUrl(url);
+      await navigator.clipboard.writeText(url).catch(() => undefined);
+    } catch (caught) {
+      setError(
+        caught instanceof ApiError ? caught.message : "초대 링크를 만들지 못했습니다.",
+      );
+    } finally {
+      setInviteBusy(false);
     }
   }
 
@@ -111,6 +136,40 @@ export function GroupSettingsDialog({
       {error ? (
         <div className="mt-3">
           <Alert variant="error">{error}</Alert>
+        </div>
+      ) : null}
+
+      {canRename ? (
+        <div className="mt-5 border-t border-zinc-100 pt-4">
+          <p className="text-sm font-medium text-zinc-900">초대 링크</p>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            7일 동안 최대 10명이 사용할 수 있는 링크를 만듭니다. 링크를 아는 사람은
+            그룹에 참여할 수 있으니 신뢰하는 사람에게만 공유하세요.
+          </p>
+          {inviteUrl ? (
+            <div className="mt-3 flex gap-2">
+              <Input readOnly value={inviteUrl} aria-label="그룹 초대 링크" />
+              <Button
+                variant="outline"
+                className="shrink-0"
+                onClick={() => void navigator.clipboard.writeText(inviteUrl)}
+              >
+                <Link2 className="h-4 w-4" aria-hidden />
+                복사
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3"
+              onClick={() => void createInvite()}
+              disabled={inviteBusy}
+            >
+              {inviteBusy ? <Spinner /> : <Link2 className="h-4 w-4" aria-hidden />}
+              초대 링크 만들기
+            </Button>
+          )}
         </div>
       ) : null}
 

@@ -2,7 +2,12 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { sql } from "drizzle-orm";
 
+import {
+  cleanupOrphanAttachments,
+  createAttachmentStorage,
+} from "../src/services/attachments.js";
 import { createTestContext, resetDatabase, type TestContext } from "./support/context.js";
 import { createIdentity, type Identity } from "./support/crypto.js";
 import { TestClient } from "./support/http.js";
@@ -38,13 +43,19 @@ function upload(
   conversationId: string,
   data: Uint8Array,
   contentType = "application/octet-stream",
+  clientMessageId?: string,
 ) {
   return account.client.request(
     "POST",
     `/api/conversations/${conversationId}/attachments`,
     {
       rawBody: data,
-      headers: { "content-type": contentType },
+      headers: {
+        "content-type": contentType,
+        ...(clientMessageId
+          ? { "x-attachment-client-message-id": clientMessageId }
+          : {}),
+      },
     },
   );
 }
@@ -153,4 +164,37 @@ describe("encrypted attachments", () => {
     expect(asAlice.bytes.equals(data)).toBe(true);
     expect((await download(dave.client, attachmentId)).status).toBe(404);
   });
+
+  it("cleans only old unlinked uploads and keeps legacy rows", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+
+    const orphan = await upload(
+      alice,
+      conversationId,
+      randomBytes(64),
+      "application/octet-stream",
+      randomUUID(),
+    );
+    expect(orphan.status).toBe(201);
+    const orphanId = orphan.body.attachment.id as string;
+
+    const legacy = await upload(alice, conversationId, randomBytes(64));
+    expect(legacy.status).toBe(201);
+    const legacyId = legacy.body.attachment.id as string;
+
+    await ctx.db.execute(
+      sql`update attachments set created_at = now() - interval '2 days' where id in (${orphanId}, ${legacyId})`,
+    );
+    const removed = await cleanupOrphanAttachments(
+      ctx.db,
+      createAttachmentStorage(ctx.config),
+      new Date(Date.now() - 24 * 60 * 60 * 1000),
+    );
+    expect(removed).toBe(1);
+    expect((await download(alice.client, orphanId)).status).toBe(404);
+    expect((await download(alice.client, legacyId)).status).toBe(200);
+  });
+
 });

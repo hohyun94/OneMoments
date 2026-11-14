@@ -460,6 +460,25 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
   }
 });
 
+test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const name = uniqueName("idle");
+  try {
+    await page.clock.install();
+    await register(page, name);
+    await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
+
+    await page.clock.fastForward(5 * 60 * 1000 + 5_000);
+    await expect(page.getByRole("button", { name: "로그인" }).last()).toBeVisible();
+    await expect(page.getByRole("button", { name: "로그아웃" })).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
 test("offline: 오프라인 앱 셸과 서비스 워커 캐시 버전을 검증한다", async ({
   context,
   page,

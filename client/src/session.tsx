@@ -7,8 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, api, setCsrfToken } from "./lib/api.ts";
+import { clearDecryptedMessageCache } from "./components/MessageBubble.tsx";
 import {
   createIdentity,
   replenishOneTimePreKeys,
@@ -29,6 +31,9 @@ import { disablePush } from "./lib/push.ts";
 import type { AuthResponse, MeResponse, PublicUser } from "./types.ts";
 
 const LAST_USERNAME_KEY = "onemoments:lastUsername";
+const FORCE_LOGIN_KEY = "onemoments:forceLogin";
+/** 무활동 5분 후 자동 로그아웃. 운영 정책에 맞게 조정한다. */
+const IDLE_LOGOUT_MS = 5 * 60 * 1000;
 
 export type SessionStatus =
   | "loading"
@@ -140,6 +145,7 @@ async function syncPreKeys(identity: StoredIdentity): Promise<StoredIdentity> {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [session, setSession] = useState<Session | null>(null);
   const [identity, setIdentity] = useState<StoredIdentity | null>(null);
@@ -148,6 +154,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
+    if (localStorage.getItem(FORCE_LOGIN_KEY) === "1") {
+      setStatus("anonymous");
+      return;
+    }
     let cancelled = false;
     api<MeResponse>("/api/auth/me")
       .then(async (me) => {
@@ -215,6 +225,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       deviceId: response.device.id,
     };
     await saveIdentity(stored);
+    localStorage.removeItem(FORCE_LOGIN_KEY);
     localStorage.setItem(LAST_USERNAME_KEY, response.user.username);
     setLastUsername(response.user.username);
     setIdentity(stored);
@@ -285,6 +296,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       deviceId: response.device.id,
     };
     await saveIdentity(stored);
+    localStorage.removeItem(FORCE_LOGIN_KEY);
+
     localStorage.setItem(LAST_USERNAME_KEY, normalized);
     setLastUsername(normalized);
     setIdentity(stored);
@@ -345,6 +358,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
     if (state) await importLocalCryptoState(state);
     await saveIdentity(stored);
+    localStorage.removeItem(FORCE_LOGIN_KEY);
     localStorage.setItem(LAST_USERNAME_KEY, normalized);
     setLastUsername(normalized);
     setIdentity(stored);
@@ -353,22 +367,60 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    try {
-      // 이 기기의 푸시 구독을 먼저 해제해 로그아웃 후 알림이 남지 않게 한다.
-      await disablePush();
-    } catch {
-      // 브라우저가 푸시를 지원하지 않거나 구독이 없어도 로그아웃은 계속한다.
-    }
-    try {
-      await api("/api/auth/logout", { method: "POST" });
-    } catch {
-      // 세션이 이미 만료된 경우도 로컬 상태는 정리한다.
-    }
+    // 즉시 로그인 화면으로 전환해 남은 내용이 화면에 보이지 않게 한다.
+    localStorage.setItem(FORCE_LOGIN_KEY, "1");
+    const serverLogout = api("/api/auth/logout", { method: "POST" }).catch(
+      () => undefined,
+    );
+    const pushOff = disablePush().catch(() => undefined);
     setCsrfToken(null);
     setIdentity(null);
     setSession(null);
     setStatus("anonymous");
-  }, []);
+    queryClient.clear();
+    clearDecryptedMessageCache();
+    await Promise.all([serverLogout, pushOff]);
+  }, [queryClient]);
+
+  // 무활동 자동 로그아웃: 입력/스크롤/포인터 활동이 없으면 세션과 화면 캐시를 지운다.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let lastActivity = Date.now();
+    const markActivity = () => {
+      lastActivity = Date.now();
+    };
+    const events = [
+      "pointerdown",
+      "keydown",
+      "touchstart",
+      "scroll",
+      "wheel",
+      "mousemove",
+    ] as const;
+    for (const event of events) {
+      window.addEventListener(event, markActivity, { passive: true });
+    }
+
+    const checkIdle = () => {
+      if (Date.now() - lastActivity >= IDLE_LOGOUT_MS) {
+        void logout();
+      }
+    };
+    const timer = window.setInterval(checkIdle, 1_000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") checkIdle();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(timer);
+      for (const event of events) {
+        window.removeEventListener(event, markActivity);
+      }
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [status, logout]);
 
   const value = useMemo<SessionContextValue>(
     () => ({

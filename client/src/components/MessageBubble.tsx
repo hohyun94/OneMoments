@@ -182,6 +182,12 @@ type Result =
 const cache = new Map<string, Result>();
 const inFlight = new Map<string, Promise<Result>>();
 
+/** 로그아웃/자동 잠금 시 복호화된 평문과 첨부 메타데이터를 메모리에서 제거한다. */
+export function clearDecryptedMessageCache(): void {
+  cache.clear();
+  inFlight.clear();
+}
+
 function failureDetail(error: unknown): string {
   if (error instanceof DecryptionError) {
     if (error.reason === "signature") return "서명 검증 실패 — 변조 가능성이 있습니다.";

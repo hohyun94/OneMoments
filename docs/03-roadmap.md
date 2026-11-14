@@ -27,9 +27,10 @@
 - 통합 테스트: 평문 부재, 권한, 멱등, 봉투 검증
 
 **완료 기준**
-- [ ] 서버 응답·로그·DB 어디에도 평문이 없음을 테스트로 증명
-- [ ] 비멤버 접근 차단, 폐기 기기 세션 무효
-- [ ] `409 DEVICE_SET_CHANGED` 흐름 테스트
+- [x] 서버 응답·로그·DB 어디에도 평문이 없음을 테스트로 증명 (`test/api-messages.test.ts`, `test/ws.test.ts`)
+- [x] 비멤버 접근 차단, 폐기 기기 세션 무효 (`test/api-auth.test.ts`, `test/ws.test.ts`)
+- [x] `409 DEVICE_SET_CHANGED` 흐름 테스트 (`test/api-messages.test.ts`)
+- [x] WebSocket 기기별 봉투 전달 테스트 (`test/ws.test.ts`)
 
 ## M2. 웹 클라이언트
 

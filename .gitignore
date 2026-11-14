@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+.pnpm-store/
+data/
+test-results/
+*.log
+.pnpm-install*
+.vitest*
+.verify*
+.env
+.env.local
+.DS_Store
+package-lock.json

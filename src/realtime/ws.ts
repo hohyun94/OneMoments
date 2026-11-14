@@ -1,0 +1,338 @@
+import type { IncomingMessage, Server } from "node:http";
+import type { Duplex } from "node:stream";
+
+import { WebSocket, WebSocketServer } from "ws";
+import { z } from "zod";
+
+import { SESSION_COOKIE } from "../auth/session.js";
+import type { Config } from "../config.js";
+import type { Database } from "../db/client.js";
+import { AppError } from "../http/errors.js";
+import { resolveSession, type AuthContext } from "../http/middleware.js";
+import { toMessageView } from "../http/serializers.js";
+import { touchDevice } from "../services/accounts.js";
+import { isParticipant } from "../services/conversations.js";
+import { sendEncryptedMessage } from "../services/messageFlow.js";
+import { WS_PATH, type ClientFrame, type ServerFrame } from "../types/protocol.js";
+import type { MessageBus } from "./bus.js";
+import { ChatHub, type ChatConnection } from "./hub.js";
+
+const HEARTBEAT_INTERVAL_MS = 30_000;
+const FRAME_WINDOW_MS = 10_000;
+const MAX_FRAMES_PER_WINDOW = 120;
+const conversationId = z.string().uuid();
+const envelopeKey = z.object({
+  deviceId: z.string().uuid(),
+  ephemeralPublicKey: z.string().min(1),
+  wrappedKey: z.string().min(1),
+  wrapNonce: z.string().min(1),
+  version: z.number().int().optional(),
+});
+
+const clientFrameSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("subscribe"), conversationIds: z.array(conversationId).max(200) }),
+  z.object({ type: z.literal("unsubscribe"), conversationIds: z.array(conversationId).max(200) }),
+  z.object({
+    type: z.literal("message.send"),
+    conversationId,
+    clientMessageId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
+    ciphertext: z.string().min(1),
+    nonce: z.string().min(1),
+    signature: z.string().min(1),
+    keys: z.array(envelopeKey).min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("typing"),
+    conversationId,
+    state: z.enum(["start", "stop"]),
+  }),
+  z.object({ type: z.literal("ping") }),
+]);
+
+export interface RealtimeOptions {
+  server: Server;
+  db: Database;
+  config: Config;
+  bus: MessageBus;
+}
+
+export interface RealtimeHandle {
+  hub: ChatHub;
+  close: () => Promise<void>;
+}
+
+function rejectUpgrade(socket: Duplex, status: number, reason: string): void {
+  if (socket.destroyed) return;
+  socket.write(
+    `HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
+  );
+  socket.destroy();
+}
+
+function readCookie(header: string | undefined, name: string): string | null {
+  if (!header) return null;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    const value = part.slice(separator + 1).trim();
+    if (!value) return null;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function originAllowed(req: IncomingMessage, config: Config): boolean {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  if (config.corsOrigins.includes(origin)) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
+export function createRealtime(options: RealtimeOptions): RealtimeHandle {
+  const { server, db, config, bus } = options;
+  const hub = new ChatHub();
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: Math.ceil(config.maxCiphertextBytes * 2) + 64 * 1024,
+  });
+
+  const alive = new Map<WebSocket, boolean>();
+  const frameLog = new Map<WebSocket, number[]>();
+
+  const unsubscribeBus = bus.subscribe((event) => {
+    for (const connection of hub.connectionsFor(event.conversationId)) {
+      const key = event.keys.find(
+        (candidate) => candidate.recipientDeviceId === connection.deviceId,
+      );
+      if (!key) continue;
+      hub.send(connection.socket, {
+        type: "message.created",
+        message: toMessageView(event.message, key),
+      });
+    }
+  });
+
+  const upgradeHandler = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
+    let url: URL;
+    try {
+      url = new URL(req.url ?? "/", "http://localhost");
+    } catch {
+      rejectUpgrade(socket, 400, "Bad Request");
+      return;
+    }
+    if (url.pathname !== WS_PATH) {
+      rejectUpgrade(socket, 404, "Not Found");
+      return;
+    }
+    if (!originAllowed(req, config)) {
+      rejectUpgrade(socket, 403, "Forbidden");
+      return;
+    }
+
+    const token = readCookie(req.headers.cookie, SESSION_COOKIE);
+    if (!token) {
+      rejectUpgrade(socket, 401, "Unauthorized");
+      return;
+    }
+
+    resolveSession(db, token)
+      .then((auth) => {
+        if (socket.destroyed) return;
+        if (!auth) {
+          rejectUpgrade(socket, 401, "Unauthorized");
+          return;
+        }
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          onConnection(ws, auth);
+        });
+      })
+      .catch(() => rejectUpgrade(socket, 401, "Unauthorized"));
+  };
+  server.on("upgrade", upgradeHandler);
+
+  const heartbeat = setInterval(() => {
+    for (const [socket, isAlive] of alive) {
+      if (!isAlive) {
+        socket.terminate();
+        alive.delete(socket);
+        frameLog.delete(socket);
+        continue;
+      }
+      alive.set(socket, false);
+      try {
+        socket.ping();
+      } catch {
+        socket.terminate();
+      }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeat.unref();
+
+  function onConnection(socket: WebSocket, auth: AuthContext): void {
+    const connection = hub.add(socket, auth.userId, auth.deviceId);
+    alive.set(socket, true);
+    frameLog.set(socket, []);
+
+    hub.send(socket, { type: "ready", userId: auth.userId, deviceId: auth.deviceId });
+    void touchDevice(db, auth.deviceId).catch(() => undefined);
+
+    socket.on("pong", () => alive.set(socket, true));
+    socket.on("message", (data, isBinary) => {
+      if (isBinary) {
+        hub.send(socket, {
+          type: "error",
+          code: "INVALID_FRAME",
+          message: "Binary frames are not supported",
+        });
+        return;
+      }
+      void handleMessage(connection, data.toString());
+    });
+    socket.on("close", () => {
+      hub.remove(socket);
+      alive.delete(socket);
+      frameLog.delete(socket);
+    });
+    socket.on("error", () => {
+      hub.remove(socket);
+      alive.delete(socket);
+      frameLog.delete(socket);
+    });
+  }
+
+  function sendError(
+    socket: WebSocket,
+    code: string,
+    message: string,
+    clientMessageId?: string,
+  ): void {
+    const frame: ServerFrame = clientMessageId
+      ? { type: "error", code, message, clientMessageId }
+      : { type: "error", code, message };
+    hub.send(socket, frame);
+  }
+
+  async function handleMessage(connection: ChatConnection, raw: string): Promise<void> {
+    const socket = connection.socket;
+    const now = Date.now();
+    const recent = (frameLog.get(socket) ?? []).filter((stamp) => now - stamp < FRAME_WINDOW_MS);
+    recent.push(now);
+    frameLog.set(socket, recent);
+    if (recent.length > MAX_FRAMES_PER_WINDOW) {
+      sendError(socket, "RATE_LIMITED", "Too many frames");
+      socket.close(4429, "Rate limit exceeded");
+      return;
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      sendError(socket, "INVALID_JSON", "Frame must be valid JSON");
+      return;
+    }
+
+    const parsed = clientFrameSchema.safeParse(payload);
+    if (!parsed.success) {
+      sendError(socket, "INVALID_FRAME", "Frame does not match the protocol");
+      return;
+    }
+    const frame: ClientFrame = parsed.data;
+
+    try {
+      switch (frame.type) {
+        case "ping": {
+          hub.send(socket, { type: "pong", at: new Date().toISOString() });
+          return;
+        }
+        case "subscribe": {
+          const allowed: string[] = [];
+          for (const id of frame.conversationIds) {
+            if (await isParticipant(db, { conversationId: id, userId: connection.userId })) {
+              allowed.push(id);
+            }
+          }
+          const joined = hub.subscribe(connection, allowed);
+          hub.send(socket, { type: "subscribed", conversationIds: joined });
+          return;
+        }
+        case "unsubscribe": {
+          const left = hub.unsubscribe(connection, frame.conversationIds);
+          hub.send(socket, { type: "unsubscribed", conversationIds: left });
+          return;
+        }
+        case "typing": {
+          if (!(await isParticipant(db, {
+            conversationId: frame.conversationId,
+            userId: connection.userId,
+          }))) {
+            throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+          }
+          hub.broadcast(
+            frame.conversationId,
+            {
+              type: "typing",
+              conversationId: frame.conversationId,
+              userId: connection.userId,
+              state: frame.state,
+            },
+            socket,
+          );
+          return;
+        }
+        case "message.send": {
+          const result = await sendEncryptedMessage(db, config, {
+            conversationId: frame.conversationId,
+            senderUserId: connection.userId,
+            senderDeviceId: connection.deviceId,
+            payload: frame,
+          });
+          hub.send(socket, {
+            type: "message.ack",
+            clientMessageId: frame.clientMessageId,
+            message: result.message,
+          });
+          if (result.created) bus.publish(result.event);
+          return;
+        }
+      }
+    } catch (error) {
+      if (error instanceof AppError) {
+        sendError(
+          socket,
+          error.code,
+          error.message,
+          frame.type === "message.send" ? frame.clientMessageId : undefined,
+        );
+        return;
+      }
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "ws_frame_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+      sendError(socket, "INTERNAL_ERROR", "Internal server error");
+    }
+  }
+
+  async function close(): Promise<void> {
+    clearInterval(heartbeat);
+    unsubscribeBus();
+    server.off("upgrade", upgradeHandler);
+    hub.closeAll();
+    await new Promise<void>((resolve) => wss.close(() => resolve()));
+  }
+
+  return { hub, close };
+}

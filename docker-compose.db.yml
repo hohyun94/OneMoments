@@ -1,0 +1,22 @@
+# 선택 사항 — 로컬 개발·테스트용 PostgreSQL.
+# 운영/개발 DB는 별도로 구성하고 서버에는 DATABASE_URL 만 주입한다.
+services:
+  postgres:
+    image: postgres:16
+    container_name: onemoments-postgres
+    environment:
+      POSTGRES_USER: onemoments
+      POSTGRES_PASSWORD: onemoments
+      POSTGRES_DB: onemoments
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - onemoments-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U onemoments -d onemoments"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  onemoments-pgdata:

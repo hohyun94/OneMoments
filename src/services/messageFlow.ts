@@ -1,0 +1,121 @@
+import type { Config } from "../config.js";
+import type { Database } from "../db/client.js";
+import type { MessageKeyRow, MessageRow } from "../db/schema.js";
+import {
+  normalizeMessagePayload,
+  type MessagePayloadInput,
+} from "../crypto/envelope.js";
+import { AppError } from "../http/errors.js";
+import { toMessageView } from "../http/serializers.js";
+import type { MessageView } from "../types/protocol.js";
+import type { MessageEvent } from "../realtime/bus.js";
+import {
+  listActiveDeviceKeys,
+  requireParticipant,
+  unhideConversation,
+  type ActiveDeviceKey,
+} from "./conversations.js";
+import { createMessage } from "./messages.js";
+
+export interface SendEncryptedMessageInput {
+  conversationId: string;
+  senderUserId: string;
+  senderDeviceId: string;
+  payload: MessagePayloadInput;
+}
+
+export interface SendEncryptedMessageResult {
+  message: MessageView;
+  event: MessageEvent;
+  created: boolean;
+  devices: ActiveDeviceKey[];
+}
+
+function deviceKeySetsMatch(expected: ActiveDeviceKey[], provided: string[]): boolean {
+  if (expected.length !== provided.length) return false;
+  const expectedIds = new Set(expected.map((device) => device.id));
+  const seen = new Set<string>();
+  for (const id of provided) {
+    if (!expectedIds.has(id) || seen.has(id)) return false;
+    seen.add(id);
+  }
+  return true;
+}
+
+/**
+ * 메시지 1건 전송의 단일 경로(REST·WS 공용).
+ * 봉투 검증 → 활성 기기 집합 일치 확인 → 저장 → 발신 기기용 뷰 생성.
+ */
+export async function sendEncryptedMessage(
+  db: Database,
+  config: Config,
+  input: SendEncryptedMessageInput,
+): Promise<SendEncryptedMessageResult> {
+  const context = await requireParticipant(db, {
+    conversationId: input.conversationId,
+    userId: input.senderUserId,
+  });
+  if (context.peer.deletedAt !== null) {
+    throw new AppError(403, "PEER_DELETED", "This account no longer exists");
+  }
+
+  const payload = normalizeMessagePayload(input.payload, {
+    maxCiphertextBytes: config.maxCiphertextBytes,
+    maxEnvelopes: config.maxEnvelopes,
+  });
+
+  const devices = await listActiveDeviceKeys(db, input.conversationId);
+  if (!deviceKeySetsMatch(devices, payload.keys.map((key) => key.deviceId))) {
+    throw new AppError(
+      409,
+      "DEVICE_SET_CHANGED",
+      "Re-encrypt the message for the current active devices",
+      {
+        devices: devices.map((device) => ({
+          id: device.id,
+          userId: device.userId,
+          identityPublicKey: device.identityPublicKey,
+          signingPublicKey: device.signingPublicKey,
+        })),
+      },
+    );
+  }
+
+  const result = await createMessage(db, {
+    conversationId: input.conversationId,
+    senderUserId: input.senderUserId,
+    senderDeviceId: input.senderDeviceId,
+    payload,
+  });
+
+  const ownKey = result.keys.find(
+    (key) => key.recipientDeviceId === input.senderDeviceId,
+  );
+  if (!ownKey) {
+    throw new AppError(
+      409,
+      "DEVICE_SET_CHANGED",
+      "This device has no envelope for the stored message",
+    );
+  }
+
+  if (result.created) {
+    await unhideConversation(db, {
+      conversationId: input.conversationId,
+      userId: input.senderUserId,
+    });
+  }
+
+  return {
+    message: toMessageView(result.message, ownKey),
+    event: {
+      conversationId: input.conversationId,
+      message: result.message,
+      keys: result.keys,
+    },
+    created: result.created,
+    devices,
+  };
+}
+
+export type { MessageRow, MessageKeyRow };

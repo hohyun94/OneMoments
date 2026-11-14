@@ -36,7 +36,7 @@
 
 ## Post-MVP 완료
 
-- 키 백업·기기 복구, 그룹 대화, 파일 첨부, Double Ratchet, Web Push·PWA
+- 키 백업·기기 복구, 그룹 대화, 파일 첨부, Double Ratchet, Web Push·PWA, 동시성/암호 벤치마크
 
 ## 남은 범위
 

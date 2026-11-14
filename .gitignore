@@ -17,6 +17,8 @@ backups/
 .ui-smoke*
 .e2e*
 .server-tests*
+.bench*
+.load-result*
 .deploy-test*
 .load-server*
 .redis-pull*

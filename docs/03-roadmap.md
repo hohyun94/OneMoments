@@ -97,7 +97,9 @@ MVP 이후 과제를 순차 진행한다.
 4. 푸시 알림, 모바일 앱
    - **Web Push(VAPID)·PWA — 완료** · `docs/12-push-mobile.md`
    - 네이티브 앱(React Native/Flutter) — 대기
-5. 부하 테스트 동시성 확장, 클라이언트 암복호화 프로파일링 — 대기(기본 부하 테스트는 M4에서 완료)
+5. **부하 테스트 동시성·클라이언트 프로파일링** — 완료
+   - Node `CONCURRENCY`, k6 HTTP 시나리오, `bench:crypto`
+   - 로컬 200건/동시성 20: 302.6 msg/s, REST p95 103.5ms · `docs/13-performance.md`
 
 ## 리스크
 

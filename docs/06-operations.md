@@ -81,15 +81,22 @@ scrape_configs:
 # 서버 기동(레이트리밋을 넉넉히)
 MESSAGE_RATE_LIMIT_MAX=10000 pnpm dev
 
-# 다른 터미널
-BASE_URL=http://127.0.0.1:3900 MESSAGE_COUNT=100 pnpm db:load-test
+# Node 동시성(권장)
+BASE_URL=http://127.0.0.1:3911 MESSAGE_COUNT=200 CONCURRENCY=20 pnpm db:load-test
+
+# k6가 있으면 HTTP 동시성
+BASE_URL=http://127.0.0.1:3911 VUS=20 k6 run scripts/load-test.k6.js
+
+# 클라이언트 암복호화 프로파일링
+pnpm bench:crypto
 ```
 
-측정 항목: REST 저장 지연(p50/p95), WebSocket 전달 지연, 초당 처리량.
-로컬 개발 머신 기준 예시(100건, 순차 전송): **약 63 msg/s, REST p95 22ms, WS 전달 즉시**.
+측정 항목: REST 저장 지연(p50/p95), WebSocket 전달 지연, 초당 처리량, 클라이언트 암복호화 p50/p95.
+로컬 예시(200건, 동시성 20): **약 302.6 msg/s, REST p95 103.5ms, 오류 0**.
+상세·한계·확장 병목: [`docs/13-performance.md`](13-performance.md)
 
-> 이 스크립트는 암호화 연산을 포함하지 않는 **서버 경로** 부하 테스트다. 클라이언트 암복호화 비용은
-> 브라우저 E2E/프로파일링으로 별도 확인한다.
+> Node 부하 테스트는 서버 경로(검증·DB·WS)만 측정하고 실제 암호화 비용은 포함하지 않는다.
+> 클라이언트 비용은 `pnpm bench:crypto`로 별도 확인한다.
 
 ## 5. 컨테이너 이미지
 

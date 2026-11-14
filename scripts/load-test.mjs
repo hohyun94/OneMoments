@@ -4,6 +4,7 @@ import { WebSocket } from "ws";
 
 const baseUrl = process.env.BASE_URL ?? "http://127.0.0.1:3911";
 const messageCount = Number(process.env.MESSAGE_COUNT ?? 100);
+const concurrency = Math.max(1, Number(process.env.CONCURRENCY ?? 10));
 const password = "password-12345";
 
 const b64 = (size) => randomBytes(size).toString("base64");
@@ -142,38 +143,53 @@ await frames.next((frame) => frame.type === "subscribed");
 
 const restLatencies = [];
 const wsLatencies = [];
+const errors = [];
 const clients = [alice, bob];
 const startedAt = Date.now();
 
-for (let index = 0; index < messageCount; index += 1) {
-  const sender = clients[index % 2];
-  const clientMessageId = `load-${index}-${randomUUID().slice(0, 8)}`;
-  const payload = {
-    clientMessageId,
-    ciphertext: b64(64),
-    nonce: b64(12),
-    signature: b64(64),
-    keys: devices.map((device) => ({
-      deviceId: device.id,
-      ephemeralPublicKey: b64(32),
-      wrappedKey: b64(48),
-      wrapNonce: b64(12),
-      version: 1,
-    })),
-  };
+let nextIndex = 0;
+async function worker() {
+  for (;;) {
+    const index = nextIndex;
+    nextIndex += 1;
+    if (index >= messageCount) return;
 
-  const restStarted = performance.now();
-  await sender.request("POST", `/api/conversations/${conversationId}/messages`, payload);
-  restLatencies.push(performance.now() - restStarted);
+    const sender = clients[index % 2];
+    const clientMessageId = `load-${index}-${randomUUID().slice(0, 8)}`;
+    const payload = {
+      clientMessageId,
+      ciphertext: b64(64),
+      nonce: b64(12),
+      signature: b64(64),
+      keys: devices.map((device) => ({
+        deviceId: device.id,
+        ephemeralPublicKey: b64(32),
+        wrappedKey: b64(48),
+        wrapNonce: b64(12),
+        version: 1,
+      })),
+    };
 
-  const wsStarted = performance.now();
-  await frames.next(
-    (frame) =>
-      frame.type === "message.created" &&
-      frame.message.clientMessageId === clientMessageId,
-  );
-  wsLatencies.push(performance.now() - wsStarted);
+    const sendStarted = performance.now();
+    try {
+      await sender.request("POST", `/api/conversations/${conversationId}/messages`, payload);
+      restLatencies.push(performance.now() - sendStarted);
+
+      await frames.next(
+        (frame) =>
+          frame.type === "message.created" &&
+          frame.message.clientMessageId === clientMessageId,
+      );
+      wsLatencies.push(performance.now() - sendStarted);
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
 }
+
+await Promise.all(
+  Array.from({ length: Math.min(concurrency, messageCount) }, () => worker()),
+);
 
 const elapsed = (Date.now() - startedAt) / 1000;
 const history = await bob.request(
@@ -187,6 +203,8 @@ console.log(
     {
       conversationId,
       messages: messageCount,
+      concurrency,
+      errors: errors.length,
       seconds: Number(elapsed.toFixed(2)),
       messagesPerSecond: Number((messageCount / elapsed).toFixed(1)),
       restMs: {
@@ -198,6 +216,7 @@ console.log(
         p95: Number(percentile(wsLatencies, 0.95).toFixed(1)),
       },
       latestClientMessageId: history.messages?.[0]?.clientMessageId ?? null,
+      firstError: errors[0] ?? null,
     },
     null,
     2,

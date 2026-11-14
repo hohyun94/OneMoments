@@ -2,17 +2,18 @@
 
 개인용 **1:1 종단간 암호화(E2E) 메신저**, 웹 우선. 서버는 평문·대화 키·기기 개인키를 갖지 않고 **암호문 봉투만** 저장·중계한다.
 
-**현재 단계: M1 서버 코어 구현 완료** (웹 클라이언트는 M2)
+**현재 단계: M2 웹 클라이언트 구현 완료** (브라우저 E2E 자동화는 다음 단계)
 
 ## 구현된 것
 
-- **계정/세션**: scrypt 비밀번호, HttpOnly 세션 쿠키, 세션 토큰은 SHA-256 해시로만 저장, CSRF(세션 파생 HMAC) + Origin 가드
-- **기기**: X25519 신원 키 + Ed25519 서명 키 등록·폐기, 폐기 시 해당 세션 즉시 무효
-- **대화**: 1:1 중복 방지, 대화 숨김(내 화면만, 상대 이력 유지)
-- **메시지**: AES-256-GCM 암호문 1건 + **기기별 키 봉투**(`message_keys`) N건, Ed25519 서명 보관, `clientMessageId` 멱등, **활성 기기 집합 일치 검증**(불일치 시 409)
-- **실시간**: WebSocket 구독·전송·ack·타이핑·presence, 연결된 기기마다 자기 봉투만 전달
-- **운영**: `/healthz`, `/readyz`, 마이그레이션, 레이트리밋, 만료 세션 정리
-- **테스트 32개**: 단위 + API + WebSocket. 실제 PostgreSQL·실제 소켓으로 암복호화 왕복과 평문 부재를 검증
+- **웹 클라이언트** (`client/`): React 19 + Vite + Tailwind, 로그인/가입, 대화 목록, 채팅, 기기 관리
+- **E2E 암호화**: 브라우저에서 X25519/Ed25519 키 생성·보관(IndexedDB), 기기별 키 봉투, Ed25519 서명 검증
+- **계정/세션**: scrypt 비밀번호, HttpOnly 세션 쿠키, CSRF(세션 파생 HMAC) + Origin 가드
+- **기기**: 키 등록·폐기, 폐기 시 세션 무효, 새 기기는 이후 메시지만 수신
+- **대화**: 1:1 중복 방지, 숨김(내 화면만), 실시간 수신·타이핑·presence, 재연결
+- **메시지**: AES-256-GCM 암호문 + 기기별 키 봉투, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시
+- **운영**: `/healthz`, `/readyz`, 마이그레이션, 레이트리밋, 프로덕션에서 클라이언트 정적 서빙
+- **테스트 36개**: 서버 32(단위·API·WS) + 클라이언트 암호화 4
 
 ## 빠른 시작
 
@@ -22,7 +23,11 @@ DB는 외부에서 구성한다. 서버는 `DATABASE_URL` 만 요구한다.
 pnpm install
 cp .env.example .env      # DATABASE_URL, SESSION_SECRET 수정
 pnpm db:migrate
-pnpm dev                  # http://localhost:3900
+
+# 터미널 1 — API :3900
+pnpm dev
+# 터미널 2 — 웹 :5173 (Vite가 /api, /ws 프록시)
+pnpm dev:client
 ```
 
 로컬 테스트용 DB가 필요할 때만:
@@ -59,9 +64,12 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 ## 검증
 
 ```bash
-pnpm verify:full   # 타입 체크(테스트 포함) + 테스트 + 빌드
+pnpm verify:full   # 서버 타입 체크 + 서버 테스트 + 클라이언트 테스트 + 서버·클라이언트 빌드
 # 외부 DB: TEST_DATABASE_URL=postgres://... pnpm test
 ```
+
+프로덕션 빌드는 `pnpm build` 하나로 서버(`dist/`)와 클라이언트(`client/dist/`)를 모두 만들고,
+서버가 같은 도메인에서 클라이언트를 서빙한다.
 
 ## 암호화 모델 요약
 

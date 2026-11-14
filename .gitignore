@@ -9,6 +9,8 @@ test-results/
 .vitest*
 .verify*
 .docker-build*
+.client-build*
+.ui-smoke*
 .env
 .env.local
 .DS_Store

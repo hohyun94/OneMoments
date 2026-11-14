@@ -1,3 +1,7 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import cookieParser from "cookie-parser";
 import { sql } from "drizzle-orm";
 import express, { type Express, type RequestHandler } from "express";
@@ -55,6 +59,20 @@ export function createApp(options: AppOptions): Express {
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "script-src 'self'",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "font-src 'self' data:",
+        "connect-src 'self' ws: wss:",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+      ].join("; "),
+    );
     next();
   });
 
@@ -74,6 +92,21 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/devices", createDevicesRouter(db, config));
   app.use("/api/users", createUsersRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));
+
+  // 프로덕션: 클라이언트 빌드(dist)를 같은 서버에서 서빙한다.
+  const clientDist =
+    process.env.CLIENT_DIST_PATH ??
+    path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../client/dist");
+  if (existsSync(path.join(clientDist, "index.html"))) {
+    app.use(express.static(clientDist, { index: false, maxAge: "1h" }));
+    app.get("*", (req, res, next) => {
+      if (req.path.startsWith("/api/") || req.path === "/ws") {
+        next();
+        return;
+      }
+      res.sendFile(path.join(clientDist, "index.html"));
+    });
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);

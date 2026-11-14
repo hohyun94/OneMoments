@@ -1,6 +1,8 @@
+import { and, eq, isNull } from "drizzle-orm";
+
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
-import type { MessageKeyRow, MessageRow } from "../db/schema.js";
+import { devices, type MessageKeyRow, type MessageRow } from "../db/schema.js";
 import {
   normalizeMessagePayload,
   type MessagePayloadInput,
@@ -64,14 +66,14 @@ export async function sendEncryptedMessage(
     maxEnvelopes: config.maxEnvelopes,
   });
 
-  const devices = await listActiveDeviceKeys(db, input.conversationId);
-  if (!deviceKeySetsMatch(devices, payload.keys.map((key) => key.deviceId))) {
+  const activeDevices = await listActiveDeviceKeys(db, input.conversationId);
+  if (!deviceKeySetsMatch(activeDevices, payload.keys.map((key) => key.deviceId))) {
     throw new AppError(
       409,
       "DEVICE_SET_CHANGED",
       "Re-encrypt the message for the current active devices",
       {
-        devices: devices.map((device) => ({
+        devices: activeDevices.map((device) => ({
           id: device.id,
           userId: device.userId,
           identityPublicKey: device.identityPublicKey,
@@ -81,10 +83,26 @@ export async function sendEncryptedMessage(
     );
   }
 
+  const [senderDevice] = await db
+    .select({ signingPublicKey: devices.signingPublicKey })
+    .from(devices)
+    .where(
+      and(
+        eq(devices.id, input.senderDeviceId),
+        eq(devices.userId, input.senderUserId),
+        isNull(devices.revokedAt),
+      ),
+    )
+    .limit(1);
+  if (!senderDevice) {
+    throw new AppError(401, "UNAUTHORIZED", "Unknown sender device");
+  }
+
   const result = await createMessage(db, {
     conversationId: input.conversationId,
     senderUserId: input.senderUserId,
     senderDeviceId: input.senderDeviceId,
+    senderSigningPublicKey: senderDevice.signingPublicKey,
     payload,
   });
 
@@ -114,7 +132,7 @@ export async function sendEncryptedMessage(
       keys: result.keys,
     },
     created: result.created,
-    devices,
+    devices: activeDevices,
   };
 }
 

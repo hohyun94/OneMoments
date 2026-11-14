@@ -48,6 +48,7 @@ export interface MessageView {
   conversationId: string;
   senderUserId: string;
   senderDeviceId: string;
+  senderSigningPublicKey: string;
   ciphertext: string;
   nonce: string;
   signature: string;

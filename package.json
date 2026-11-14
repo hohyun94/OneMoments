@@ -11,16 +11,20 @@
   "packageManager": "pnpm@11.22.0",
   "scripts": {
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
-    "build": "tsc -p tsconfig.json",
+    "dev:client": "pnpm --filter @onemoments/client dev",
+    "build": "tsc -p tsconfig.json && pnpm build:client",
+    "build:server": "tsc -p tsconfig.json",
+    "build:client": "pnpm --filter @onemoments/client build",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",
+    "test:client": "pnpm --filter @onemoments/client test",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "verify": "pnpm check && pnpm build",
-    "verify:full": "pnpm check:test && pnpm test && pnpm verify"
+    "verify:full": "pnpm check:test && pnpm test && pnpm test:client && pnpm verify"
   },
   "dependencies": {
     "cookie-parser": "^1.4.7",

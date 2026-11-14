@@ -83,6 +83,7 @@ export function toMessageView(row: MessageRow, key: MessageKeyRow): MessageView 
     conversationId: row.conversationId,
     senderUserId: row.senderUserId,
     senderDeviceId: row.senderDeviceId,
+    senderSigningPublicKey: row.senderSigningPublicKey,
     ciphertext: row.ciphertext,
     nonce: row.nonce,
     signature: row.signature,

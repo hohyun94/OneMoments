@@ -113,6 +113,8 @@ export const messages = pgTable(
     senderDeviceId: uuid("sender_device_id")
       .notNull()
       .references(() => devices.id),
+    // 발신 기기 서명 공개키 스냅샷. 기기가 폐기돼도 과거 메시지 서명을 검증할 수 있다.
+    senderSigningPublicKey: text("sender_signing_public_key").notNull(),
     // AES-256-GCM(ciphertext||tag) base64
     ciphertext: text("ciphertext").notNull(),
     // 12바이트 GCM nonce base64

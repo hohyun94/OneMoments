@@ -16,6 +16,7 @@ export interface CreateMessageInput {
   conversationId: string;
   senderUserId: string;
   senderDeviceId: string;
+  senderSigningPublicKey: string;
   payload: NormalizedMessagePayload;
 }
 
@@ -42,6 +43,7 @@ export async function createMessage(
         conversationId: input.conversationId,
         senderUserId: input.senderUserId,
         senderDeviceId: input.senderDeviceId,
+        senderSigningPublicKey: input.senderSigningPublicKey,
         ciphertext: payload.ciphertext,
         nonce: payload.nonce,
         signature: payload.signature,

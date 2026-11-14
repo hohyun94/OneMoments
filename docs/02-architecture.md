@@ -78,7 +78,7 @@
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, created_at, last_seen_at, revoked_at | 기기 공개키 |
 | `conversations` | id, kind('direct'), created_at | 1:1 대화 |
 | `conversation_participants` | conversation_id, user_id, joined_at (PK) | 참여자. 1:1은 항상 2명 |
-| `messages` | id, conversation_id, sender_user_id, sender_device_id, ciphertext, nonce, signature, client_message_id, created_at | 암호문 1건. `(conversation_id, sender_user_id, client_message_id)` 유니크 |
+| `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, created_at | 암호문 1건 + 발신 기기 서명 공개키 스냅샷(기기 폐기 후에도 검증 가능). `(conversation_id, sender_user_id, client_message_id)` 유니크 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, version (PK: message_id+recipient_device_id) | 기기별 키 봉투 |
 | `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at | 읽음 표시(P1) |
 

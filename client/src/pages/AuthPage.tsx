@@ -86,9 +86,6 @@ export function AuthPage() {
             <Lock className="h-6 w-6" aria-hidden />
           </span>
           <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">OneMoments</h1>
-          <p className="mt-1 text-sm text-zinc-500">
-            두 사람만 읽을 수 있는 1:1 암호화 메신저
-          </p>
         </div>
 
         <Card className="p-6">

@@ -167,7 +167,7 @@ test("계정 삭제 후 상대 이력은 유지되고 익명화된다", async ({
     await deleteDialog.getByLabel("비밀번호 확인").fill(PASSWORD);
     await deleteDialog.getByRole("button", { name: "계정 삭제" }).click();
     await expect(
-      alice.getByText("두 사람만 읽을 수 있는 1:1 암호화 메신저"),
+      alice.getByRole("heading", { name: "OneMoments" }),
     ).toBeVisible();
 
     // Bob: 이력은 유지되고 발신자는 "삭제된 사용자"로 표시된다.

@@ -9,6 +9,7 @@
 - [제품 정의](docs/00-product.md) — 타깃, 핵심 시나리오, MVP 범위, 결정 필요 항목
 - [요구사항](docs/01-requirements.md) — 기능/비기능 요구사항과 수용 기준
 - [아키텍처·보안 설계](docs/02-architecture.md) — E2E 암호 설계, 데이터 모델, API 초안, 위협 모델
+- [화면 와이어프레임](docs/04-wireframes.md) — 로그인·대화 목록·채팅·기기/안전번호
 - [로드맵](docs/03-roadmap.md) — 마일스톤과 완료 기준
 
 ## 원칙

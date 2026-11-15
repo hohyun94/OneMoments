@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { Button, Card, Spinner } from "./components/ui.tsx";
+import { AdminPage } from "./pages/AdminPage.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { ChatPage } from "./pages/ChatPage.tsx";
 import { DevicesPage } from "./pages/DevicesPage.tsx";
@@ -84,6 +85,14 @@ export function App() {
         element={
           <Guard>
             <DevicesPage />
+          </Guard>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <Guard>
+            <AdminPage />
           </Guard>
         }
       />

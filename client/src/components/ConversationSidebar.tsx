@@ -1,4 +1,4 @@
-import { BellOff, LogOut, MessageSquarePlus, ShieldCheck, Smartphone, Users } from "lucide-react";
+import { BellOff, LogOut, MessageSquarePlus, ShieldAlert, ShieldCheck, Smartphone, Users } from "lucide-react";
 
 import { formatListTime } from "../lib/format.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
@@ -10,18 +10,22 @@ export function ConversationSidebar({
   selectedId,
   displayName,
   connection,
+  isAdmin,
   onSelect,
   onNewConversation,
   onOpenDevices,
+  onOpenAdmin,
   onLogout,
 }: {
   conversations: ConversationSummary[];
   selectedId: string | null;
   displayName: string;
   connection: RealtimeStatus;
+  isAdmin: boolean;
   onSelect: (conversationId: string) => void;
   onNewConversation: () => void;
   onOpenDevices: () => void;
+  onOpenAdmin: () => void;
   onLogout: () => void;
 }) {
   return (
@@ -127,6 +131,12 @@ export function ConversationSidebar({
       </nav>
 
       <footer className="border-t border-zinc-100 p-2">
+        {isAdmin ? (
+          <Button variant="ghost" className="w-full justify-start" onClick={onOpenAdmin}>
+            <ShieldAlert className="h-4 w-4" aria-hidden />
+            관리자 콘솔
+          </Button>
+        ) : null}
         <Button variant="ghost" className="w-full justify-start" onClick={onOpenDevices}>
           <Smartphone className="h-4 w-4" aria-hidden />
           기기 관리

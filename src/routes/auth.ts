@@ -1,5 +1,6 @@
 import express, { Router, type Request } from "express";
 
+import { isAdminUsername } from "../auth/admin.js";
 import { issueSession } from "../auth/issueSession.js";
 import {
   SESSION_COOKIE,
@@ -11,6 +12,7 @@ import type { Config } from "../config.js";
 import { verifyEd25519Signature } from "../crypto/ed25519.js";
 import { normalizeDeviceKeys } from "../crypto/envelope.js";
 import type { Database } from "../db/client.js";
+import type { UserRow } from "../db/schema.js";
 import { AppError, asyncHandler } from "../http/errors.js";
 import { removePushSubscriptionsForDevice } from "../services/push.js";
 import {
@@ -76,6 +78,12 @@ export function createAuthRouter(db: Database, config: Config): Router {
     message: "Too many recovery attempts",
   });
 
+  // 관리자 여부는 ADMIN_USERNAMES allowlist 로만 판정한다.
+  const authUser = (user: UserRow) => ({
+    ...toPublicUser(user),
+    isAdmin: isAdminUsername(config, user.username),
+  });
+
   router.post(
     "/register",
     credentialLimiter,
@@ -96,7 +104,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
       });
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
       res.status(201).json({
-        user: toPublicUser(user),
+        user: authUser(user),
         device: toPublicDevice(device),
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
@@ -144,7 +152,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
       });
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
       res.json({
-        user: toPublicUser(user),
+        user: authUser(user),
         device: toPublicDevice(device),
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
@@ -344,7 +352,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
       });
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
       res.json({
-        user: toPublicUser(user),
+        user: authUser(user),
         device: toPublicDevice(device),
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
@@ -383,7 +391,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
       if (!user || user.deletedAt !== null) throw AppError.unauthorized();
       const devices = await listDevices(db, auth.userId);
       res.json({
-        user: toPublicUser(user),
+        user: authUser(user),
         deviceId: auth.deviceId,
         devices: devices.map(toOwnDevice),
         csrfToken: deriveCsrfToken(auth.sessionToken, config.sessionSecret),

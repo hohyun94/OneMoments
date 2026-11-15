@@ -3,6 +3,7 @@ import {
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   smallint,
@@ -376,6 +377,30 @@ export const conversationReads = pgTable(
   ],
 );
 
+/**
+ * 관리자 조치 감사 로그. 평문·키·비밀번호·세션 토큰은 절대 넣지 않는다.
+ * 관리자/대상 계정이 삭제되어도 기록을 읽을 수 있도록 username 스냅샷을 함께 둔다.
+ */
+export const adminAuditLogs = pgTable(
+  "admin_audit_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    adminUserId: uuid("admin_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    adminUsername: text("admin_username").notNull(),
+    action: text("action").notNull(),
+    targetUserId: uuid("target_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    targetUsername: text("target_username"),
+    // 작업 메타데이터만(예: 종료한 세션 수, decoy alias). 메시지 내용은 금지.
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("admin_audit_logs_created_idx").on(table.createdAt)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
@@ -385,3 +410,4 @@ export type AttachmentRow = typeof attachments.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageKeyRow = typeof messageKeys.$inferSelect;
+export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;

@@ -5,7 +5,7 @@
 
 ## 1. 원칙
 
-- decoy 자격증명은 **배포 관리자 CLI로만** 생성·회전·비활성화한다.
+- decoy 자격증명은 **배포 관리자 CLI 또는 관리자 콘솔(`ADMIN_USERNAMES` allowlist)** 로만 생성·회전·비활성화한다.
 - 일반 사용자 API/UI에는 decoy 목록·설정·존재 표시가 없다.
 - decoy 로그인은 **decoy 사용자 세션**만 발급한다. 실제 사용자 토큰은 발급하지 않는다.
 - 실제/decoy 프로필은 user·device·E2E 키·대화·푸시가 분리된다.
@@ -39,6 +39,18 @@ DECOY_PASSWORD='<new-password>' node scripts/decoy-admin.mjs rotate --alias <id>
 node scripts/decoy-admin.mjs disable --alias <id>
 node scripts/decoy-admin.mjs enable --alias <id>
 ```
+
+### 관리자 콘솔에서 관리
+
+`ADMIN_USERNAMES` 에 등록된 계정으로 로그인하면 사이드바의 **관리자 콘솔 → Decoy** 탭에서 같은 작업을 할 수 있다.
+
+- decoy 프로필 목록·활성/비활성 상태 확인
+- 실제 로그인 ID + 선택 핸들 + decoy 비밀번호로 생성
+- 비밀번호 교체(기존 decoy 비밀번호 즉시 무효), 비활성화/활성화
+- 서버는 비밀번호 해시만 저장하고 생성·교체 응답에 원문을 포함하지 않는다
+- `ADMIN_USERNAMES` 가 비어 있으면 `/admin` 메뉴와 `/api/admin/*` 가 모두 비활성화된다
+
+권한 모델·감사 로그·API: [`21-admin-console.md`](21-admin-console.md)
 
 ## 3. 로그인 동작
 
@@ -77,4 +89,5 @@ node scripts/decoy-admin.mjs enable --alias <id>
 ## 6. 검증
 
 - 서버: 실제/decoy 비밀번호가 서로 다른 user로 인증, decoy 세션에서 실제 대화 404, 잘못된 비밀번호 401
+- 관리자: `/api/admin/decoy` 생성·회전·비활성화가 decoy 로그인에 즉시 반영되고 응답에 비밀번호 원문이 없음(`test/api-admin.test.ts`)
 - 브라우저: 실제 로그인 → 로그아웃 → decoy 로그인 → decoy 재로그인, decoy 화면에 실제 대화 미노출

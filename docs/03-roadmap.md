@@ -109,6 +109,9 @@ MVP 이후 과제를 순차 진행한다.
 7. **Decoy 프로필(배포 관리자 전용)** — 완료 · `docs/18-decoy-profile.md`
    - 실제 ID + 관리자 설정 decoy 비밀번호 → 별도 프로필
    - 일반 사용자 UI/API에는 존재 비노출
+8. **관리자 콘솔** — 완료 · `docs/21-admin-console.md`
+   - `ADMIN_USERNAMES` allowlist, 개요·사용자/기기/세션 조회, 세션 강제 종료
+   - decoy 프로필 웹 관리, 감사 로그(메타데이터만)
 
 ## 리스크
 

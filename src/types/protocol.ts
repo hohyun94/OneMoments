@@ -5,6 +5,8 @@ export interface PublicUser {
   username: string;
   createdAt: string;
   deleted: boolean;
+  /** ADMIN_USERNAMES allowlist 에 포함된 경우에만 true */
+  isAdmin?: boolean;
 }
 
 export interface PeerUser {

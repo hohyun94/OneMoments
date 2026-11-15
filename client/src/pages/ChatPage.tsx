@@ -44,10 +44,12 @@ export function ChatPage() {
         conversations={conversations}
         selected={selected}
         loading={conversationsQuery.isLoading}
+        isAdmin={session.user.isAdmin === true}
         onSelect={(id) => navigate(`/c/${id}`)}
         onBack={() => navigate("/")}
         onNewConversation={() => setDialogOpen(true)}
         onOpenDevices={() => navigate("/devices")}
+        onOpenAdmin={() => navigate("/admin")}
         onLogout={() => {
           void logout().then(() => navigate("/"));
         }}
@@ -71,10 +73,12 @@ function ChatShell({
   conversations,
   selected,
   loading,
+  isAdmin,
   onSelect,
   onBack,
   onNewConversation,
   onOpenDevices,
+  onOpenAdmin,
   onLogout,
 }: {
   username: string;
@@ -83,10 +87,12 @@ function ChatShell({
   conversations: ConversationSummary[];
   selected: ConversationSummary | null;
   loading: boolean;
+  isAdmin: boolean;
   onSelect: (id: string) => void;
   onBack: () => void;
   onNewConversation: () => void;
   onOpenDevices: () => void;
+  onOpenAdmin: () => void;
   onLogout: () => void;
 }) {
   const { status } = useRealtime();
@@ -105,9 +111,11 @@ function ChatShell({
           selectedId={selectedId}
           displayName={username}
           connection={status}
+          isAdmin={isAdmin}
           onSelect={onSelect}
           onNewConversation={onNewConversation}
           onOpenDevices={onOpenDevices}
+          onOpenAdmin={onOpenAdmin}
           onLogout={onLogout}
         />
       </div>

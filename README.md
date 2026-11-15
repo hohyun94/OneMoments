@@ -19,7 +19,8 @@
 - **푸시·PWA**: VAPID Web Push(RFC 8291), 서비스 워커, **오프라인 앱 셸**, PNG 192/512 아이콘, 로그아웃/기기 폐기 시 구독 정리
 - **성능**: 동시성 부하 테스트(Node/k6), 클라이언트 DR·첨부 암복호화 벤치마크
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
-- **테스트 92개**: 서버 60(단위·API·WS·버스·푸시·초대·첨부 정리·decoy, 1 skipped) + 클라이언트 25(DR·X3DH/OPK·Sender Keys·첨부·백업·프로필 저장) + 브라우저 E2E 7(그룹·초대·이미지·자동 로그아웃·오프라인)
+- **관리자 콘솔**: `ADMIN_USERNAMES` allowlist 전용 `/admin` — 개요 통계, 사용자·기기·세션 조회, 세션 강제 종료, decoy 프로필 웹 관리, 감사 로그(메타데이터만)
+- **테스트 97개**: 서버 65(단위·API·WS·버스·푸시·초대·첨부 정리·decoy·관리자, 1 skipped) + 클라이언트 25(DR·X3DH/OPK·Sender Keys·첨부·백업·프로필 저장) + 브라우저 E2E 7(그룹·초대·이미지·자동 로그아웃·오프라인)
 
 ## 빠른 시작
 
@@ -56,6 +57,7 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `DATABASE_URL` | ✅ | `postgres://onemoments:<url-encoded-password>@postgres:5432/onemoments` |
 | `SESSION_SECRET` | ✅ | `openssl rand -base64 48` (32자 이상) |
 | `CORS_ORIGINS` | ✅ | `https://chat.example.com` |
+| `ADMIN_USERNAMES` | — | 관리자 콘솔 allowlist(쉼표 구분, 소문자 username). 비우면 관리자 기능 비활성 |
 | `DB_POOL_MAX` | — | `5` (인스턴스 수 × 값 ≤ DB max_connections) |
 | `METRICS_TOKEN` | — | `/metrics` Bearer 토큰(운영 권장) |
 | `REDIS_URL` | — | 기본 `redis://redis:6379` (compose에 Redis 포함) |
@@ -122,7 +124,8 @@ pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 - [X3DH](docs/15-x3dh.md) — signed prekey, 최초 세션, 백업과 OPK 후속
 - [네이티브 앱 평가(참고, 범위 외)](docs/16-native-app.md) — React Native/Flutter, 키 보관, APNs/FCM, 결정 게이트
 - [로컬 웹 테스트](docs/17-web-test.md) — 브라우저/PWA 접속 URL, 시나리오, 환경 초기화
-- [Decoy 프로필](docs/18-decoy-profile.md) — 배포 관리자 CLI, 별도 비밀번호, 격리와 한계
+- [Decoy 프로필](docs/18-decoy-profile.md) — 배포 관리자 CLI·관리자 콘솔, 별도 비밀번호, 격리와 한계
+- [관리자 콘솔](docs/21-admin-console.md) — `ADMIN_USERNAMES`, 메타데이터 조회, 세션 강제 종료, decoy 웹 관리, 감사 로그
 - [자동 로그아웃](docs/19-auto-logout.md) — 무활동 5분, 메모리 캐시 제거, 강제 로그인
 - [읽음 표시](docs/20-read-receipts.md) — 읽음 커서 API, 1:1/그룹 표기, 5초 갱신
 - [푸시·PWA](docs/12-push-mobile.md) — Web Push, VAPID, 서비스 워커, 모바일 대응

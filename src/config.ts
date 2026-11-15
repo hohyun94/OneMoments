@@ -18,6 +18,8 @@ const envSchema = z.object({
     .default(43200),
   COOKIE_SECURE: z.enum(["true", "false"]).optional(),
   CORS_ORIGINS: z.string().default(""),
+  // 관리자 콘솔 권한 allowlist. 비어 있으면 관리자 기능이 비활성화된다.
+  ADMIN_USERNAMES: z.string().default(""),
   MAX_CIPHERTEXT_BYTES: z.coerce.number().int().min(1024).max(1024 * 1024).default(16384),
   MAX_ENVELOPES: z.coerce.number().int().min(2).max(200).default(50),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().min(1).default(20),
@@ -92,6 +94,7 @@ export interface Config {
   sessionTtlSeconds: number;
   cookieSecure: boolean;
   corsOrigins: string[];
+  adminUsernames: string[];
   maxCiphertextBytes: number;
   maxEnvelopes: number;
   authRateLimitMax: number;
@@ -168,6 +171,9 @@ export function loadConfig(env: Env = process.env): Config {
     corsOrigins: value.CORS_ORIGINS.split(",")
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
+    adminUsernames: value.ADMIN_USERNAMES.split(",")
+      .map((username) => username.trim().toLowerCase())
+      .filter((username) => username.length > 0),
     maxCiphertextBytes: value.MAX_CIPHERTEXT_BYTES,
     maxEnvelopes: value.MAX_ENVELOPES,
     authRateLimitMax: value.AUTH_RATE_LIMIT_MAX,

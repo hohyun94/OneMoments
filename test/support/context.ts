@@ -24,7 +24,14 @@ export interface TestContext {
   close: () => Promise<void>;
 }
 
-export async function createTestContext(): Promise<TestContext> {
+export interface TestContextOptions {
+  /** ADMIN_USERNAMES allowlist (테스트용) */
+  adminUsernames?: string[];
+}
+
+export async function createTestContext(
+  options: TestContextOptions = {},
+): Promise<TestContext> {
   const { db, pool } = createDb({
     databaseUrl: TEST_DATABASE_URL,
     databaseSsl: "disable",
@@ -61,6 +68,7 @@ export async function createTestContext(): Promise<TestContext> {
     ATTACHMENT_MAX_BYTES: "4096",
     ATTACHMENT_DIR: ".test-artifacts/attachments",
     METRICS_TOKEN: "test-metrics-token-0123456789",
+    ADMIN_USERNAMES: (options.adminUsernames ?? []).join(","),
   });
 
   const bus = new LocalMessageBus();

@@ -3,6 +3,8 @@ export interface PublicUser {
   username: string;
   createdAt: string;
   deleted: boolean;
+  /** ADMIN_USERNAMES allowlist 에 포함된 경우에만 true */
+  isAdmin?: boolean;
 }
 
 export interface PeerUser {
@@ -111,6 +113,84 @@ export interface MeResponse {
   deviceId: string;
   devices: Device[];
   csrfToken: string;
+}
+
+export interface AdminOverview {
+  usersTotal: number;
+  usersDeleted: number;
+  devicesActive: number;
+  devicesRevoked: number;
+  directConversations: number;
+  groupConversations: number;
+  messages: number;
+  attachments: number;
+  attachmentBytes: number;
+  activeSessions: number;
+  pushSubscriptions: number;
+  decoyProfiles: number;
+  decoyProfilesDisabled: number;
+}
+
+export interface AdminUserListItem {
+  id: string;
+  username: string;
+  createdAt: string;
+  deleted: boolean;
+  activeDeviceCount: number;
+  activeSessionCount: number;
+}
+
+export interface AdminUserPage {
+  users: AdminUserListItem[];
+  nextCursor: string | null;
+}
+
+export interface AdminUserDevice {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface AdminUserSession {
+  id: string;
+  deviceId: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  userAgent: string | null;
+}
+
+export interface AdminUserDetail {
+  user: PublicUser;
+  devices: AdminUserDevice[];
+  sessions: AdminUserSession[];
+  counts: {
+    conversations: number;
+    messages: number;
+    attachments: number;
+    pushSubscriptions: number;
+  };
+  decoy: { id: string; alias: string; disabledAt: string | null } | null;
+}
+
+export interface AdminAuditEntry {
+  id: string;
+  adminUsername: string;
+  action: string;
+  targetUsername: string | null;
+  detail: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+export interface DecoyProfile {
+  id: string;
+  alias: string;
+  userId: string;
+  handle: string;
+  disabledAt: string | null;
+  createdAt: string;
 }
 
 export type ServerFrame =

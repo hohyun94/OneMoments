@@ -18,6 +18,8 @@ services:
       SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-43200}
       COOKIE_SECURE: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:?CORS_ORIGINS is required (e.g. https://chat.example.com)}
+      # 관리자 콘솔 allowlist(쉼표 구분). 비우면 관리자 기능 비활성화.
+      ADMIN_USERNAMES: ${ADMIN_USERNAMES:-}
       MAX_CIPHERTEXT_BYTES: ${MAX_CIPHERTEXT_BYTES:-16384}
       MAX_ENVELOPES: ${MAX_ENVELOPES:-50}
       TRUST_PROXY: ${TRUST_PROXY:-1}

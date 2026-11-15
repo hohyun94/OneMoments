@@ -195,6 +195,34 @@ export const conversationIdParamsSchema = z.object({
   conversationId: z.string().uuid(),
 });
 
+export const adminUserListQuerySchema = z.object({
+  query: z.string().trim().max(32).optional(),
+  cursor: z.string().trim().max(32).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+export const adminUserIdParamsSchema = z.object({
+  userId: z.string().uuid(),
+});
+
+export const decoyCreateBodySchema = z.object({
+  alias: usernameSchema,
+  handle: usernameSchema.optional(),
+  password: passwordSchema,
+});
+
+export const decoyProfileParamsSchema = z.object({
+  profileId: z.string().uuid(),
+});
+
+export const decoyPasswordBodySchema = z.object({
+  password: passwordSchema,
+});
+
+export const decoyDisabledBodySchema = z.object({
+  disabled: z.boolean(),
+});
+
 export const attachmentIdParamsSchema = z.object({
   attachmentId: z.string().uuid(),
 });

@@ -1,6 +1,7 @@
 import { and, eq, gt, isNull, lt } from "drizzle-orm";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
+import { isAdminUsername } from "../auth/admin.js";
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
 import { devices, sessions, users } from "../db/schema.js";
@@ -118,6 +119,22 @@ export function requireCsrf(config: Config): RequestHandler {
       !verifyCsrfToken(supplied, auth.sessionToken, config.sessionSecret)
     ) {
       next(AppError.forbidden("Invalid CSRF token"));
+      return;
+    }
+    next();
+  };
+}
+
+/** ADMIN_USERNAMES allowlist 에 포함된 사용자만 통과시킨다. */
+export function requireAdmin(config: Config): RequestHandler {
+  return (req: Request, _res: Response, next: NextFunction) => {
+    const auth = req.auth;
+    if (!auth) {
+      next(AppError.unauthorized());
+      return;
+    }
+    if (!isAdminUsername(config, auth.username)) {
+      next(AppError.forbidden("Admin only"));
       return;
     }
     next();

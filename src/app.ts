@@ -132,6 +132,10 @@ export function createApp(options: AppOptions): Express {
         next();
         return;
       }
+      // 관리자 화면은 검색엔진에 노출하지 않는다(로그인 화면에도 진입점을 두지 않는다).
+      if (req.path === "/admin" || req.path.startsWith("/admin/")) {
+        res.setHeader("X-Robots-Tag", "noindex, nofollow");
+      }
       res.sendFile(path.join(clientDist, "index.html"));
     });
   }

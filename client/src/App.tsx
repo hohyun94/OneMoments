@@ -1,14 +1,18 @@
 import { KeyRound, Lock, LogOut } from "lucide-react";
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
 import { Button, Card, Spinner } from "./components/ui.tsx";
-import { AdminPage } from "./pages/AdminPage.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
 import { ChatPage } from "./pages/ChatPage.tsx";
 import { DevicesPage } from "./pages/DevicesPage.tsx";
 import { InvitePage } from "./pages/InvitePage.tsx";
 import { useSession } from "./session.tsx";
+
+// 관리자 화면은 allowlist 사용자만 진입하므로 일반 사용자 번들에 포함하지 않는다.
+const AdminPage = lazy(() =>
+  import("./pages/AdminPage.tsx").then((module) => ({ default: module.AdminPage })),
+);
 
 function Splash() {
   return (
@@ -92,7 +96,9 @@ export function App() {
         path="/admin"
         element={
           <Guard>
-            <AdminPage />
+            <Suspense fallback={<Splash />}>
+              <AdminPage />
+            </Suspense>
           </Guard>
         }
       />

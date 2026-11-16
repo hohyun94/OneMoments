@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, KeyRound, RefreshCw, Search, ShieldAlert, Smartphone } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -211,18 +211,24 @@ function UsersTab() {
   const [appliedQuery, setAppliedQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const usersQuery = useQuery({
+  const usersQuery = useInfiniteQuery({
     queryKey: ["admin", "users", appliedQuery],
-    queryFn: () =>
-      api<AdminUserPage>(
-        appliedQuery
-          ? `/api/admin/users?query=${encodeURIComponent(appliedQuery)}`
-          : "/api/admin/users",
-      ),
+    queryFn: ({ pageParam }) => {
+      const params = new URLSearchParams();
+      if (appliedQuery) params.set("query", appliedQuery);
+      if (pageParam) params.set("cursor", pageParam);
+      const suffix = params.toString();
+      return api<AdminUserPage>(`/api/admin/users${suffix ? `?${suffix}` : ""}`);
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
+
+  const users = usersQuery.data?.pages.flatMap((page) => page.users) ?? [];
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setSelectedId(null);
     setAppliedQuery(search.trim());
   };
 
@@ -247,45 +253,66 @@ function UsersTab() {
       <Card className="overflow-hidden">
         {usersQuery.isLoading ? (
           <Loading />
-        ) : usersQuery.isError ? (
+        ) : usersQuery.isError && !usersQuery.data ? (
           <div className="p-4">
             <Alert variant="error">{errorMessage(usersQuery.error)}</Alert>
           </div>
-        ) : usersQuery.data && usersQuery.data.users.length > 0 ? (
-          <ul className="divide-y divide-zinc-100">
-            {usersQuery.data.users.map((user) => (
-              <li key={user.id}>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(user.id)}
-                  aria-current={selectedId === user.id ? "true" : undefined}
-                  className={
-                    selectedId === user.id
-                      ? "flex w-full items-center gap-3 bg-violet-50 px-4 py-3 text-left"
-                      : "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50"
-                  }
-                >
-                  <Avatar name={user.username} />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate text-sm font-medium text-zinc-900">
-                        @{user.username}
-                      </span>
-                      {user.deleted ? (
-                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
-                          삭제됨
+        ) : users.length > 0 ? (
+          <>
+            <ul className="divide-y divide-zinc-100">
+              {users.map((user) => (
+                <li key={user.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(user.id)}
+                    aria-current={selectedId === user.id ? "true" : undefined}
+                    className={
+                      selectedId === user.id
+                        ? "flex w-full items-center gap-3 bg-violet-50 px-4 py-3 text-left"
+                        : "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50"
+                    }
+                  >
+                    <Avatar name={user.username} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-zinc-900">
+                          @{user.username}
                         </span>
-                      ) : null}
+                        {user.deleted ? (
+                          <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
+                            삭제됨
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="mt-0.5 block text-xs text-zinc-500">
+                        기기 {user.activeDeviceCount} · 세션 {user.activeSessionCount} · 가입{" "}
+                        {formatDateTime(user.createdAt)}
+                      </span>
                     </span>
-                    <span className="mt-0.5 block text-xs text-zinc-500">
-                      기기 {user.activeDeviceCount} · 세션 {user.activeSessionCount} · 가입{" "}
-                      {formatDateTime(user.createdAt)}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 px-4 py-3">
+              <p className="text-xs text-zinc-500">{users.length}명 표시</p>
+              {usersQuery.hasNextPage ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void usersQuery.fetchNextPage()}
+                  disabled={usersQuery.isFetchingNextPage}
+                >
+                  {usersQuery.isFetchingNextPage ? <Spinner /> : null}
+                  더 보기
+                </Button>
+              ) : null}
+            </div>
+            {usersQuery.isFetchNextPageError ? (
+              <div className="px-4 pb-3">
+                <Alert variant="error">{errorMessage(usersQuery.error)}</Alert>
+              </div>
+            ) : null}
+          </>
         ) : (
           <p className="px-4 py-10 text-center text-sm text-zinc-500">
             해당하는 사용자가 없습니다.

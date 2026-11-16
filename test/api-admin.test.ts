@@ -96,6 +96,36 @@ describe("admin console", () => {
     expect(detail.text).not.toMatch(/passwordHash|tokenHash|password_hash|token_hash/);
   });
 
+  it("paginates the registered user list with the username cursor", async () => {
+    const adminClient = new TestClient(ctx.baseUrl);
+    const registered = await adminClient.register(adminUsername, createIdentity(), {
+      password: adminPassword,
+    });
+    expect(registered.status).toBe(201);
+
+    await registerAccount("aa");
+    await registerAccount("bb");
+
+    const firstPage = await adminClient.request("GET", "/api/admin/users?limit=2");
+    expect(firstPage.status).toBe(200);
+    expect(firstPage.body.users).toHaveLength(2);
+    expect(firstPage.body.nextCursor).not.toBeNull();
+
+    const secondPage = await adminClient.request(
+      "GET",
+      `/api/admin/users?limit=2&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`,
+    );
+    expect(secondPage.status).toBe(200);
+    expect(secondPage.body.users).toHaveLength(1);
+    expect(secondPage.body.nextCursor).toBeNull();
+
+    const usernames = [...firstPage.body.users, ...secondPage.body.users].map(
+      (user: { username: string }) => user.username,
+    );
+    expect(usernames).toHaveLength(3);
+    expect(new Set(usernames).size).toBe(3);
+  });
+
   it("revokes sessions with CSRF and records an audit entry", async () => {
     const adminClient = new TestClient(ctx.baseUrl);
     const registered = await adminClient.register(adminUsername, createIdentity(), {

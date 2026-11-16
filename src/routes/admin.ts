@@ -12,6 +12,7 @@ import {
 } from "../http/middleware.js";
 import {
   adminDeviceListQuerySchema,
+  adminDeviceParamsSchema,
   adminUserIdParamsSchema,
   adminUserListQuerySchema,
   decoyCreateBodySchema,
@@ -25,6 +26,7 @@ import {
   listAdminAudit,
   listAdminDevices,
   listAdminUsers,
+  revokeAdminDevice,
   revokeUserSessions,
 } from "../services/admin.js";
 import {
@@ -80,6 +82,22 @@ export function createAdminRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const query = adminDeviceListQuerySchema.parse(req.query);
       res.json(await listAdminDevices(db, query));
+    }),
+  );
+
+  router.post(
+    "/devices/:deviceId/revoke",
+    csrf,
+    decoyLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { deviceId } = adminDeviceParamsSchema.parse(req.params);
+      const result = await revokeAdminDevice(db, {
+        adminUserId: auth.userId,
+        adminUsername: auth.username,
+        deviceId,
+      });
+      res.json(result);
     }),
   );
 

@@ -249,6 +249,86 @@ export async function listAdminDevices(
   };
 }
 
+export interface AdminDeviceRevokeResult {
+  device: AdminDeviceListItem;
+  /** 이미 폐기된 기기면 false (감사 로그도 추가하지 않는다). */
+  revoked: boolean;
+}
+
+/**
+ * 관리자에 의한 기기 폐기.
+ * 사용자용 폐기와 동일하게 세션·푸시 구독을 함께 삭제하고(불변식 18),
+ * 감사 로그에는 기기 이름 같은 메타데이터만 남긴다(키·토큰 금지).
+ */
+export async function revokeAdminDevice(
+  db: Database,
+  input: { adminUserId: string; adminUsername: string; deviceId: string },
+): Promise<AdminDeviceRevokeResult> {
+  const [target] = await db
+    .select({
+      id: devices.id,
+      userId: devices.userId,
+      username: users.username,
+      name: devices.name,
+      createdAt: devices.createdAt,
+      lastSeenAt: devices.lastSeenAt,
+      revokedAt: devices.revokedAt,
+    })
+    .from(devices)
+    .innerJoin(users, eq(users.id, devices.userId))
+    .where(eq(devices.id, input.deviceId))
+    .limit(1);
+  if (!target) throw AppError.notFound("DEVICE_NOT_FOUND", "Device not found");
+
+  if (target.revokedAt) {
+    return {
+      device: {
+        id: target.id,
+        userId: target.userId,
+        username: target.username,
+        name: target.name,
+        createdAt: target.createdAt.toISOString(),
+        lastSeenAt: iso(target.lastSeenAt),
+        revokedAt: iso(target.revokedAt),
+      },
+      revoked: false,
+    };
+  }
+
+  const revokedAt = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(devices)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(devices.id, input.deviceId), isNull(devices.revokedAt)))
+      .returning({ revokedAt: devices.revokedAt });
+    if (!row) throw AppError.notFound("DEVICE_NOT_FOUND", "Device not found");
+    await tx.delete(sessions).where(eq(sessions.deviceId, input.deviceId));
+    await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.deviceId, input.deviceId));
+    await recordAdminAudit(tx, {
+      adminUserId: input.adminUserId,
+      adminUsername: input.adminUsername,
+      action: "device.revoked",
+      targetUserId: target.userId,
+      targetUsername: target.username,
+      detail: { deviceName: target.name },
+    });
+    return row.revokedAt;
+  });
+
+  return {
+    device: {
+      id: target.id,
+      userId: target.userId,
+      username: target.username,
+      name: target.name,
+      createdAt: target.createdAt.toISOString(),
+      lastSeenAt: iso(target.lastSeenAt),
+      revokedAt: iso(revokedAt),
+    },
+    revoked: true,
+  };
+}
+
 export interface AdminDeviceItem {
   id: string;
   name: string;

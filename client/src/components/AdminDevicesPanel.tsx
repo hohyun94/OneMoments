@@ -1,10 +1,10 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { Search, Smartphone } from "lucide-react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Ban, Search, Smartphone } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-import { Alert, Button, Card, Input, Spinner } from "./ui.tsx";
+import { Alert, Button, Card, Dialog, Input, Spinner } from "./ui.tsx";
 import { api } from "../lib/api.ts";
-import type { AdminDevicePage } from "../types.ts";
+import type { AdminDeviceListItem, AdminDevicePage } from "../types.ts";
 
 type StatusFilter = "active" | "revoked" | "all";
 
@@ -32,9 +32,12 @@ function errorMessage(error: unknown): string {
  * 공개키·키 봉투·세션 토큰은 서버가 응답하지 않는다.
  */
 export function AdminDevicesPanel() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("active");
+  const [target, setTarget] = useState<AdminDeviceListItem | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const devicesQuery = useInfiniteQuery({
     queryKey: ["admin", "devices", appliedQuery, status],
@@ -49,6 +52,28 @@ export function AdminDevicesPanel() {
   });
 
   const devices = devicesQuery.data?.pages.flatMap((page) => page.devices) ?? [];
+
+  const revoke = useMutation({
+    mutationFn: (deviceId: string) =>
+      api<{ device: AdminDeviceListItem; revoked: boolean }>(
+        `/api/admin/devices/${deviceId}/revoke`,
+        { method: "POST" },
+      ),
+    onSuccess: (result) => {
+      setTarget(null);
+      setNotice(
+        result.revoked
+          ? `@${result.device.username} 의 "${result.device.name}" 기기를 폐기했습니다.`
+          : "이미 폐기된 기기입니다.",
+      );
+      void queryClient.invalidateQueries({ queryKey: ["admin"] });
+    },
+  });
+
+  const closeDialog = () => {
+    setTarget(null);
+    revoke.reset();
+  };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -89,6 +114,8 @@ export function AdminDevicesPanel() {
           없습니다.
         </p>
       </Card>
+
+      {notice ? <Alert>{notice}</Alert> : null}
 
       <Card className="overflow-hidden">
         {devicesQuery.isLoading ? (
@@ -131,6 +158,17 @@ export function AdminDevicesPanel() {
                       {device.revokedAt ? ` · 폐기 ${formatDateTime(device.revokedAt)}` : ""}
                     </span>
                   </span>
+                  {device.revokedAt ? null : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setTarget(device)}
+                      aria-label={`${device.name} 기기 폐기`}
+                    >
+                      <Ban className="h-3.5 w-3.5" aria-hidden />
+                      폐기
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -160,6 +198,35 @@ export function AdminDevicesPanel() {
           </p>
         )}
       </Card>
+
+      <Dialog open={target !== null} onClose={closeDialog} title="기기 폐기">
+        {target ? (
+          <>
+            <p className="text-sm leading-relaxed text-zinc-600">
+              @{target.username} 의 &ldquo;{target.name}&rdquo; 기기를 폐기합니다. 이 기기의 세션과
+              푸시 구독이 삭제되고, 폐기된 기기는 이후 메시지를 받을 수 없습니다. 되돌릴 수
+              없습니다.
+            </p>
+            {revoke.isError ? (
+              <div className="mt-3">
+                <Alert variant="error">{errorMessage(revoke.error)}</Alert>
+              </div>
+            ) : null}
+            <div className="mt-4 flex justify-end gap-2">
+              <Button variant="outline" onClick={closeDialog} disabled={revoke.isPending}>
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => revoke.mutate(target.id)}
+                disabled={revoke.isPending}
+              >
+                {revoke.isPending ? "폐기 중" : "폐기"}
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </Dialog>
     </div>
   );
 }

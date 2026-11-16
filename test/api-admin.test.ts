@@ -182,6 +182,70 @@ describe("admin console", () => {
     expect(revokedOnly.body.devices[0].revokedAt).not.toBeNull();
   });
 
+  it("revokes a device with CSRF and records an audit entry", async () => {
+    const adminClient = new TestClient(ctx.baseUrl);
+    const registered = await adminClient.register(adminUsername, createIdentity(), {
+      password: adminPassword,
+    });
+    expect(registered.status).toBe(201);
+    const alice = await registerAccount("alice");
+
+    const withoutCsrf = await adminClient.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke`,
+      { csrf: false },
+    );
+    expect(withoutCsrf.status).toBe(403);
+
+    const nonAdmin = await alice.client.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke`,
+    );
+    expect(nonAdmin.status).toBe(403);
+
+    const revoked = await adminClient.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke`,
+    );
+    expect(revoked.status).toBe(200);
+    expect(revoked.body.revoked).toBe(true);
+    expect(revoked.body.device).toMatchObject({
+      id: alice.deviceId,
+      username: alice.username,
+      revokedAt: expect.any(String),
+    });
+    expect(revoked.text).not.toMatch(
+      /identityPublicKey|signingPublicKey|identity_public_key|signing_public_key/,
+    );
+
+    // 폐기된 기기의 세션은 즉시 무효화된다.
+    expect((await alice.client.request("GET", "/api/auth/me")).status).toBe(401);
+
+    const again = await adminClient.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke`,
+    );
+    expect(again.status).toBe(200);
+    expect(again.body.revoked).toBe(false);
+
+    const revokedList = await adminClient.request("GET", "/api/admin/devices?status=revoked");
+    expect(
+      revokedList.body.devices.map((device: { id: string }) => device.id),
+    ).toContain(alice.deviceId);
+
+    const audit = await adminClient.request("GET", "/api/admin/audit");
+    const entries = audit.body.entries.filter(
+      (entry: { action: string }) => entry.action === "device.revoked",
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      adminUsername,
+      targetUsername: alice.username,
+      detail: { deviceName: expect.any(String) },
+    });
+    expect(audit.text).not.toMatch(/passwordHash|tokenHash|password_hash|token_hash/);
+  });
+
   it("revokes sessions with CSRF and records an audit entry", async () => {
     const adminClient = new TestClient(ctx.baseUrl);
     const registered = await adminClient.register(adminUsername, createIdentity(), {

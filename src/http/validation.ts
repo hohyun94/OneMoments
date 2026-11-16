@@ -212,6 +212,10 @@ export const adminDeviceListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+export const adminDeviceParamsSchema = z.object({
+  deviceId: z.string().uuid(),
+});
+
 export const decoyCreateBodySchema = z.object({
   alias: usernameSchema,
   handle: usernameSchema.optional(),

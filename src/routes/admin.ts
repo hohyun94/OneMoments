@@ -21,12 +21,14 @@ import {
   decoyProfileParamsSchema,
 } from "../http/validation.js";
 import {
+  getAdminDeviceSessions,
   getAdminOverview,
   getAdminUserDetail,
   listAdminAudit,
   listAdminDevices,
   listAdminUsers,
   revokeAdminDevice,
+  revokeDeviceSessions,
   revokeUserSessions,
 } from "../services/admin.js";
 import {
@@ -93,6 +95,30 @@ export function createAdminRouter(db: Database, config: Config): Router {
       const auth = getAuth(req);
       const { deviceId } = adminDeviceParamsSchema.parse(req.params);
       const result = await revokeAdminDevice(db, {
+        adminUserId: auth.userId,
+        adminUsername: auth.username,
+        deviceId,
+      });
+      res.json(result);
+    }),
+  );
+
+  router.get(
+    "/devices/:deviceId/sessions",
+    asyncHandler(async (req, res) => {
+      const { deviceId } = adminDeviceParamsSchema.parse(req.params);
+      res.json(await getAdminDeviceSessions(db, deviceId));
+    }),
+  );
+
+  router.post(
+    "/devices/:deviceId/revoke-sessions",
+    csrf,
+    decoyLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { deviceId } = adminDeviceParamsSchema.parse(req.params);
+      const result = await revokeDeviceSessions(db, {
         adminUserId: auth.userId,
         adminUsername: auth.username,
         deviceId,

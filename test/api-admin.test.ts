@@ -142,7 +142,11 @@ describe("admin console", () => {
     const aliceDevice = active.body.devices.find(
       (device: { id: string }) => device.id === alice.deviceId,
     );
-    expect(aliceDevice).toMatchObject({ username: alice.username, revokedAt: null });
+    expect(aliceDevice).toMatchObject({
+      username: alice.username,
+      revokedAt: null,
+      activeSessionCount: 1,
+    });
     expect(active.text).not.toMatch(
       /identityPublicKey|signingPublicKey|identity_public_key|signing_public_key/,
     );
@@ -180,6 +184,78 @@ describe("admin console", () => {
     expect(revokedOnly.body.devices).toHaveLength(1);
     expect(revokedOnly.body.devices[0]).toMatchObject({ id: bob.deviceId });
     expect(revokedOnly.body.devices[0].revokedAt).not.toBeNull();
+  });
+
+  it("lists sessions per device and revokes them without revoking the device", async () => {
+    const adminClient = new TestClient(ctx.baseUrl);
+    const registered = await adminClient.register(adminUsername, createIdentity(), {
+      password: adminPassword,
+    });
+    expect(registered.status).toBe(201);
+    const alice = await registerAccount("alice");
+
+    const sessions = await adminClient.request(
+      "GET",
+      `/api/admin/devices/${alice.deviceId}/sessions`,
+    );
+    expect(sessions.status).toBe(200);
+    expect(sessions.body.device).toMatchObject({
+      id: alice.deviceId,
+      username: alice.username,
+      activeSessionCount: 1,
+    });
+    expect(sessions.body.sessions).toHaveLength(1);
+    expect(sessions.body.sessions[0]).toMatchObject({
+      deviceId: alice.deviceId,
+      id: expect.any(String),
+    });
+    expect(sessions.text).not.toMatch(
+      /tokenHash|token_hash|identity_public_key|signing_public_key/,
+    );
+
+    const withoutCsrf = await adminClient.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke-sessions`,
+      { csrf: false },
+    );
+    expect(withoutCsrf.status).toBe(403);
+
+    const nonAdmin = await alice.client.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke-sessions`,
+    );
+    expect(nonAdmin.status).toBe(403);
+
+    const revoked = await adminClient.request(
+      "POST",
+      `/api/admin/devices/${alice.deviceId}/revoke-sessions`,
+    );
+    expect(revoked.status).toBe(200);
+    expect(revoked.body.revokedSessions).toBe(1);
+    expect((await alice.client.request("GET", "/api/auth/me")).status).toBe(401);
+
+    // 세션만 종료되고 기기는 활성 상태로 유지된다.
+    const active = await adminClient.request("GET", "/api/admin/devices");
+    const aliceDevice = active.body.devices.find(
+      (device: { id: string }) => device.id === alice.deviceId,
+    );
+    expect(aliceDevice).toMatchObject({ revokedAt: null, activeSessionCount: 0 });
+
+    const after = await adminClient.request(
+      "GET",
+      `/api/admin/devices/${alice.deviceId}/sessions`,
+    );
+    expect(after.body.sessions).toHaveLength(0);
+
+    const audit = await adminClient.request("GET", "/api/admin/audit");
+    const entry = audit.body.entries.find(
+      (item: { action: string }) => item.action === "device.sessions.revoked",
+    );
+    expect(entry).toMatchObject({
+      adminUsername,
+      targetUsername: alice.username,
+      detail: { deviceName: expect.any(String), revokedSessions: 1 },
+    });
   });
 
   it("revokes a device with CSRF and records an audit entry", async () => {

@@ -180,6 +180,7 @@ export interface AdminDeviceListItem {
   createdAt: string;
   lastSeenAt: string | null;
   revokedAt: string | null;
+  activeSessionCount: number;
 }
 
 export interface AdminDevicePage {
@@ -225,6 +226,8 @@ export async function listAdminDevices(
       createdAt: devices.createdAt,
       lastSeenAt: devices.lastSeenAt,
       revokedAt: devices.revokedAt,
+      activeSessionCount:
+        sql<number>`(select count(*)::int from sessions s where s.device_id = devices.id and s.expires_at > now())`,
     })
     .from(devices)
     .innerJoin(users, eq(users.id, devices.userId))
@@ -243,6 +246,7 @@ export async function listAdminDevices(
       createdAt: row.createdAt.toISOString(),
       lastSeenAt: iso(row.lastSeenAt),
       revokedAt: iso(row.revokedAt),
+      activeSessionCount: row.activeSessionCount,
     })),
     nextCursor:
       rows.length > input.limit && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
@@ -273,6 +277,8 @@ export async function revokeAdminDevice(
       createdAt: devices.createdAt,
       lastSeenAt: devices.lastSeenAt,
       revokedAt: devices.revokedAt,
+      activeSessionCount:
+        sql<number>`(select count(*)::int from sessions s where s.device_id = devices.id and s.expires_at > now())`,
     })
     .from(devices)
     .innerJoin(users, eq(users.id, devices.userId))
@@ -290,6 +296,7 @@ export async function revokeAdminDevice(
         createdAt: target.createdAt.toISOString(),
         lastSeenAt: iso(target.lastSeenAt),
         revokedAt: iso(target.revokedAt),
+        activeSessionCount: target.activeSessionCount,
       },
       revoked: false,
     };
@@ -324,9 +331,114 @@ export async function revokeAdminDevice(
       createdAt: target.createdAt.toISOString(),
       lastSeenAt: iso(target.lastSeenAt),
       revokedAt: iso(revokedAt),
+      activeSessionCount: 0,
     },
     revoked: true,
   };
+}
+
+export interface AdminDeviceSessions {
+  device: AdminDeviceListItem;
+  sessions: AdminSessionItem[];
+}
+
+/** 기기 상세 + 세션 메타데이터. token_hash 는 절대 내보내지 않는다. */
+export async function getAdminDeviceSessions(
+  db: Database,
+  deviceId: string,
+): Promise<AdminDeviceSessions> {
+  const [device] = await db
+    .select({
+      id: devices.id,
+      userId: devices.userId,
+      username: users.username,
+      name: devices.name,
+      createdAt: devices.createdAt,
+      lastSeenAt: devices.lastSeenAt,
+      revokedAt: devices.revokedAt,
+      activeSessionCount:
+        sql<number>`(select count(*)::int from sessions s where s.device_id = devices.id and s.expires_at > now())`,
+    })
+    .from(devices)
+    .innerJoin(users, eq(users.id, devices.userId))
+    .where(eq(devices.id, deviceId))
+    .limit(1);
+  if (!device) throw AppError.notFound("DEVICE_NOT_FOUND", "Device not found");
+
+  const rows = await db
+    .select({
+      id: sessions.id,
+      deviceId: sessions.deviceId,
+      createdAt: sessions.createdAt,
+      lastSeenAt: sessions.lastSeenAt,
+      expiresAt: sessions.expiresAt,
+      userAgent: sessions.userAgent,
+    })
+    .from(sessions)
+    .where(eq(sessions.deviceId, deviceId))
+    .orderBy(desc(sessions.lastSeenAt))
+    .limit(100);
+
+  return {
+    device: {
+      id: device.id,
+      userId: device.userId,
+      username: device.username,
+      name: device.name,
+      createdAt: device.createdAt.toISOString(),
+      lastSeenAt: iso(device.lastSeenAt),
+      revokedAt: iso(device.revokedAt),
+      activeSessionCount: device.activeSessionCount,
+    },
+    sessions: rows.map((row) => ({
+      id: row.id,
+      deviceId: row.deviceId,
+      createdAt: row.createdAt.toISOString(),
+      lastSeenAt: row.lastSeenAt.toISOString(),
+      expiresAt: row.expiresAt.toISOString(),
+      userAgent: row.userAgent,
+    })),
+  };
+}
+
+export interface AdminDeviceSessionRevokeResult {
+  revokedSessions: number;
+}
+
+/** 관리자에 의한 기기 세션 전체 종료. 기기·키는 유지하고 감사 로그를 남긴다. */
+export async function revokeDeviceSessions(
+  db: Database,
+  input: { adminUserId: string; adminUsername: string; deviceId: string },
+): Promise<AdminDeviceSessionRevokeResult> {
+  const [target] = await db
+    .select({
+      id: devices.id,
+      userId: devices.userId,
+      username: users.username,
+      name: devices.name,
+    })
+    .from(devices)
+    .innerJoin(users, eq(users.id, devices.userId))
+    .where(eq(devices.id, input.deviceId))
+    .limit(1);
+  if (!target) throw AppError.notFound("DEVICE_NOT_FOUND", "Device not found");
+
+  return db.transaction(async (tx) => {
+    const deleted = await tx
+      .delete(sessions)
+      .where(eq(sessions.deviceId, input.deviceId))
+      .returning({ id: sessions.id });
+    await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.deviceId, input.deviceId));
+    await recordAdminAudit(tx, {
+      adminUserId: input.adminUserId,
+      adminUsername: input.adminUsername,
+      action: "device.sessions.revoked",
+      targetUserId: target.userId,
+      targetUsername: target.username,
+      detail: { deviceName: target.name, revokedSessions: deleted.length },
+    });
+    return { revokedSessions: deleted.length };
+  });
 }
 
 export interface AdminDeviceItem {

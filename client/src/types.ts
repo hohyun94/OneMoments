@@ -153,11 +153,17 @@ export interface AdminDeviceListItem {
   createdAt: string;
   lastSeenAt: string | null;
   revokedAt: string | null;
+  activeSessionCount: number;
 }
 
 export interface AdminDevicePage {
   devices: AdminDeviceListItem[];
   nextCursor: string | null;
+}
+
+export interface AdminDeviceSessions {
+  device: AdminDeviceListItem;
+  sessions: AdminUserSession[];
 }
 
 export interface AdminUserDevice {

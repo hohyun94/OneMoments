@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 import { Alert, Button, Card, Dialog, Input, Spinner } from "./ui.tsx";
 import { api } from "../lib/api.ts";
+import { AdminDeviceSessionsPanel } from "./AdminDeviceSessionsPanel.tsx";
 import type { AdminDeviceListItem, AdminDevicePage } from "../types.ts";
 
 type StatusFilter = "active" | "revoked" | "all";
@@ -37,6 +38,7 @@ export function AdminDevicesPanel() {
   const [appliedQuery, setAppliedQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("active");
   const [target, setTarget] = useState<AdminDeviceListItem | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const devicesQuery = useInfiniteQuery({
@@ -158,6 +160,14 @@ export function AdminDevicesPanel() {
                       {device.revokedAt ? ` · 폐기 ${formatDateTime(device.revokedAt)}` : ""}
                     </span>
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setSelectedDeviceId(device.id)}
+                    aria-label={`${device.name} 기기 세션 보기`}
+                  >
+                    세션 {device.activeSessionCount}
+                  </Button>
                   {device.revokedAt ? null : (
                     <Button
                       variant="outline"
@@ -198,6 +208,13 @@ export function AdminDevicesPanel() {
           </p>
         )}
       </Card>
+
+      {selectedDeviceId ? (
+        <AdminDeviceSessionsPanel
+          deviceId={selectedDeviceId}
+          onClose={() => setSelectedDeviceId(null)}
+        />
+      ) : null}
 
       <Dialog open={target !== null} onClose={closeDialog} title="기기 폐기">
         {target ? (

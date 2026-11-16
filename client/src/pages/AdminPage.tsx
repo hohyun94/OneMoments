@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AdminDecoyPanel } from "../components/AdminDecoyPanel.tsx";
+import { AdminDevicesPanel } from "../components/AdminDevicesPanel.tsx";
 import { Alert, Avatar, Button, Card, Dialog, Input, Label, Spinner } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
 import { formatBytes } from "../lib/format.ts";
@@ -19,6 +20,7 @@ import type {
 const TABS = [
   { id: "overview", label: "개요" },
   { id: "users", label: "사용자" },
+  { id: "devices", label: "기기" },
   { id: "decoy", label: "Decoy" },
   { id: "audit", label: "감사 로그" },
 ] as const;
@@ -139,6 +141,7 @@ export function AdminPage() {
       <main className="mx-auto max-w-5xl px-4 py-6">
         {tab === "overview" ? <OverviewTab /> : null}
         {tab === "users" ? <UsersTab /> : null}
+        {tab === "devices" ? <AdminDevicesPanel /> : null}
         {tab === "decoy" ? <AdminDecoyPanel /> : null}
         {tab === "audit" ? <AuditTab /> : null}
       </main>

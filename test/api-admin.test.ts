@@ -126,6 +126,62 @@ describe("admin console", () => {
     expect(new Set(usernames).size).toBe(3);
   });
 
+  it("lists active devices with owner metadata and status filters", async () => {
+    const adminClient = new TestClient(ctx.baseUrl);
+    const registered = await adminClient.register(adminUsername, createIdentity(), {
+      password: adminPassword,
+    });
+    expect(registered.status).toBe(201);
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+
+    const active = await adminClient.request("GET", "/api/admin/devices");
+    expect(active.status).toBe(200);
+    expect(active.body.devices).toHaveLength(3);
+    expect(active.body.nextCursor).toBeNull();
+    const aliceDevice = active.body.devices.find(
+      (device: { id: string }) => device.id === alice.deviceId,
+    );
+    expect(aliceDevice).toMatchObject({ username: alice.username, revokedAt: null });
+    expect(active.text).not.toMatch(
+      /identityPublicKey|signingPublicKey|identity_public_key|signing_public_key/,
+    );
+
+    const byOwner = await adminClient.request(
+      "GET",
+      `/api/admin/devices?query=${encodeURIComponent(alice.username)}`,
+    );
+    expect(byOwner.body.devices).toHaveLength(1);
+    expect(byOwner.body.devices[0].id).toBe(alice.deviceId);
+
+    const firstPage = await adminClient.request("GET", "/api/admin/devices?limit=2");
+    expect(firstPage.body.devices).toHaveLength(2);
+    expect(firstPage.body.nextCursor).not.toBeNull();
+    const secondPage = await adminClient.request(
+      "GET",
+      `/api/admin/devices?limit=2&cursor=${encodeURIComponent(firstPage.body.nextCursor)}`,
+    );
+    expect(secondPage.body.devices).toHaveLength(1);
+    expect(secondPage.body.nextCursor).toBeNull();
+    const deviceIds = [...firstPage.body.devices, ...secondPage.body.devices].map(
+      (device: { id: string }) => device.id,
+    );
+    expect(new Set(deviceIds).size).toBe(3);
+
+    const revoked = await bob.client.request("DELETE", `/api/devices/${bob.deviceId}`);
+    expect(revoked.status).toBe(200);
+
+    const activeAfter = await adminClient.request("GET", "/api/admin/devices");
+    expect(
+      activeAfter.body.devices.map((device: { id: string }) => device.id),
+    ).not.toContain(bob.deviceId);
+
+    const revokedOnly = await adminClient.request("GET", "/api/admin/devices?status=revoked");
+    expect(revokedOnly.body.devices).toHaveLength(1);
+    expect(revokedOnly.body.devices[0]).toMatchObject({ id: bob.deviceId });
+    expect(revokedOnly.body.devices[0].revokedAt).not.toBeNull();
+  });
+
   it("revokes sessions with CSRF and records an audit entry", async () => {
     const adminClient = new TestClient(ctx.baseUrl);
     const registered = await adminClient.register(adminUsername, createIdentity(), {

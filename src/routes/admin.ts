@@ -11,6 +11,7 @@ import {
   requireSession,
 } from "../http/middleware.js";
 import {
+  adminDeviceListQuerySchema,
   adminUserIdParamsSchema,
   adminUserListQuerySchema,
   decoyCreateBodySchema,
@@ -22,6 +23,7 @@ import {
   getAdminOverview,
   getAdminUserDetail,
   listAdminAudit,
+  listAdminDevices,
   listAdminUsers,
   revokeUserSessions,
 } from "../services/admin.js";
@@ -70,6 +72,14 @@ export function createAdminRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const { userId } = adminUserIdParamsSchema.parse(req.params);
       res.json({ user: await getAdminUserDetail(db, userId) });
+    }),
+  );
+
+  router.get(
+    "/devices",
+    asyncHandler(async (req, res) => {
+      const query = adminDeviceListQuerySchema.parse(req.query);
+      res.json(await listAdminDevices(db, query));
     }),
   );
 

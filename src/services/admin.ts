@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, ilike, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, isNotNull, isNull, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
@@ -169,6 +169,83 @@ export async function listAdminUsers(
       activeSessionCount: row.activeSessionCount,
     })),
     nextCursor: rows.length > input.limit ? (page.at(-1)?.username ?? null) : null,
+  };
+}
+
+export interface AdminDeviceListItem {
+  id: string;
+  userId: string;
+  username: string;
+  name: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface AdminDevicePage {
+  devices: AdminDeviceListItem[];
+  nextCursor: string | null;
+}
+
+/**
+ * 관리자 기기 목록. 소유자 username·기기 이름·활성/폐기 상태만 노출하며
+ * 공개키·키 봉투·세션 토큰은 반환하지 않는다.
+ * 정렬은 최근 등록순이고 커서는 `<createdAt ISO>|<deviceId>` 이다.
+ */
+export async function listAdminDevices(
+  db: Database,
+  input: {
+    query?: string;
+    status: "active" | "revoked" | "all";
+    cursor?: string;
+    limit: number;
+  },
+): Promise<AdminDevicePage> {
+  const conditions = [];
+  if (input.status === "active") conditions.push(isNull(devices.revokedAt));
+  if (input.status === "revoked") conditions.push(isNotNull(devices.revokedAt));
+  if (input.query) {
+    conditions.push(ilike(users.username, `%${escapeLikePattern(input.query.toLowerCase())}%`));
+  }
+  if (input.cursor) {
+    const [createdAtRaw, deviceId] = input.cursor.split("|");
+    const createdAt = new Date(createdAtRaw ?? "");
+    if (!deviceId || Number.isNaN(createdAt.getTime())) {
+      throw AppError.badRequest("INVALID_CURSOR", "Invalid device cursor");
+    }
+    conditions.push(sql`(${devices.createdAt}, ${devices.id}) < (${createdAt}, ${deviceId})`);
+  }
+
+  const rows = await db
+    .select({
+      id: devices.id,
+      userId: devices.userId,
+      username: users.username,
+      name: devices.name,
+      createdAt: devices.createdAt,
+      lastSeenAt: devices.lastSeenAt,
+      revokedAt: devices.revokedAt,
+    })
+    .from(devices)
+    .innerJoin(users, eq(users.id, devices.userId))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
+    .orderBy(desc(devices.createdAt), desc(devices.id))
+    .limit(input.limit + 1);
+
+  const page = rows.slice(0, input.limit);
+  const last = page.at(-1);
+  return {
+    devices: page.map((row) => ({
+      id: row.id,
+      userId: row.userId,
+      username: row.username,
+      name: row.name,
+      createdAt: row.createdAt.toISOString(),
+      lastSeenAt: iso(row.lastSeenAt),
+      revokedAt: iso(row.revokedAt),
+    })),
+    nextCursor:
+      rows.length > input.limit && last ? `${last.createdAt.toISOString()}|${last.id}` : null,
   };
 }
 

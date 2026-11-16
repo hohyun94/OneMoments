@@ -145,6 +145,21 @@ export interface AdminUserPage {
   nextCursor: string | null;
 }
 
+export interface AdminDeviceListItem {
+  id: string;
+  userId: string;
+  username: string;
+  name: string;
+  createdAt: string;
+  lastSeenAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface AdminDevicePage {
+  devices: AdminDeviceListItem[];
+  nextCursor: string | null;
+}
+
 export interface AdminUserDevice {
   id: string;
   name: string;

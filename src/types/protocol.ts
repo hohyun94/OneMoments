@@ -37,6 +37,8 @@ export interface ConversationSummary {
   /** 그룹 이름. 1:1 은 null */
   name: string | null;
   createdAt: string;
+  /** 참여자 모두가 읽은 뒤 자동 삭제까지의 초. null 이면 끔 */
+  autoDeleteAfterReadSeconds: number | null;
   /** 1:1 상대. 그룹은 null */
   peer: PeerUser | null;
   /** 나를 제외한 참여자(그룹 포함) */

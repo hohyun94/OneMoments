@@ -181,11 +181,26 @@ type Result =
 
 const cache = new Map<string, Result>();
 const inFlight = new Map<string, Promise<Result>>();
+// 자동 삭제로 사라진 메시지는 진행 중이던 복호화가 끝나도 다시 캐시하지 않는다.
+const autoDeletedMessageIds = new Set<string>();
 
 /** 로그아웃/자동 잠금 시 복호화된 평문과 첨부 메타데이터를 메모리에서 제거한다. */
 export function clearDecryptedMessageCache(): void {
   cache.clear();
   inFlight.clear();
+  autoDeletedMessageIds.clear();
+}
+
+/** 자동 삭제 등으로 사라진 메시지의 복호화 캐시를 제거한다. */
+export function deleteDecryptedMessageCache(messageId: string): void {
+  autoDeletedMessageIds.add(messageId);
+  const suffix = `:${messageId}`;
+  for (const key of cache.keys()) {
+    if (key.endsWith(suffix)) cache.delete(key);
+  }
+  for (const key of inFlight.keys()) {
+    if (key.endsWith(suffix)) inFlight.delete(key);
+  }
 }
 
 function failureDetail(error: unknown): string {
@@ -215,7 +230,7 @@ function decryptCached(identity: StoredIdentity, message: MessageView): Promise<
     })
     .catch((error): Result => ({ status: "error", detail: failureDetail(error) }))
     .then((result) => {
-      cache.set(cacheKey, result);
+      if (!autoDeletedMessageIds.has(message.id)) cache.set(cacheKey, result);
       return result;
     })
     .finally(() => {

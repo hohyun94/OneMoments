@@ -115,6 +115,8 @@ export const conversations = pgTable(
     kind: text("kind").notNull().default("direct"),
     // 그룹 이름(direct 는 null)
     name: text("name"),
+    // 참여자 모두가 읽은 뒤 자동 삭제까지의 시간(초). null 이면 끔. 1시간~30일.
+    autoDeleteAfterReadSeconds: integer("auto_delete_after_read_seconds"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
@@ -122,6 +124,10 @@ export const conversations = pgTable(
     check(
       "conversations_group_name_chk",
       sql`${table.kind} = 'direct' or (${table.name} is not null and char_length(${table.name}) between 1 and 64)`,
+    ),
+    check(
+      "conversations_auto_delete_chk",
+      sql`${table.autoDeleteAfterReadSeconds} is null or (${table.autoDeleteAfterReadSeconds} between 3600 and 2592000)`,
     ),
   ],
 );
@@ -237,6 +243,27 @@ export const messageKeys = pgTable(
       "message_keys_x3dh_chk",
       sql`(${table.senderIdentityPublicKey} is null and ${table.signedPreKeyId} is null) or (${table.senderIdentityPublicKey} is not null and ${table.signedPreKeyId} is not null)`,
     ),
+  ],
+);
+
+/**
+ * 메시지별 읽은 시각. 참여자 전원이 읽은 뒤 자동 삭제를 계산하는 데 쓴다.
+ * 대화의 마지막 읽음 커서(conversation_reads)와 별도로 유지한다.
+ */
+export const messageReads = pgTable(
+  "message_reads",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    readAt: timestamp("read_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.userId] }),
+    index("message_reads_user_idx").on(table.userId, table.readAt),
   ],
 );
 
@@ -424,4 +451,5 @@ export type AttachmentRow = typeof attachments.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageKeyRow = typeof messageKeys.$inferSelect;
+export type MessageReadRow = typeof messageReads.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;

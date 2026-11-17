@@ -5,6 +5,7 @@
 ## 1. 동작
 
 - `conversation_reads`의 사용자별 마지막 읽음 커서를 사용한다.
+- `message_reads`에 메시지별 읽은 시각을 함께 기록한다(읽은 뒤 자동 삭제 계산용).
 - `GET /api/conversations/:id/reads`가 현재 참여자의 커서를 반환한다.
   - `readAt`은 커서 메시지의 작성 시각
 - 클라이언트는 5초 간격으로 읽음 상태를 갱신한다.

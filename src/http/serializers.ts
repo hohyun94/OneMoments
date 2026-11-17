@@ -72,6 +72,7 @@ export function toConversationSummary(
     kind: conversation.kind === "group" ? "group" : "direct",
     name: conversation.kind === "group" ? conversation.name : null,
     createdAt: conversation.createdAt.toISOString(),
+    autoDeleteAfterReadSeconds: conversation.autoDeleteAfterReadSeconds,
     peer: peer ? toPeerUser(peer) : null,
     members: members.map(toPeerUser),
     memberCount,

@@ -125,3 +125,12 @@ pnpm bench:crypto
 - subscription endpoint는 민감 정보이므로 로그에 원문을 남기지 않는다.
 - 상세: [`docs/12-push-mobile.md`](12-push-mobile.md)
 
+## 9. 읽은 뒤 자동 삭제 정리
+
+- 대화별 옵션(끔/1·7·30일)이 켜진 대화에서, 참여자 전원이 읽은 뒤 기간이 지난 메시지·봉투·첨부를 삭제한다.
+- 조회 시 lazy 정리도 수행하지만, 트래픽이 없을 때도 삭제하려면 `pnpm build` 후 `pnpm messages:cleanup`을 **1시간 주기**로 실행한다(Coolify Scheduled Task 등).
+- 여러 인스턴스가 있어도 스케줄은 한 곳에서만 실행한다(중복 실행은 멱등).
+- 로그는 삭제 건수만 남기고 메시지 ID·내용·키를 남기지 않는다.
+- 백업을 복원하면 삭제 전 메시지가 되살아날 수 있다.
+- 상세: [`docs/22-auto-delete.md`](22-auto-delete.md)
+

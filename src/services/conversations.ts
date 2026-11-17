@@ -7,6 +7,7 @@ import {
   conversations,
   deviceOneTimePreKeys,
   devices,
+  messageReads,
   messages,
   users,
   type ConversationRow,
@@ -370,18 +371,63 @@ export async function markConversationRead(
     }
   }
 
-  await db
-    .insert(conversationReads)
-    .values({
-      conversationId: input.conversationId,
-      userId: input.userId,
-      lastReadMessageId: input.messageId,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [conversationReads.conversationId, conversationReads.userId],
-      set: { lastReadMessageId: input.messageId, updatedAt: new Date() },
-    });
+  await db.transaction(async (tx) => {
+    const [participant] = await tx
+      .select({ userId: conversationParticipants.userId })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, input.conversationId),
+          eq(conversationParticipants.userId, input.userId),
+        ),
+      )
+      .limit(1);
+    if (!participant) {
+      throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+    }
+
+    // 커서까지의 메시지에 대해 읽은 시각을 남긴다(이미 있으면 최초 시각 유지).
+    // 참여 이전 메시지와 내가 보낸 메시지는 읽음 대상이 아니다.
+    // created_at 은 DB 정밀도(마이크로초)로 비교해야 커서 메시지가 누락되지 않는다.
+    const readAt = new Date();
+    await tx.execute(sql`
+      with cursor as (
+        select "created_at" from ${messages} where "id" = ${input.messageId}::uuid
+      )
+      insert into ${messageReads} ("message_id", "user_id", "read_at")
+      select m."id", ${input.userId}::uuid, ${readAt}
+      from ${messages} as m, cursor
+      where m."conversation_id" = ${input.conversationId}::uuid
+        and m."sender_user_id" <> ${input.userId}::uuid
+        and m."created_at" >= (
+          select cp."joined_at"
+          from ${conversationParticipants} as cp
+          where cp."conversation_id" = ${input.conversationId}::uuid
+            and cp."user_id" = ${input.userId}::uuid
+        )
+        and (
+          m."created_at" < cursor."created_at"
+          or (
+            m."created_at" = cursor."created_at"
+            and m."id" <= ${input.messageId}::uuid
+          )
+        )
+      on conflict ("message_id", "user_id") do nothing
+    `);
+
+    await tx
+      .insert(conversationReads)
+      .values({
+        conversationId: input.conversationId,
+        userId: input.userId,
+        lastReadMessageId: input.messageId,
+        updatedAt: readAt,
+      })
+      .onConflictDoUpdate({
+        target: [conversationReads.conversationId, conversationReads.userId],
+        set: { lastReadMessageId: input.messageId, updatedAt: readAt },
+      });
+  });
 }
 
 export interface ConversationReadReceipt {
@@ -687,6 +733,26 @@ export async function renameGroup(
     .returning();
   if (!updated) throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
   return updated;
+}
+
+/** 대화별 자동 삭제 설정. 그룹은 owner만, 1:1은 참여자 누구나 변경할 수 있다. */
+export async function setConversationAutoDelete(
+  db: Database,
+  input: { conversationId: string; userId: string; seconds: number | null },
+): Promise<ConversationSummary> {
+  const context = await requireParticipant(db, input);
+  if (context.conversation.kind === "group" && context.participant.role !== "owner") {
+    throw AppError.forbidden("Only the group owner can change this setting");
+  }
+  const [conversation] = await db
+    .update(conversations)
+    .set({ autoDeleteAfterReadSeconds: input.seconds })
+    .where(eq(conversations.id, input.conversationId))
+    .returning();
+  if (!conversation) {
+    throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+  }
+  return getConversationSummary(db, { ...context, conversation });
 }
 
 /** 그룹 나가기. 마지막 참여자가 나가면 대화와 메시지를 삭제한다. */

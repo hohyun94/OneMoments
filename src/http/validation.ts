@@ -220,6 +220,11 @@ export const conversationIdParamsSchema = z.object({
   conversationId: z.string().uuid(),
 });
 
+/** 대화별 자동 삭제(읽은 뒤 N초). null 이면 끔. 1시간~30일. */
+export const updateAutoDeleteBodySchema = z.object({
+  seconds: z.number().int().min(3600).max(30 * 24 * 60 * 60).nullable(),
+});
+
 export const adminUserListQuerySchema = z.object({
   query: z.string().trim().max(32).optional(),
   cursor: z.string().trim().max(32).optional(),

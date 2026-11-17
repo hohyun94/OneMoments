@@ -12,6 +12,7 @@ import {
   listMessagesQuerySchema,
   markReadBodySchema,
   sendMessageBodySchema,
+  updateAutoDeleteBodySchema,
   updateConversationNotificationBodySchema,
   updateGroupBodySchema,
 } from "../http/validation.js";
@@ -29,11 +30,16 @@ import {
   leaveGroup,
   renameGroup,
   requireParticipant,
+  setConversationAutoDelete,
   setConversationMuted,
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
 import { listMessages } from "../services/messages.js";
-import { createAttachment, createAttachmentStorage } from "../services/attachments.js";
+import {
+  createAttachment,
+  createAttachmentStorage,
+} from "../services/attachments.js";
+import { cleanupAutoDeletedMessages } from "../services/autoDelete.js";
 import { createConversationInvite } from "../services/invites.js";
 
 export interface ConversationsRouterOptions {
@@ -60,6 +66,46 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     message: "Attachment rate limit exceeded",
   });
   const attachmentStorage = createAttachmentStorage(config);
+
+  // 자동 삭제는 별도 크론이 없어도 동작하도록 조회 시 제한적으로 실행한다.
+  const LAZY_CLEANUP_INTERVAL_MS = 60_000;
+  const GLOBAL_CLEANUP_INTERVAL_MS = 5 * 60_000;
+  const lastCleanupByConversation = new Map<string, number>();
+  let lastGlobalCleanupAt = 0;
+
+  async function runCleanup(conversationId?: string): Promise<void> {
+    try {
+      await cleanupAutoDeletedMessages(db, attachmentStorage, {
+        ...(conversationId ? { conversationId } : {}),
+        limit: 200,
+      });
+    } catch (error) {
+      // 메시지 내용·키는 남기지 않는다.
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "auto_delete_cleanup_failed",
+          message: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+  }
+
+  async function maybeCleanupConversation(conversationId: string): Promise<void> {
+    const now = Date.now();
+    const last = lastCleanupByConversation.get(conversationId) ?? 0;
+    if (now - last < LAZY_CLEANUP_INTERVAL_MS) return;
+    if (lastCleanupByConversation.size > 1_000) lastCleanupByConversation.clear();
+    lastCleanupByConversation.set(conversationId, now);
+    await runCleanup(conversationId);
+  }
+
+  async function maybeGlobalCleanup(): Promise<void> {
+    const now = Date.now();
+    if (now - lastGlobalCleanupAt < GLOBAL_CLEANUP_INTERVAL_MS) return;
+    lastGlobalCleanupAt = now;
+    await runCleanup();
+  }
 
   router.post(
     "/",
@@ -98,6 +144,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     session,
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
+      await maybeGlobalCleanup();
       res.json({ conversations: await listConversations(db, auth.userId) });
     }),
   );
@@ -184,6 +231,23 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         muted: body.muted,
       });
       res.json({ muted });
+    }),
+  );
+
+  router.put(
+    "/:conversationId/auto-delete",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      const body = updateAutoDeleteBodySchema.parse(req.body);
+      const conversation = await setConversationAutoDelete(db, {
+        conversationId,
+        userId: auth.userId,
+        seconds: body.seconds,
+      });
+      res.json({ conversation });
     }),
   );
 
@@ -313,6 +377,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
       const auth = getAuth(req);
       const { conversationId } = conversationIdParamsSchema.parse(req.params);
       await requireParticipant(db, { conversationId, userId: auth.userId });
+      await maybeCleanupConversation(conversationId);
       const query = listMessagesQuerySchema.parse(req.query);
       const page = await listMessages(db, {
         conversationId,

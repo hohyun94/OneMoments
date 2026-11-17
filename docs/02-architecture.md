@@ -92,10 +92,11 @@
 | `users` | id(uuid), username(unique, 소문자), password_hash, created_at, deleted_at | 계정. 이메일 미수집(MVP). 삭제 시 익명화 |
 | `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent, idle_timeout_seconds | 쿠키 세션(원문 토큰 저장 안 함). idle_timeout_seconds 는 세션 오버라이드(1~30분, null 이면 기기 기본값) |
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, idle_timeout_seconds, created_at, last_seen_at, revoked_at | 기기 공개키. idle_timeout_seconds 는 기기 기본 무활동 로그아웃(1~30분, 기본 5분) |
-| `conversations` | id, kind('direct'\|'group'), name, created_at | 1:1 또는 그룹. 그룹은 name 필수 |
+| `conversations` | id, kind('direct'\|'group'), name, auto_delete_after_read_seconds, created_at | 1:1 또는 그룹. 그룹은 name 필수. auto_delete 는 읽은 뒤 자동 삭제(1시간~30일, null 이면 끔) |
 | `conversation_participants` | conversation_id, user_id, joined_at, hidden_at, muted_at, role('owner'\|'member') (PK) | 참여자. 그룹 최대 20명, 사용자별 숨김/음소거, 소유자 권한 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, sender_key_id, sender_key_iteration, created_at | 암호문 1건. sender-key 메시지는 체인 ID/반복 포함 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, ratchet_public_key, previous_chain_length, message_number, distribution_ciphertext, distribution_nonce, version (PK) | 기기별 봉투(v1/v2), sender-key 최초 배포 블롭 |
+| `message_reads` | message_id, user_id, read_at (PK: message_id+user_id) | 메시지별 읽은 시각. 참여자 전원 읽은 뒤 자동 삭제 계산용 |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
@@ -189,6 +190,7 @@
 | DELETE | `/api/conversations/:id/members/me` | 그룹 나가기(마지막 참여자면 대화 삭제) |
 | PUT | `/api/conversations/:id/group` | 그룹 이름 변경(참여자) |
 | PUT | `/api/conversations/:id/notification` | `{muted}` 대화별 푸시 음소거 |
+| PUT | `/api/conversations/:id/auto-delete` | `{seconds: 3600~2592000 \| null}` 읽은 뒤 자동 삭제(그룹은 owner만) |
 | PUT | `/api/conversations/:id/read` | `{messageId}` 읽음 커서 전진, `unreadCount` 계산 |
 | GET | `/api/conversations/:id/devices` | **대화 참여자 전체** 활성 기기 공개키(암호화 대상 목록) |
 | POST | `/api/conversations/:id/attachments` | 암호화된 파일 업로드(`application/octet-stream`) |

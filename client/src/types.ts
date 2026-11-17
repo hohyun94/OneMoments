@@ -30,6 +30,8 @@ export interface ConversationSummary {
   kind: "direct" | "group";
   name: string | null;
   createdAt: string;
+  /** 참여자 모두가 읽은 뒤 자동 삭제까지의 초. null 이면 끔 */
+  autoDeleteAfterReadSeconds: number | null;
   peer: PeerUser | null;
   members: PeerUser[];
   memberCount: number;

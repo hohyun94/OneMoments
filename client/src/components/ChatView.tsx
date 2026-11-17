@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   Bell,
   BellOff,
+  Clock,
   Paperclip,
   Send,
   Settings,
@@ -41,6 +42,7 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatDayLabel } from "../lib/format.ts";
+import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { useRealtime } from "../realtime.tsx";
 import type {
   ActiveDevice,
@@ -50,9 +52,10 @@ import type {
   ReadReceipt,
 } from "../types.ts";
 import { Alert, Avatar, Button, Dialog, Spinner, Textarea, cn } from "./ui.tsx";
-import { MessageBubble } from "./MessageBubble.tsx";
+import { MessageBubble, deleteDecryptedMessageCache } from "./MessageBubble.tsx";
 import { GroupMembersDialog } from "./GroupMembersDialog.tsx";
 import { GroupSettingsDialog } from "./GroupSettingsDialog.tsx";
+import { AutoDeleteDialog } from "./AutoDeleteDialog.tsx";
 import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
 
 interface PendingMessage {
@@ -148,6 +151,7 @@ export function ChatView({
   const [safetyChanged, setSafetyChanged] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [autoDeleteOpen, setAutoDeleteOpen] = useState(false);
   const pendingRef = useRef<PendingMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastMarkedReadRef = useRef<string | null>(null);
@@ -161,6 +165,19 @@ export function ChatView({
   );
   const chronological = useMemo(() => [...messages].reverse(), [messages]);
   const latestId = messages[0]?.id;
+
+  // 자동 삭제로 서버에서 사라진 메시지의 복호화 캐시도 함께 제거한다.
+  const decryptedIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    decryptedIdsRef.current = new Set();
+  }, [conversation.id]);
+  useEffect(() => {
+    const current = new Set(chronological.map((message) => message.id));
+    for (const id of decryptedIdsRef.current) {
+      if (!current.has(id)) deleteDecryptedMessageCache(id);
+    }
+    decryptedIdsRef.current = current;
+  }, [chronological]);
   const typing = typingUsers(conversation.id);
   const isGroup = conversation.kind === "group";
   const otherReads = useMemo(
@@ -528,6 +545,9 @@ export function ChatView({
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
                 {conversation.memberCount}명
+                {conversation.autoDeleteAfterReadSeconds !== null
+                  ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
+                  : ""}
               </>
             ) : (
               <>
@@ -538,6 +558,9 @@ export function ChatView({
                   )}
                 />
                 {peerOnline ? "온라인" : "오프라인"}
+                {conversation.autoDeleteAfterReadSeconds !== null
+                  ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
+                  : ""}
               </>
             )}
           </p>
@@ -557,6 +580,20 @@ export function ChatView({
           <span className="hidden sm:inline">
             {conversation.muted ? "알림 꺼짐" : "알림 켜짐"}
           </span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setAutoDeleteOpen(true)}
+          aria-label="자동 삭제 설정"
+          title={
+            conversation.autoDeleteAfterReadSeconds === null
+              ? "자동 삭제 꺼짐"
+              : `읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
+          }
+        >
+          <Clock className="h-4 w-4" aria-hidden />
+          <span className="hidden sm:inline">자동 삭제</span>
         </Button>
         {isGroup ? (
           <Button
@@ -808,6 +845,18 @@ export function ChatView({
           번호가 예상과 다르면 대화를 중단하고 상대에게 직접 확인하세요.
         </p>
       </Dialog>
+
+      <AutoDeleteDialog
+        open={autoDeleteOpen}
+        onClose={() => setAutoDeleteOpen(false)}
+        conversationId={conversation.id}
+        initialSeconds={conversation.autoDeleteAfterReadSeconds}
+        isGroup={isGroup}
+        canEdit={!isGroup || conversation.isAdmin}
+        onUpdated={() => {
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+        }}
+      />
 
       {isGroup ? (
         <GroupSettingsDialog

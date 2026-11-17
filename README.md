@@ -14,13 +14,13 @@
 - **삭제 정책**: 대화 숨김(내 화면만), **계정 익명화 삭제**(상대 이력 유지), **이 기기 키 삭제** 옵션
 - **기기**: 키 등록·폐기, 폐기 시 세션 무효, 새 기기는 이후 메시지만 수신
 - **대화**: 1:1 중복 방지, 그룹 대화(최대 20명·소유자·이름 변경·참여자 추가·나가기), **초대 링크(7일·최대 10명)**, **그룹 Sender Keys**, 대화별 알림 음소거, **읽음 표시·읽지 않은 메시지 배지**, 실시간 수신·타이핑·presence
-- **메시지**: AES-256-GCM 암호문 + 기기별 봉투, **X3DH signed prekey·Double Ratchet(v2)**, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시
+- **메시지**: AES-256-GCM 암호문 + 기기별 봉투, **X3DH signed prekey·Double Ratchet(v2)**, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시, **읽은 뒤 자동 삭제(대화별 1·7·30일, 참여자 전원 읽음 기준)**
 - **파일 첨부**: 파일별 AES-GCM 암호화 후 암호문만 업로드, **이미지 인라인 미리보기**, 로컬/S3 저장 선택, 고아 첨부 TTL 정리, 참여자만 다운로드
 - **푸시·PWA**: VAPID Web Push(RFC 8291), 서비스 워커, **오프라인 앱 셸**, PNG 192/512 아이콘, 로그아웃/기기 폐기 시 구독 정리
 - **성능**: 동시성 부하 테스트(Node/k6), 클라이언트 DR·첨부 암복호화 벤치마크
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
 - **관리자 콘솔**: `ADMIN_USERNAMES` allowlist 전용 `/admin` — 개요 통계, 사용자·기기·세션 조회, 세션 강제 종료, decoy 프로필 웹 관리, 감사 로그(메타데이터만)
-- **테스트 111개**: 서버 76(단위·API·WS·버스·푸시·초대·첨부 정리·decoy·관리자·자동 로그아웃, 1 skipped) + 클라이언트 28(DR·X3DH/OPK·Sender Keys·첨부·백업·프로필 저장·자동 로그아웃 정책) + 브라우저 E2E 7(그룹·초대·이미지·자동 로그아웃·오프라인)
+- **테스트 125개**: 서버 87(단위·API·WS·버스·푸시·초대·첨부 정리·decoy·관리자·자동 로그아웃·자동 삭제, 1 skipped) + 클라이언트 31(DR·X3DH/OPK·Sender Keys·첨부·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션) + 브라우저 E2E 7(그룹·초대·이미지·자동 로그아웃·오프라인)
 
 ## 빠른 시작
 
@@ -92,6 +92,7 @@ pnpm verify:all    # 위 두 가지를 순차 실행
 # 운영 도구
 pnpm db:backup     # BACKUP_DOCKER_CONTAINER 또는 pg_dump
 pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
+pnpm messages:cleanup  # 읽은 뒤 자동 삭제 정리(크론 권장)
 # 외부 DB: TEST_DATABASE_URL=postgres://... pnpm test
 # E2E DB: E2E_DATABASE_URL=postgres://... pnpm test:e2e (이름에 'e2e' 포함 필요)
 # E2E는 시스템 Chrome(channel)을 사용한다. 브라우저 바이너리는 내려받지 않는다.
@@ -128,6 +129,7 @@ pnpm db:load-test  # BASE_URL, MESSAGE_COUNT
 - [관리자 콘솔](docs/21-admin-console.md) — `ADMIN_USERNAMES`, 메타데이터 조회, 세션 강제 종료, decoy 웹 관리, 감사 로그
 - [자동 로그아웃](docs/19-auto-logout.md) — 기기·세션별 1~30분(기본 5분), 메모리 캐시 제거, 강제 로그인
 - [읽음 표시](docs/20-read-receipts.md) — 읽음 커서 API, 1:1/그룹 표기, 5초 갱신
+- [읽은 뒤 자동 삭제](docs/22-auto-delete.md) — 대화별 옵션, 전원 읽음 기준, 서버 삭제와 크론
 - [푸시·PWA](docs/12-push-mobile.md) — Web Push, VAPID, 서비스 워커, 모바일 대응
 - [성능·부하 테스트](docs/13-performance.md) — 동시성·k6, 클라이언트 암복호화 프로파일링
 

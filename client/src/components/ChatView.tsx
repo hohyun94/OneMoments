@@ -527,7 +527,7 @@ export function ChatView({
             ) : isGroup ? (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
-                {conversation.memberCount}명 · 종단간 암호화
+                {conversation.memberCount}명
               </>
             ) : (
               <>
@@ -537,7 +537,7 @@ export function ChatView({
                     peerOnline ? "bg-emerald-500" : "bg-zinc-300",
                   )}
                 />
-                {peerOnline ? "온라인" : "오프라인"} · 종단간 암호화
+                {peerOnline ? "온라인" : "오프라인"}
               </>
             )}
           </p>
@@ -782,7 +782,7 @@ export function ChatView({
           </div>
         )}
         <p className="mt-1 text-[11px] text-zinc-400">
-          Enter 전송 · Shift+Enter 줄바꿈 · 종단간 암호화
+          Enter 전송 · Shift+Enter 줄바꿈
         </p>
       </form>
 

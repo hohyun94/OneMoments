@@ -117,9 +117,7 @@ export function ConversationSidebar({
                         ) : (
                           <ShieldCheck className="h-3 w-3" aria-hidden />
                         )}
-                        {isGroup
-                          ? `${conversation.memberCount}명 · 종단간 암호화`
-                          : "종단간 암호화"}
+                        {isGroup ? `${conversation.memberCount}명` : "1:1 대화"}
                       </span>
                     </span>
                   </button>

@@ -193,7 +193,7 @@ export function NewConversationDialog({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-zinc-900">@{result.username}</p>
             <p className="text-xs text-zinc-500">
-              {mode === "group" ? "그룹에 추가할 사용자" : "종단간 암호화 1:1 대화"}
+              {mode === "group" ? "그룹에 추가할 사용자" : "1:1 대화"}
             </p>
           </div>
           <Button

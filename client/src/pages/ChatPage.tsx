@@ -147,9 +147,6 @@ function ChatShell({
                   <p className="text-base font-medium text-zinc-900">
                     대화를 선택하세요
                   </p>
-                  <p className="mt-1 text-sm text-zinc-500">
-                    모든 메시지는 이 기기에서 종단간 암호화됩니다.
-                  </p>
                 </div>
                 <Button onClick={onNewConversation}>
                   <Plus className="h-4 w-4" aria-hidden />새 대화 시작

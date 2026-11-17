@@ -1,7 +1,7 @@
 {
   "name": "OneMoments",
   "short_name": "OneMoments",
-  "description": "개인용 종단간 암호화 메신저",
+  "description": "개인용 1:1·그룹 메신저",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

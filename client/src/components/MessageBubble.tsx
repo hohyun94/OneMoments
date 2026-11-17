@@ -143,7 +143,7 @@ function AttachmentCard({
             {attachment.name}
           </span>
           <span className={cn("text-[11px]", own ? "text-violet-100" : "text-zinc-500")}>
-            {formatBytes(attachment.size)} · 종단간 암호화
+            {formatBytes(attachment.size)}
           </span>
         </span>
         <button

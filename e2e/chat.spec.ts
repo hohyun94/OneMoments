@@ -276,7 +276,7 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
 
     await startGroup(alice, groupName, [bobName, carolName]);
     await expect(alice.getByRole("heading", { name: groupName })).toBeVisible();
-    await expect(alice.getByText("3명 · 종단간 암호화").first()).toBeVisible();
+    await expect(alice.getByText("3명").first()).toBeVisible();
 
     // 그룹 이름 변경
     await alice.getByRole("button", { name: "그룹 설정" }).click();
@@ -334,7 +334,7 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
     await expect(membersDialog.getByText(`@${daveName}`)).toBeVisible();
     await membersDialog.getByRole("button", { name: "추가", exact: true }).click();
     await membersDialog.getByRole("button", { name: "참여자 추가하기" }).click();
-    await expect(alice.getByText("4명 · 종단간 암호화").first()).toBeVisible();
+    await expect(alice.getByText("4명").first()).toBeVisible();
 
     await dave.reload();
     const daveGroup = dave
@@ -372,7 +372,7 @@ test("그룹 대화를 만들고 참여자 전원이 메시지를 주고받는�
 
     await erin.goto(inviteUrl);
     await expect(erin.getByRole("heading", { name: groupName })).toBeVisible();
-    await expect(erin.getByText("4명 · 종단간 암호화").first()).toBeVisible();
+    await expect(erin.getByText("4명").first()).toBeVisible();
   } finally {
     await aliceContext.close();
     await bobContext.close();

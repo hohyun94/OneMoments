@@ -37,7 +37,7 @@ import {
 } from "../lib/push.ts";
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
-import { AccentPicker } from "../components/AccentPicker.tsx";
+import { ThemeSettings } from "../components/ThemeSettings.tsx";
 
 export function DevicesPage() {
   const {
@@ -607,9 +607,10 @@ export function DevicesPage() {
         <Card className="p-5">
           <h2 className="text-sm font-semibold text-zinc-900">화면 설정</h2>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            앱의 강조색을 바꿉니다. 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
+            테마는 계정에 저장됩니다. 다른 기기에서는 새로고침하거나 다시 로그인할 때
+            적용되며, 로그인 전에는 이 브라우저의 마지막 설정을 사용합니다.
           </p>
-          <AccentPicker />
+          <ThemeSettings />
         </Card>
 
         <Card className="p-5">

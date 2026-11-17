@@ -96,7 +96,7 @@ export function ConversationSidebar({
                           {unread > 0 && !active ? (
                             <span
                               aria-label={`읽지 않은 메시지 ${unread}개`}
-                              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-600 px-1.5 text-[10px] font-semibold text-white"
+                              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-600 px-1.5 text-[10px] font-semibold text-accent-contrast"
                             >
                               {unread > 99 ? "99+" : unread}
                             </span>

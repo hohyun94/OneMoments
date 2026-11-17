@@ -33,6 +33,12 @@ import {
   effectiveIdleTimeoutSeconds,
 } from "./lib/idleTimeout.ts";
 import { disablePush } from "./lib/push.ts";
+import {
+  THEME_STORAGE_KEY,
+  applyTheme,
+  loadTheme,
+  type ThemeSettings,
+} from "./lib/theme.ts";
 import type { AuthResponse, MeResponse, PublicUser } from "./types.ts";
 
 const LAST_USERNAME_KEY = "onemoments:lastUsername";
@@ -68,6 +74,10 @@ interface SessionContextValue {
   updateDeviceIdleTimeout: (seconds: number) => Promise<void>;
   /** 이번 로그인에만 적용할 값을 변경한다. null 이면 오버라이드 해제. */
   updateSessionIdleTimeout: (seconds: number | null) => Promise<void>;
+  /** 계정 화면 테마. */
+  theme: ThemeSettings;
+  /** 테마를 즉시 적용하고 계정에 저장한다. */
+  updateTheme: (theme: ThemeSettings) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -175,6 +185,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     deviceIdleTimeoutSeconds,
     sessionIdleTimeoutSeconds,
   );
+  const [theme, setTheme] = useState<ThemeSettings>(() => loadTheme());
+
+  /** 서버/로컬 테마를 화면에 적용하고 상태를 맞춘다(로컬 캐시도 갱신). */
+  const adoptTheme = useCallback((value: ThemeSettings) => {
+    const applied = applyTheme(value);
+    setTheme(applied);
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY) setTheme(loadTheme());
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   useEffect(() => {
     if (localStorage.getItem(FORCE_LOGIN_KEY) === "1") {
@@ -186,6 +211,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .then(async (me) => {
         if (cancelled) return;
         // 기기 기본값과 세션 오버라이드를 먼저 반영한다(구버전 응답은 기본값으로 대체).
+        adoptTheme(me.theme);
         setDeviceIdleTimeoutSeconds(
           me.deviceIdleTimeoutSeconds ??
             me.devices.find((device) => device.id === me.deviceId)?.idleTimeoutSeconds ??
@@ -246,6 +272,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
     });
     setCsrfToken(response.csrfToken);
+
+    // 새 계정은 이 브라우저의 현재 테마를 초기값으로 저장한다.
+    const initialTheme = applyTheme(loadTheme());
+    setTheme(initialTheme);
+    void api("/api/auth/theme", { method: "PUT", body: initialTheme }).catch(
+      () => undefined,
+    );
 
     // 새 기기/세션이므로 기기 기본값을 쓰고 세션 오버라이드는 없다.
     setDeviceIdleTimeoutSeconds(
@@ -319,6 +352,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     setCsrfToken(response.csrfToken);
+    adoptTheme(response.theme);
     setDeviceIdleTimeoutSeconds(
       response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
     );
@@ -388,6 +422,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     setCsrfToken(response.csrfToken);
+    adoptTheme(response.theme);
     setDeviceIdleTimeoutSeconds(
       response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
     );
@@ -457,6 +492,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionIdleTimeoutSeconds(response.idleTimeoutSeconds);
   }, []);
 
+  /** 테마를 즉시 적용하고 계정에 저장한다. 저장 실패 시에도 로컬에는 적용된다. */
+  const updateTheme = useCallback(async (value: ThemeSettings) => {
+    const applied = applyTheme(value);
+    setTheme(applied);
+    const response = await api<{ theme: ThemeSettings }>("/api/auth/theme", {
+      method: "PUT",
+      body: applied,
+    });
+    setTheme(applyTheme(response.theme));
+  }, []);
+
   // 무활동 자동 로그아웃: 입력/스크롤/포인터 활동이 없으면 세션과 화면 캐시를 지운다.
   // 값은 기기 기본값 또는 세션 오버라이드를 따르며, 설정 변경 시 타이머가 재시작된다.
   const idleTimeoutMs = idleTimeoutSeconds * 1000;
@@ -514,6 +560,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionIdleTimeoutSeconds,
       updateDeviceIdleTimeout,
       updateSessionIdleTimeout,
+      theme,
+      updateTheme,
     }),
     [
       status,
@@ -529,6 +577,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       sessionIdleTimeoutSeconds,
       updateDeviceIdleTimeout,
       updateSessionIdleTimeout,
+      theme,
+      updateTheme,
     ],
   );
 

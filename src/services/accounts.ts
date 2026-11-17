@@ -20,6 +20,7 @@ import {
   type UserRow,
 } from "../db/schema.js";
 import { AppError } from "../http/errors.js";
+import type { ThemeMode } from "../types/protocol.js";
 
 export interface DeviceKeys {
   identityPublicKey: string;
@@ -259,6 +260,20 @@ export async function updateSessionIdleTimeout(
     .returning();
   if (!session) throw AppError.unauthorized("Session expired or invalid");
   return session;
+}
+
+/** 계정 화면 테마(모드·강조색)를 저장한다. */
+export async function updateUserTheme(
+  db: Database,
+  input: { userId: string; mode: ThemeMode; accent: string },
+): Promise<UserRow> {
+  const [user] = await db
+    .update(users)
+    .set({ themeMode: input.mode, themeAccent: input.accent })
+    .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
+    .returning();
+  if (!user) throw AppError.unauthorized("Unknown account");
+  return user;
 }
 
 /**

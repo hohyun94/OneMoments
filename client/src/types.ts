@@ -1,3 +1,5 @@
+import type { ThemeSettings } from "./lib/theme.ts";
+
 export interface PublicUser {
   id: string;
   username: string;
@@ -112,6 +114,8 @@ export interface AuthResponse {
   expiresAt: string;
   /** 이 기기의 기본 무활동 로그아웃(초). */
   idleTimeoutSeconds?: number;
+  /** 계정에 저장된 화면 테마. */
+  theme: ThemeSettings;
 }
 
 export interface MeResponse {
@@ -125,6 +129,8 @@ export interface MeResponse {
   deviceIdleTimeoutSeconds: number;
   /** 이번 로그인에만 적용하는 값(초). null 이면 기기 기본값. */
   sessionIdleTimeoutSeconds: number | null;
+  /** 계정에 저장된 화면 테마. */
+  theme: ThemeSettings;
 }
 
 export interface AdminOverview {

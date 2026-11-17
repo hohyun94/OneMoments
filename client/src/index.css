@@ -1,11 +1,14 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * 강조색 테마. data-accent 로 기본 팔레트를 바꾸며, 각 shade 는 base 색에서 파생한다.
  * 흰 글자와 대비가 충분한 600 계열을 기준으로 프리셋을 고른다.
  */
 :root {
   --accent-base: #7c3aed; /* violet-600 */
+  --accent-contrast: #ffffff;
 }
 
 [data-accent="blue"] {
@@ -36,6 +39,124 @@
   --color-accent-800: color-mix(in oklab, var(--accent-base) 75%, black);
   --color-accent-900: color-mix(in oklab, var(--accent-base) 60%, black);
   --color-accent-950: color-mix(in oklab, var(--accent-base) 40%, black);
+  --color-accent-contrast: var(--accent-contrast);
+}
+
+/* ── 다크 모드 ────────────────────────────────────────────────
+ * 기존 중립 유틸리티를 어두운 표면/텍스트로 매핑한다. (Tailwind 유틸리티보다 뒤에 온다)
+ */
+.dark {
+  color-scheme: dark;
+}
+
+.dark .bg-white {
+  background-color: #18181b;
+}
+.dark .bg-zinc-50 {
+  background-color: #09090b;
+}
+.dark .bg-zinc-100 {
+  background-color: #27272a;
+}
+.dark .bg-zinc-200 {
+  background-color: #3f3f46;
+}
+.dark .bg-zinc-300 {
+  background-color: #52525b;
+}
+.dark .hover\:bg-zinc-50:hover,
+.dark .hover\:bg-zinc-100:hover {
+  background-color: #27272a;
+}
+.dark .hover\:bg-zinc-200:hover {
+  background-color: #3f3f46;
+}
+.dark .text-zinc-900 {
+  color: #f4f4f5;
+}
+.dark .text-zinc-800 {
+  color: #e4e4e7;
+}
+.dark .text-zinc-700,
+.dark .text-zinc-600 {
+  color: #d4d4d8;
+}
+.dark .text-zinc-500 {
+  color: #a1a1aa;
+}
+.dark .text-zinc-400 {
+  color: #71717a;
+}
+.dark .border-zinc-100 {
+  border-color: #27272a;
+}
+.dark .border-zinc-200 {
+  border-color: #3f3f46;
+}
+.dark .border-zinc-300 {
+  border-color: #52525b;
+}
+.dark .divide-zinc-100 > :not(:last-child) {
+  border-color: #27272a;
+}
+.dark .hover\:text-zinc-700:hover {
+  color: #d4d4d8;
+}
+.dark .hover\:text-zinc-900:hover {
+  color: #f4f4f5;
+}
+
+/* 강조색 틴트는 어두운 표면에서도 대비가 유지되도록 조정한다. */
+.dark .bg-accent-50 {
+  background-color: color-mix(in oklab, var(--accent-base) 18%, #18181b);
+}
+.dark .bg-accent-100 {
+  background-color: color-mix(in oklab, var(--accent-base) 25%, #18181b);
+}
+.dark .text-accent-600,
+.dark .text-accent-700 {
+  color: color-mix(in oklab, var(--accent-base) 55%, white);
+}
+.dark .ring-accent-100 {
+  --tw-ring-color: color-mix(in oklab, var(--accent-base) 45%, transparent);
+}
+.dark .focus\:ring-accent-100:focus {
+  --tw-ring-color: color-mix(in oklab, var(--accent-base) 45%, transparent);
+}
+
+/* 상태 색 */
+.dark .bg-red-50 {
+  background-color: rgb(69 10 10 / 0.35);
+}
+.dark .border-red-200 {
+  border-color: #7f1d1d;
+}
+.dark .text-red-600,
+.dark .text-red-700 {
+  color: #fca5a5;
+}
+.dark .bg-amber-50 {
+  background-color: rgb(69 26 3 / 0.35);
+}
+.dark .border-amber-200 {
+  border-color: #78350f;
+}
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800,
+.dark .text-amber-900 {
+  color: #fcd34d;
+}
+.dark .bg-emerald-50 {
+  background-color: rgb(2 44 34 / 0.35);
+}
+.dark .text-emerald-700 {
+  color: #6ee7b7;
+}
+
+.dark ::selection {
+  background-color: color-mix(in oklab, var(--accent-base) 35%, #18181b);
+  color: #fafafa;
 }
 
 html,

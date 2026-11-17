@@ -34,6 +34,7 @@ import {
   signedPreKeyBodySchema,
   oneTimePreKeysBodySchema,
   updateSessionIdleTimeoutBodySchema,
+  updateThemeBodySchema,
 } from "../http/validation.js";
 import {
   addOneTimePreKeys,
@@ -49,6 +50,7 @@ import {
   registerDevice,
   updateDeviceSignedPreKey,
   updateSessionIdleTimeout,
+  updateUserTheme,
   verifyLoginCredentials,
 } from "../services/accounts.js";
 import {
@@ -59,6 +61,7 @@ import {
   getKeyBackupForDevice,
   upsertKeyBackup,
 } from "../services/keyBackup.js";
+import { toThemeSettings } from "../services/theme.js";
 
 function userAgent(req: Request): string | null {
   return req.header("user-agent") ?? null;
@@ -112,6 +115,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
         idleTimeoutSeconds: device.idleTimeoutSeconds,
+        theme: toThemeSettings(user),
       });
     }),
   );
@@ -161,6 +165,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
         idleTimeoutSeconds: device.idleTimeoutSeconds,
+        theme: toThemeSettings(user),
       });
     }),
   );
@@ -362,6 +367,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
         idleTimeoutSeconds: device.idleTimeoutSeconds,
+        theme: toThemeSettings(user),
       });
     }),
   );
@@ -406,6 +412,22 @@ export function createAuthRouter(db: Database, config: Config): Router {
     }),
   );
 
+  router.put(
+    "/theme",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = updateThemeBodySchema.parse(req.body);
+      const user = await updateUserTheme(db, {
+        userId: auth.userId,
+        mode: body.mode,
+        accent: body.accent,
+      });
+      res.json({ theme: toThemeSettings(user) });
+    }),
+  );
+
   router.get(
     "/me",
     session,
@@ -425,6 +447,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         idleTimeoutSeconds: auth.sessionIdleTimeoutSeconds ?? deviceIdleTimeoutSeconds,
         deviceIdleTimeoutSeconds,
         sessionIdleTimeoutSeconds: auth.sessionIdleTimeoutSeconds,
+        theme: toThemeSettings(user),
         csrfToken: deriveCsrfToken(auth.sessionToken, config.sessionSecret),
       });
     }),

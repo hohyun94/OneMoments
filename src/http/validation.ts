@@ -4,7 +4,6 @@ import {
   MAX_IDLE_TIMEOUT_SECONDS,
   MIN_IDLE_TIMEOUT_SECONDS,
 } from "../auth/idleTimeout.js";
-
 export const usernameSchema = z
   .string()
   .trim()
@@ -223,6 +222,23 @@ export const conversationIdParamsSchema = z.object({
 /** 대화별 자동 삭제(읽은 뒤 N초). null 이면 끔. 1시간~30일. */
 export const updateAutoDeleteBodySchema = z.object({
   seconds: z.number().int().min(3600).max(30 * 24 * 60 * 60).nullable(),
+});
+
+/** 화면 테마. accent 는 프리셋 ID 또는 소문자 #rrggbb. */
+export const themeAccentSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .refine(
+    (value) =>
+      ["violet", "blue", "emerald", "rose", "amber"].includes(value) ||
+      /^#[0-9a-f]{6}$/.test(value),
+    "accent must be a preset id or #rrggbb",
+  );
+
+export const updateThemeBodySchema = z.object({
+  mode: z.enum(["light", "dark", "system"]),
+  accent: themeAccentSchema,
 });
 
 export const adminUserListQuerySchema = z.object({

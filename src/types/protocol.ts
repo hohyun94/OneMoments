@@ -9,6 +9,14 @@ export interface PublicUser {
   isAdmin?: boolean;
 }
 
+export type ThemeMode = "light" | "dark" | "system";
+
+/** 계정에 저장되는 화면 테마. accent 는 프리셋 ID 또는 #rrggbb. */
+export interface ThemeSettings {
+  mode: ThemeMode;
+  accent: string;
+}
+
 export interface PeerUser {
   id: string;
   /** 계정이 삭제(익명화)되면 null */

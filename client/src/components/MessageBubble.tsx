@@ -128,7 +128,7 @@ function AttachmentCard({
         <span
           className={cn(
             "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-            own ? "bg-accent-500/30 text-white" : "bg-accent-100 text-accent-700",
+            own ? "bg-accent-500/30 text-accent-contrast" : "bg-accent-100 text-accent-700",
           )}
         >
           <FileText className="h-4 w-4" aria-hidden />
@@ -137,12 +137,12 @@ function AttachmentCard({
           <span
             className={cn(
               "block truncate text-sm font-medium",
-              own ? "text-white" : "text-zinc-900",
+              own ? "text-accent-contrast" : "text-zinc-900",
             )}
           >
             {attachment.name}
           </span>
-          <span className={cn("text-[11px]", own ? "text-accent-100" : "text-zinc-500")}>
+          <span className={cn("text-[11px]", own ? "text-accent-contrast/80" : "text-zinc-500")}>
             {formatBytes(attachment.size)}
           </span>
         </span>
@@ -154,7 +154,7 @@ function AttachmentCard({
           className={cn(
             "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium transition-colors disabled:opacity-50",
             own
-              ? "bg-white/20 text-white hover:bg-white/30"
+              ? "bg-white/20 text-accent-contrast hover:bg-white/30"
               : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
           )}
         >
@@ -167,7 +167,7 @@ function AttachmentCard({
         </button>
       </div>
       {error ? (
-        <p className={cn("mt-1.5 text-[11px]", own ? "text-accent-100" : "text-red-600")}>
+        <p className={cn("mt-1.5 text-[11px]", own ? "text-accent-contrast/80" : "text-red-600")}>
           {error}
         </p>
       ) : null}
@@ -277,7 +277,7 @@ export function MessageBubble({
         className={cn(
           "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm shadow-sm md:max-w-[70%]",
           own
-            ? "rounded-br-md bg-accent-600 text-white"
+            ? "rounded-br-md bg-accent-600 text-accent-contrast"
             : "rounded-bl-md border border-zinc-200 bg-white text-zinc-900",
         )}
       >
@@ -300,14 +300,14 @@ export function MessageBubble({
           <p
             className={cn(
               "flex items-center gap-1.5 text-xs",
-              own ? "text-accent-100" : "text-zinc-500",
+              own ? "text-accent-contrast/80" : "text-zinc-500",
             )}
           >
             <ShieldAlert className="h-3.5 w-3.5" aria-hidden />
             {result.detail}
           </p>
         ) : (
-          <p className={cn("text-xs", own ? "text-accent-200" : "text-zinc-400")}>
+          <p className={cn("text-xs", own ? "text-accent-contrast/80" : "text-zinc-400")}>
             복호화 중…
           </p>
         )}
@@ -315,7 +315,7 @@ export function MessageBubble({
         <p
           className={cn(
             "mt-1 text-right text-[10px]",
-            own ? "text-accent-200" : "text-zinc-400",
+            own ? "text-accent-contrast/80" : "text-zinc-400",
           )}
         >
           {formatClock(message.createdAt)}

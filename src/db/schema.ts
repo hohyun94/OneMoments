@@ -25,10 +25,20 @@ export const users = pgTable(
     // 소문자 정규화. 삭제(익명화) 후에도 행을 유지해 username 재사용을 막는다.
     username: text("username").notNull(),
     passwordHash: text("password_hash").notNull(),
+    // 화면 테마(계정 동기화). mode: light/dark/system, accent: 프리셋 ID 또는 #rrggbb.
+    themeMode: text("theme_mode").notNull().default("system"),
+    themeAccent: text("theme_accent").notNull().default("violet"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (table) => [uniqueIndex("users_username_uq").on(table.username)],
+  (table) => [
+    uniqueIndex("users_username_uq").on(table.username),
+    check("users_theme_mode_chk", sql`${table.themeMode} in ('light', 'dark', 'system')`),
+    check(
+      "users_theme_accent_chk",
+      sql`${table.themeAccent} ~ '^(violet|blue|emerald|rose|amber|#[0-9a-f]{6})$'`,
+    ),
+  ],
 );
 
 export const sessions = pgTable(

@@ -37,6 +37,7 @@ import {
 } from "../lib/push.ts";
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
+import { AccentPicker } from "../components/AccentPicker.tsx";
 
 export function DevicesPage() {
   const {
@@ -327,7 +328,7 @@ export function DevicesPage() {
         <Card className="divide-y divide-zinc-100">
           {devicesQuery.isLoading ? (
             <div className="flex justify-center p-8">
-              <Spinner className="h-5 w-5 text-violet-600" />
+              <Spinner className="h-5 w-5 text-accent-600" />
             </div>
           ) : devicesQuery.isError ? (
             <div className="p-5">
@@ -346,7 +347,7 @@ export function DevicesPage() {
                     <p className="flex items-center gap-2 text-sm font-medium text-zinc-900">
                       <span className="truncate">{device.name}</span>
                       {current ? (
-                        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+                        <span className="rounded-full bg-accent-50 px-2 py-0.5 text-[11px] font-medium text-accent-700">
                           현재 기기
                         </span>
                       ) : null}
@@ -537,7 +538,7 @@ export function DevicesPage() {
               <Label htmlFor="device-idle-timeout">이 기기 기본값</Label>
               <select
                 id="device-idle-timeout"
-                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-50"
+                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100 disabled:opacity-50"
                 value={deviceIdleTimeoutSeconds}
                 disabled={idleBusy}
                 onChange={(event) => void changeDeviceIdleTimeout(Number(event.target.value))}
@@ -557,7 +558,7 @@ export function DevicesPage() {
             <label className="flex items-center gap-2 text-sm text-zinc-700">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-400"
+                className="h-4 w-4 rounded border-zinc-300 text-accent-600 focus:ring-accent-400"
                 checked={sessionOverrideEnabled}
                 disabled={idleBusy}
                 onChange={(event) => void toggleSessionOverride(event.target.checked)}
@@ -570,7 +571,7 @@ export function DevicesPage() {
                 <Label htmlFor="session-idle-timeout">이번 로그인</Label>
                 <select
                   id="session-idle-timeout"
-                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-50"
+                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100 disabled:opacity-50"
                   value={sessionIdleTimeoutSeconds ?? idleTimeoutSeconds}
                   disabled={idleBusy}
                   onChange={(event) =>
@@ -601,6 +602,14 @@ export function DevicesPage() {
               <Alert>{idleMessage}</Alert>
             </div>
           ) : null}
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold text-zinc-900">화면 설정</h2>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+            앱의 강조색을 바꿉니다. 이 브라우저에만 저장되며 서버로 전송되지 않습니다.
+          </p>
+          <AccentPicker />
         </Card>
 
         <Card className="p-5">

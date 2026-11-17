@@ -122,7 +122,7 @@ export function AdminDevicesPanel() {
       <Card className="overflow-hidden">
         {devicesQuery.isLoading ? (
           <div className="flex justify-center py-10">
-            <Spinner className="h-5 w-5 text-violet-600" />
+            <Spinner className="h-5 w-5 text-accent-600" />
           </div>
         ) : devicesQuery.isError && !devicesQuery.data ? (
           <div className="p-4">
@@ -141,7 +141,7 @@ export function AdminDevicesPanel() {
                       <span className="truncate text-sm font-medium text-zinc-900">
                         {device.name}
                       </span>
-                      <span className="truncate text-xs text-violet-700">
+                      <span className="truncate text-xs text-accent-700">
                         @{device.username}
                       </span>
                       {device.revokedAt ? (

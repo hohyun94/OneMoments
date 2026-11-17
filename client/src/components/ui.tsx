@@ -13,7 +13,7 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-violet-600 text-white hover:bg-violet-700",
+        default: "bg-accent-600 text-white hover:bg-accent-700",
         outline: "border border-zinc-200 bg-white text-zinc-900 hover:bg-zinc-50",
         ghost: "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900",
         destructive: "bg-red-600 text-white hover:bg-red-700",
@@ -40,7 +40,7 @@ export function Input({ className, ...props }: ComponentProps<"input">) {
     <input
       className={cn(
         "h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400",
-        "focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100",
+        "focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100",
         className,
       )}
       {...props}
@@ -53,7 +53,7 @@ export function Textarea({ className, ...props }: ComponentProps<"textarea">) {
     <textarea
       className={cn(
         "w-full resize-none rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400",
-        "focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100",
+        "focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100",
         className,
       )}
       {...props}
@@ -114,7 +114,7 @@ export function Avatar({ name, className }: { name: string; className?: string }
     <span
       aria-hidden
       className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-100 text-sm font-semibold text-violet-700",
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700",
         className,
       )}
     >

@@ -17,10 +17,10 @@ const AdminPage = lazy(() =>
 function Splash() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-zinc-50">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-white">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-600 text-white">
         <Lock className="h-6 w-6" aria-hidden />
       </span>
-      <Spinner className="h-5 w-5 text-violet-600" />
+      <Spinner className="h-5 w-5 text-accent-600" />
     </div>
   );
 }

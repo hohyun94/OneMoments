@@ -137,10 +137,10 @@ function ChatShell({
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
             {loading ? (
-              <Spinner className="h-6 w-6 text-violet-600" />
+              <Spinner className="h-6 w-6 text-accent-600" />
             ) : (
               <>
-                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-50 text-accent-600">
                   <MessagesSquare className="h-7 w-7" aria-hidden />
                 </span>
                 <div>

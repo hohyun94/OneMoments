@@ -54,7 +54,7 @@ export function AdminDeviceSessionsPanel({
     return (
       <Card className="p-4">
         <div className="flex justify-center py-6">
-          <Spinner className="h-5 w-5 text-violet-600" />
+          <Spinner className="h-5 w-5 text-accent-600" />
         </div>
       </Card>
     );

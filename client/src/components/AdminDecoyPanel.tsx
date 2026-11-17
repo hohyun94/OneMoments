@@ -133,7 +133,7 @@ export function AdminDecoyPanel() {
       <Card className="overflow-hidden">
         {profilesQuery.isLoading ? (
           <div className="flex justify-center py-10">
-            <Spinner className="h-5 w-5 text-violet-600" />
+            <Spinner className="h-5 w-5 text-accent-600" />
           </div>
         ) : profilesQuery.isError ? (
           <div className="p-4">

@@ -532,7 +532,7 @@ export function ChatView({
           </h2>
           <p className="flex items-center gap-1.5 text-xs text-zinc-500">
             {typingNames.length > 0 ? (
-              <span className="text-violet-600">
+              <span className="text-accent-600">
                 {isGroup
                   ? `${typingNames.slice(0, 2).join(", ")}${
                       typingNames.length > 2 ? ` 외 ${typingNames.length - 2}명` : ""
@@ -543,7 +543,7 @@ export function ChatView({
               <span>계정 삭제됨</span>
             ) : isGroup ? (
               <>
-                <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+                <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
                 {conversation.memberCount}명
                 {conversation.autoDeleteAfterReadSeconds !== null
                   ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`

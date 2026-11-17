@@ -82,7 +82,7 @@ export function AutoDeleteDialog({
           </Label>
           <select
             id="auto-delete-select"
-            className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-50"
+            className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100 disabled:opacity-50"
             value={seconds === null ? "off" : String(seconds)}
             disabled={!canEdit || busy}
             onChange={(event) =>

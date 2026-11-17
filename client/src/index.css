@@ -1,5 +1,43 @@
 @import "tailwindcss";
 
+/*
+ * 강조색 테마. data-accent 로 기본 팔레트를 바꾸며, 각 shade 는 base 색에서 파생한다.
+ * 흰 글자와 대비가 충분한 600 계열을 기준으로 프리셋을 고른다.
+ */
+:root {
+  --accent-base: #7c3aed; /* violet-600 */
+}
+
+[data-accent="blue"] {
+  --accent-base: #2563eb; /* blue-600 */
+}
+
+[data-accent="emerald"] {
+  --accent-base: #047857; /* emerald-700 */
+}
+
+[data-accent="rose"] {
+  --accent-base: #be123c; /* rose-700 */
+}
+
+[data-accent="amber"] {
+  --accent-base: #b45309; /* amber-700 */
+}
+
+@theme inline {
+  --color-accent-50: color-mix(in oklab, var(--accent-base) 6%, white);
+  --color-accent-100: color-mix(in oklab, var(--accent-base) 12%, white);
+  --color-accent-200: color-mix(in oklab, var(--accent-base) 22%, white);
+  --color-accent-300: color-mix(in oklab, var(--accent-base) 38%, white);
+  --color-accent-400: color-mix(in oklab, var(--accent-base) 62%, white);
+  --color-accent-500: color-mix(in oklab, var(--accent-base) 85%, white);
+  --color-accent-600: var(--accent-base);
+  --color-accent-700: color-mix(in oklab, var(--accent-base) 88%, black);
+  --color-accent-800: color-mix(in oklab, var(--accent-base) 75%, black);
+  --color-accent-900: color-mix(in oklab, var(--accent-base) 60%, black);
+  --color-accent-950: color-mix(in oklab, var(--accent-base) 40%, black);
+}
+
 html,
 body,
 #root {
@@ -22,9 +60,9 @@ body {
 }
 
 *:focus-visible {
-  @apply outline-2 outline-offset-2 outline-violet-500;
+  @apply outline-2 outline-offset-2 outline-accent-500;
 }
 
 ::selection {
-  @apply bg-violet-200 text-violet-950;
+  @apply bg-accent-200 text-accent-950;
 }

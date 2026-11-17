@@ -50,7 +50,7 @@ function errorMessage(error: unknown): string {
 function Loading() {
   return (
     <div className="flex justify-center py-10">
-      <Spinner className="h-5 w-5 text-violet-600" />
+      <Spinner className="h-5 w-5 text-accent-600" />
     </div>
   );
 }
@@ -114,7 +114,7 @@ export function AdminPage() {
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
           <div>
-            <p className="text-xs font-medium tracking-wide text-violet-600">OneMoments</p>
+            <p className="text-xs font-medium tracking-wide text-accent-600">OneMoments</p>
             <h1 className="text-lg font-semibold text-zinc-900">관리자 콘솔</h1>
           </div>
           <span className="ml-auto text-xs text-zinc-500">@{session.user.username}</span>
@@ -128,7 +128,7 @@ export function AdminPage() {
               aria-current={tab === item.id ? "page" : undefined}
               className={
                 tab === item.id
-                  ? "rounded-lg bg-violet-50 px-3 py-1.5 text-sm font-medium text-violet-700"
+                  ? "rounded-lg bg-accent-50 px-3 py-1.5 text-sm font-medium text-accent-700"
                   : "rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
               }
             >
@@ -271,7 +271,7 @@ function UsersTab() {
                     aria-current={selectedId === user.id ? "true" : undefined}
                     className={
                       selectedId === user.id
-                        ? "flex w-full items-center gap-3 bg-violet-50 px-4 py-3 text-left"
+                        ? "flex w-full items-center gap-3 bg-accent-50 px-4 py-3 text-left"
                         : "flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-zinc-50"
                     }
                   >

@@ -48,7 +48,7 @@ export function InvitePage() {
               <Alert variant="error">{error}</Alert>
             </div>
             <button
-              className="mt-5 text-sm font-medium text-violet-700 hover:underline"
+              className="mt-5 text-sm font-medium text-accent-700 hover:underline"
               onClick={() => navigate("/", { replace: true })}
             >
               대화 목록으로 이동
@@ -56,7 +56,7 @@ export function InvitePage() {
           </>
         ) : (
           <>
-            <Spinner className="mx-auto h-6 w-6 text-violet-600" />
+            <Spinner className="mx-auto h-6 w-6 text-accent-600" />
             <p className="mt-3 text-sm text-zinc-600">그룹 초대를 수락하는 중…</p>
           </>
         )}

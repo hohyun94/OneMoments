@@ -33,7 +33,7 @@ export function ConversationSidebar({
       <header className="border-b border-zinc-100 px-4 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs font-medium tracking-wide text-violet-600">OneMoments</p>
+            <p className="text-xs font-medium tracking-wide text-accent-600">OneMoments</p>
             <p className="text-lg font-semibold text-zinc-900">@{displayName}</p>
           </div>
           <span
@@ -78,7 +78,7 @@ export function ConversationSidebar({
                     aria-current={active ? "page" : undefined}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
-                      active ? "bg-violet-50" : "hover:bg-zinc-50",
+                      active ? "bg-accent-50" : "hover:bg-zinc-50",
                     )}
                   >
                     <Avatar name={name} />
@@ -96,7 +96,7 @@ export function ConversationSidebar({
                           {unread > 0 && !active ? (
                             <span
                               aria-label={`읽지 않은 메시지 ${unread}개`}
-                              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-600 px-1.5 text-[10px] font-semibold text-white"
+                              className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-600 px-1.5 text-[10px] font-semibold text-white"
                             >
                               {unread > 99 ? "99+" : unread}
                             </span>

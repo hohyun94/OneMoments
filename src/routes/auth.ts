@@ -1,6 +1,7 @@
 import express, { Router, type Request } from "express";
 
 import { isAdminUsername } from "../auth/admin.js";
+import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "../auth/idleTimeout.js";
 import { issueSession } from "../auth/issueSession.js";
 import {
   SESSION_COOKIE,
@@ -32,6 +33,7 @@ import {
   registerBodySchema,
   signedPreKeyBodySchema,
   oneTimePreKeysBodySchema,
+  updateSessionIdleTimeoutBodySchema,
 } from "../http/validation.js";
 import {
   addOneTimePreKeys,
@@ -46,6 +48,7 @@ import {
   registerAccount,
   registerDevice,
   updateDeviceSignedPreKey,
+  updateSessionIdleTimeout,
   verifyLoginCredentials,
 } from "../services/accounts.js";
 import {
@@ -108,6 +111,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         device: toPublicDevice(device),
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
+        idleTimeoutSeconds: device.idleTimeoutSeconds,
       });
     }),
   );
@@ -156,6 +160,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         device: toPublicDevice(device),
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
+        idleTimeoutSeconds: device.idleTimeoutSeconds,
       });
     }),
   );
@@ -356,6 +361,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         device: toPublicDevice(device),
         csrfToken: issued.csrfToken,
         expiresAt: issued.expiresAt.toISOString(),
+        idleTimeoutSeconds: device.idleTimeoutSeconds,
       });
     }),
   );
@@ -382,6 +388,24 @@ export function createAuthRouter(db: Database, config: Config): Router {
     }),
   );
 
+  router.put(
+    "/session/timeout",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = updateSessionIdleTimeoutBodySchema.parse(req.body);
+      const updated = await updateSessionIdleTimeout(db, {
+        sessionId: auth.sessionId,
+        seconds: body.seconds,
+      });
+      res.json({
+        sessionId: updated.id,
+        idleTimeoutSeconds: updated.idleTimeoutSeconds,
+      });
+    }),
+  );
+
   router.get(
     "/me",
     session,
@@ -390,10 +414,17 @@ export function createAuthRouter(db: Database, config: Config): Router {
       const user = await findUserById(db, auth.userId);
       if (!user || user.deletedAt !== null) throw AppError.unauthorized();
       const devices = await listDevices(db, auth.userId);
+      const currentDevice = devices.find((device) => device.id === auth.deviceId);
+      const deviceIdleTimeoutSeconds =
+        currentDevice?.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS;
       res.json({
         user: authUser(user),
         deviceId: auth.deviceId,
         devices: devices.map(toOwnDevice),
+        // 세션 오버라이드가 있으면 우선한다.
+        idleTimeoutSeconds: auth.sessionIdleTimeoutSeconds ?? deviceIdleTimeoutSeconds,
+        deviceIdleTimeoutSeconds,
+        sessionIdleTimeoutSeconds: auth.sessionIdleTimeoutSeconds,
         csrfToken: deriveCsrfToken(auth.sessionToken, config.sessionSecret),
       });
     }),

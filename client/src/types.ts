@@ -21,6 +21,8 @@ export interface Device {
   createdAt: string;
   lastSeenAt: string | null;
   revokedAt?: string | null;
+  /** 기기 기본 무활동 로그아웃(초). 공개 기기 응답에는 포함되지 않는다. */
+  idleTimeoutSeconds?: number;
 }
 
 export interface ConversationSummary {
@@ -106,6 +108,8 @@ export interface AuthResponse {
   device: Device;
   csrfToken: string;
   expiresAt: string;
+  /** 이 기기의 기본 무활동 로그아웃(초). */
+  idleTimeoutSeconds?: number;
 }
 
 export interface MeResponse {
@@ -113,6 +117,12 @@ export interface MeResponse {
   deviceId: string;
   devices: Device[];
   csrfToken: string;
+  /** 실제 적용되는 무활동 로그아웃(초). 세션 오버라이드가 있으면 그 값. */
+  idleTimeoutSeconds: number;
+  /** 이 기기의 기본값(초). */
+  deviceIdleTimeoutSeconds: number;
+  /** 이번 로그인에만 적용하는 값(초). null 이면 기기 기본값. */
+  sessionIdleTimeoutSeconds: number | null;
 }
 
 export interface AdminOverview {

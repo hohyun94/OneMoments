@@ -6,6 +6,7 @@ import {
   KeyRound,
   Laptop,
   ShieldCheck,
+  Timer,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
@@ -21,6 +22,10 @@ import {
   Spinner,
 } from "../components/ui.tsx";
 import { ApiError, api } from "../lib/api.ts";
+import {
+  IDLE_TIMEOUT_OPTIONS,
+  idleTimeoutLabel,
+} from "../lib/idleTimeout.ts";
 import { BackupError, exportKeyBackup, exportLocalCryptoState } from "../lib/crypto/index.ts";
 import { deleteIdentity, deleteIdentityByUser } from "../lib/keystore.ts";
 import {
@@ -34,7 +39,16 @@ import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
 
 export function DevicesPage() {
-  const { session, identity, logout } = useSession();
+  const {
+    session,
+    identity,
+    logout,
+    idleTimeoutSeconds,
+    deviceIdleTimeoutSeconds,
+    sessionIdleTimeoutSeconds,
+    updateDeviceIdleTimeout,
+    updateSessionIdleTimeout,
+  } = useSession();
   const queryClient = useQueryClient();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -50,6 +64,17 @@ export function DevicesPage() {
   const [pushBusy, setPushBusy] = useState(false);
   const [pushMessage, setPushMessage] = useState<string | null>(null);
   const [pushError, setPushError] = useState<string | null>(null);
+  const [idleBusy, setIdleBusy] = useState(false);
+  const [idleMessage, setIdleMessage] = useState<string | null>(null);
+  const [idleError, setIdleError] = useState<string | null>(null);
+  const [sessionOverrideEnabled, setSessionOverrideEnabled] = useState(
+    sessionIdleTimeoutSeconds !== null,
+  );
+
+  // 다른 곳(예: 재로그인)에서 세션 오버라이드가 바뀌면 체크박스를 동기화한다.
+  useEffect(() => {
+    setSessionOverrideEnabled(sessionIdleTimeoutSeconds !== null);
+  }, [sessionIdleTimeoutSeconds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +117,71 @@ export function DevicesPage() {
     }
   }
 
+  async function changeDeviceIdleTimeout(seconds: number): Promise<void> {
+    setIdleBusy(true);
+    setIdleError(null);
+    setIdleMessage(null);
+    try {
+      await updateDeviceIdleTimeout(seconds);
+      setIdleMessage(
+        `이 기기의 기본 자동 로그아웃을 ${idleTimeoutLabel(seconds)}로 저장했습니다.`,
+      );
+    } catch (error) {
+      setIdleError(
+        error instanceof ApiError
+          ? error.message
+          : "자동 로그아웃 설정을 변경하지 못했습니다.",
+      );
+    } finally {
+      setIdleBusy(false);
+    }
+  }
+
+  async function changeSessionIdleTimeout(seconds: number): Promise<void> {
+    setIdleBusy(true);
+    setIdleError(null);
+    setIdleMessage(null);
+    try {
+      await updateSessionIdleTimeout(seconds);
+      setIdleMessage(
+        `이번 로그인에만 ${idleTimeoutLabel(seconds)} 자동 로그아웃을 적용합니다.`,
+      );
+    } catch (error) {
+      setIdleError(
+        error instanceof ApiError
+          ? error.message
+          : "세션 자동 로그아웃 설정을 변경하지 못했습니다.",
+      );
+    } finally {
+      setIdleBusy(false);
+    }
+  }
+
+  async function toggleSessionOverride(enabled: boolean): Promise<void> {
+    setIdleBusy(true);
+    setIdleError(null);
+    setIdleMessage(null);
+    try {
+      await updateSessionIdleTimeout(
+        enabled ? (sessionIdleTimeoutSeconds ?? deviceIdleTimeoutSeconds) : null,
+      );
+      setSessionOverrideEnabled(enabled);
+      setIdleMessage(
+        enabled
+          ? "이번 로그인에만 적용할 자동 로그아웃 시간을 저장했습니다."
+          : "세션 전용 설정을 해제하고 기기 기본값을 사용합니다.",
+      );
+    } catch (error) {
+      setIdleError(
+        error instanceof ApiError
+          ? error.message
+          : "세션 자동 로그아웃 설정을 변경하지 못했습니다.",
+      );
+    } finally {
+      setIdleBusy(false);
+    }
+  }
+
   const devicesQuery = useQuery({
     queryKey: ["devices"],
     queryFn: () => api<{ devices: Device[] }>("/api/devices").then((response) => response.devices),
@@ -106,6 +196,17 @@ export function DevicesPage() {
   });
 
   const devices = devicesQuery.data ?? [];
+
+  // 서버가 허용하는 임의 값(60~1800초)도 목록에 표시되도록 현재 값들을 합친다.
+  const timeoutOptions = [
+    ...new Set([
+      ...IDLE_TIMEOUT_OPTIONS.map((option) => option.seconds),
+      deviceIdleTimeoutSeconds,
+      ...(sessionIdleTimeoutSeconds !== null ? [sessionIdleTimeoutSeconds] : []),
+    ]),
+  ]
+    .sort((a, b) => a - b)
+    .map((seconds) => ({ seconds, label: idleTimeoutLabel(seconds) }));
 
   const backupQuery = useQuery({
     queryKey: ["key-backup"],
@@ -411,6 +512,95 @@ export function DevicesPage() {
             iOS는 홈 화면에 추가한 PWA에서만 Web Push를 지원합니다. 알림 권한은
             브라우저 사이트 설정에서 언제든지 해제할 수 있습니다.
           </p>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                <Timer className="h-4 w-4 text-zinc-500" aria-hidden />
+                자동 로그아웃
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                무활동이 이어지면 자동으로 로그아웃해 화면의 대화 내용을 지웁니다. 기기
+                기본값과 이번 로그인에만 적용할 값을 따로 둘 수 있으며, 1~30분 범위에서만
+                설정할 수 있습니다(끄기 불가).
+              </p>
+            </div>
+            <span className="shrink-0 text-[11px] text-zinc-500">
+              현재 {idleTimeoutLabel(idleTimeoutSeconds)}
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="device-idle-timeout">이 기기 기본값</Label>
+              <select
+                id="device-idle-timeout"
+                className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-50"
+                value={deviceIdleTimeoutSeconds}
+                disabled={idleBusy}
+                onChange={(event) => void changeDeviceIdleTimeout(Number(event.target.value))}
+              >
+                {timeoutOptions.map((option) => (
+                  <option key={option.seconds} value={option.seconds}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs leading-relaxed text-zinc-500">
+                같은 기기에서 다시 로그인해도 유지됩니다. 세션 설정이 있으면 세션 설정이
+                우선합니다.
+              </p>
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-zinc-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-400"
+                checked={sessionOverrideEnabled}
+                disabled={idleBusy}
+                onChange={(event) => void toggleSessionOverride(event.target.checked)}
+              />
+              이번 로그인에만 다른 값 적용
+            </label>
+
+            {sessionOverrideEnabled ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="session-idle-timeout">이번 로그인</Label>
+                <select
+                  id="session-idle-timeout"
+                  className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-100 disabled:opacity-50"
+                  value={sessionIdleTimeoutSeconds ?? idleTimeoutSeconds}
+                  disabled={idleBusy}
+                  onChange={(event) =>
+                    void changeSessionIdleTimeout(Number(event.target.value))
+                  }
+                >
+                  {timeoutOptions.map((option) => (
+                    <option key={option.seconds} value={option.seconds}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs leading-relaxed text-zinc-500">
+                  로그아웃하거나 다시 로그인하면 세션 설정은 사라지고 기기 기본값으로
+                  돌아갑니다.
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          {idleError ? (
+            <div className="mt-3">
+              <Alert variant="error">{idleError}</Alert>
+            </div>
+          ) : null}
+          {idleMessage ? (
+            <div className="mt-3">
+              <Alert>{idleMessage}</Alert>
+            </div>
+          ) : null}
         </Card>
 
         <Card className="p-5">

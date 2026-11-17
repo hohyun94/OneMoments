@@ -227,6 +227,40 @@ export async function deleteSessionsForDevice(
   await db.delete(sessions).where(eq(sessions.deviceId, deviceId));
 }
 
+/** 기기 기본 무활동 로그아웃(초)을 변경한다. 본인 소유의 활성 기기만 허용한다. */
+export async function updateDeviceIdleTimeout(
+  db: Database,
+  input: { userId: string; deviceId: string; seconds: number },
+): Promise<DeviceRow> {
+  const [device] = await db
+    .update(devices)
+    .set({ idleTimeoutSeconds: input.seconds })
+    .where(
+      and(
+        eq(devices.id, input.deviceId),
+        eq(devices.userId, input.userId),
+        isNull(devices.revokedAt),
+      ),
+    )
+    .returning();
+  if (!device) throw AppError.notFound("DEVICE_NOT_FOUND", "Device not found");
+  return device;
+}
+
+/** 이번 로그인(세션)에만 적용하는 오버라이드. null 이면 기기 기본값을 따른다. */
+export async function updateSessionIdleTimeout(
+  db: Database,
+  input: { sessionId: string; seconds: number | null },
+): Promise<SessionRow> {
+  const [session] = await db
+    .update(sessions)
+    .set({ idleTimeoutSeconds: input.seconds })
+    .where(eq(sessions.id, input.sessionId))
+    .returning();
+  if (!session) throw AppError.unauthorized("Session expired or invalid");
+  return session;
+}
+
 /**
  * 계정 익명화 삭제.
  * 세션·기기를 무효화하고 계정을 deleted_at 으로 표시하되, 메시지는 유지한다.

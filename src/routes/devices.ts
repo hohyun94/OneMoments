@@ -6,12 +6,18 @@ import type { Database } from "../db/client.js";
 import { asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import { toOwnDevice } from "../http/serializers.js";
-import { registerDeviceBodySchema, searchUsersQuerySchema } from "../http/validation.js";
+import {
+  deviceIdParamsSchema,
+  registerDeviceBodySchema,
+  searchUsersQuerySchema,
+  updateDeviceIdleTimeoutBodySchema,
+} from "../http/validation.js";
 import {
   listDevices,
   registerDevice,
   revokeDevice,
   searchUser,
+  updateDeviceIdleTimeout,
 } from "../services/accounts.js";
 
 export function createDevicesRouter(db: Database, config: Config): Router {
@@ -43,6 +49,23 @@ export function createDevicesRouter(db: Database, config: Config): Router {
         ...keys,
       });
       res.status(201).json({ device: toOwnDevice(device) });
+    }),
+  );
+
+  router.put(
+    "/:deviceId/timeout",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const params = deviceIdParamsSchema.parse(req.params);
+      const body = updateDeviceIdleTimeoutBodySchema.parse(req.body);
+      const device = await updateDeviceIdleTimeout(db, {
+        userId: auth.userId,
+        deviceId: params.deviceId,
+        seconds: body.seconds,
+      });
+      res.json({ device: toOwnDevice(device) });
     }),
   );
 

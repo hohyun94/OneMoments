@@ -19,6 +19,8 @@ export interface AuthContext {
   deviceId: string;
   sessionId: string;
   sessionToken: string;
+  /** 이번 로그인에만 적용하는 무활동 로그아웃(초). null 이면 기기 기본값. */
+  sessionIdleTimeoutSeconds: number | null;
 }
 
 declare global {
@@ -82,6 +84,7 @@ export async function resolveSession(
     deviceId: row.session.deviceId,
     sessionId: row.session.id,
     sessionToken: token,
+    sessionIdleTimeoutSeconds: row.session.idleTimeoutSeconds,
   };
 }
 

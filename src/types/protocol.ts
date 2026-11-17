@@ -27,6 +27,8 @@ export interface PublicDevice {
 
 export interface OwnDevice extends PublicDevice {
   revokedAt: string | null;
+  /** 기기 기본 무활동 로그아웃(초). 세션 오버라이드가 있으면 그 값이 우선한다. */
+  idleTimeoutSeconds: number;
 }
 
 export interface ConversationSummary {

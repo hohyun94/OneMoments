@@ -50,7 +50,11 @@ export function toPublicDevice(row: DeviceRow): PublicDevice {
 }
 
 export function toOwnDevice(row: DeviceRow): OwnDevice {
-  return { ...toPublicDevice(row), revokedAt: iso(row.revokedAt) };
+  return {
+    ...toPublicDevice(row),
+    revokedAt: iso(row.revokedAt),
+    idleTimeoutSeconds: row.idleTimeoutSeconds,
+  };
 }
 
 export function toConversationSummary(

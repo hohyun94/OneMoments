@@ -45,11 +45,17 @@ export const sessions = pgTable(
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     userAgent: text("user_agent"),
+    // 이번 로그인에만 적용하는 무활동 로그아웃(초). null 이면 기기 기본값을 따른다.
+    idleTimeoutSeconds: integer("idle_timeout_seconds"),
   },
   (table) => [
     uniqueIndex("sessions_token_hash_uq").on(table.tokenHash),
     index("sessions_user_idx").on(table.userId),
     index("sessions_device_idx").on(table.deviceId),
+    check(
+      "sessions_idle_timeout_chk",
+      sql`${table.idleTimeoutSeconds} is null or (${table.idleTimeoutSeconds} between 60 and 1800)`,
+    ),
   ],
 );
 
@@ -69,11 +75,19 @@ export const devices = pgTable(
     signedPreKeyId: text("signed_pre_key_id"),
     signedPreKeyPublicKey: text("signed_pre_key_public_key"),
     signedPreKeySignature: text("signed_pre_key_signature"),
+    // 기기의 기본 무활동 로그아웃(초). 세션 오버라이드가 없을 때 적용된다.
+    idleTimeoutSeconds: integer("idle_timeout_seconds").notNull().default(300),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
-  (table) => [index("devices_user_idx").on(table.userId)],
+  (table) => [
+    index("devices_user_idx").on(table.userId),
+    check(
+      "devices_idle_timeout_chk",
+      sql`${table.idleTimeoutSeconds} between 60 and 1800`,
+    ),
+  ],
 );
 
 export const deviceOneTimePreKeys = pgTable(

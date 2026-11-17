@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+import {
+  MAX_IDLE_TIMEOUT_SECONDS,
+  MIN_IDLE_TIMEOUT_SECONDS,
+} from "../auth/idleTimeout.js";
+
 export const usernameSchema = z
   .string()
   .trim()
@@ -69,6 +74,26 @@ export const loginBodySchema = z.object({
 });
 
 export const registerDeviceBodySchema = deviceKeysSchema;
+
+export const deviceIdParamsSchema = z.object({
+  deviceId: z.string().uuid(),
+});
+
+/** 1~30분. "끄기"는 허용하지 않는다. */
+export const idleTimeoutSecondsSchema = z
+  .number()
+  .int()
+  .min(MIN_IDLE_TIMEOUT_SECONDS)
+  .max(MAX_IDLE_TIMEOUT_SECONDS);
+
+export const updateDeviceIdleTimeoutBodySchema = z.object({
+  seconds: idleTimeoutSecondsSchema,
+});
+
+/** null 이면 세션 오버라이드를 지우고 기기 기본값을 따른다. */
+export const updateSessionIdleTimeoutBodySchema = z.object({
+  seconds: idleTimeoutSecondsSchema.nullable(),
+});
 
 export const groupNameSchema = z
   .string()

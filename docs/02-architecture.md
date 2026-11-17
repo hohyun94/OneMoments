@@ -90,8 +90,8 @@
 | 테이블 | 주요 컬럼 | 설명 |
 |---|---|---|
 | `users` | id(uuid), username(unique, 소문자), password_hash, created_at, deleted_at | 계정. 이메일 미수집(MVP). 삭제 시 익명화 |
-| `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent | 쿠키 세션(원문 토큰 저장 안 함) |
-| `devices` | id, user_id, name, identity_public_key, signing_public_key, created_at, last_seen_at, revoked_at | 기기 공개키 |
+| `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent, idle_timeout_seconds | 쿠키 세션(원문 토큰 저장 안 함). idle_timeout_seconds 는 세션 오버라이드(1~30분, null 이면 기기 기본값) |
+| `devices` | id, user_id, name, identity_public_key, signing_public_key, idle_timeout_seconds, created_at, last_seen_at, revoked_at | 기기 공개키. idle_timeout_seconds 는 기기 기본 무활동 로그아웃(1~30분, 기본 5분) |
 | `conversations` | id, kind('direct'\|'group'), name, created_at | 1:1 또는 그룹. 그룹은 name 필수 |
 | `conversation_participants` | conversation_id, user_id, joined_at, hidden_at, muted_at, role('owner'\|'member') (PK) | 참여자. 그룹 최대 20명, 사용자별 숨김/음소거, 소유자 권한 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, sender_key_id, sender_key_iteration, created_at | 암호문 1건. sender-key 메시지는 체인 ID/반복 포함 |
@@ -167,7 +167,8 @@
 | POST | `/api/auth/recovery/lookup` | username의 최신 백업 블롭 조회(암호문) |
 | POST | `/api/auth/recovery/challenge` | 기기 복구용 일회용 챌린지 발급 |
 | POST | `/api/auth/recover` | 챌린지 서명 검증 후 같은 기기 ID로 세션 발급 |
-| GET | `/api/auth/me` | 내 정보 + 세션 기기 |
+| GET | `/api/auth/me` | 내 정보 + 세션 기기 + 적용 중인 무활동 로그아웃(초) |
+| PUT | `/api/auth/session/timeout` | `{seconds: 60~1800 \| null}` 이번 로그인에만 적용(null 은 해제) |
 
 - 쿠키: `om_session`(HttpOnly, Secure, SameSite=Lax). 원문 토큰은 DB에 저장하지 않고 해시만 저장.
 - 상태 변경 요청은 `Origin` 검사 + CSRF 토큰(더블 서브밋)으로 보호한다.
@@ -176,8 +177,9 @@
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
-| GET | `/api/devices` | 내 기기 목록(활성/폐기) |
+| GET | `/api/devices` | 내 기기 목록(활성/폐기, 기기별 `idleTimeoutSeconds`) |
 | POST | `/api/devices` | 기기 추가(로그인 상태) |
+| PUT | `/api/devices/:id/timeout` | `{seconds: 60~1800}` 기기 기본 무활동 로그아웃 변경 |
 | DELETE | `/api/devices/:id` | 기기 폐기 → 해당 세션 무효 |
 | GET | `/api/users/search?username=` | 정확 일치 검색(스로틀) |
 | POST | `/api/conversations` | `{peerUserId}`(1:1 재사용) 또는 `{kind:"group", name, memberUserIds}` |

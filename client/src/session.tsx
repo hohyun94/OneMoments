@@ -27,13 +27,16 @@ import {
   loadIdentityForUser,
   saveIdentity,
 } from "./lib/keystore.ts";
+import {
+  DEFAULT_IDLE_TIMEOUT_SECONDS,
+  clampIdleTimeoutSeconds,
+  effectiveIdleTimeoutSeconds,
+} from "./lib/idleTimeout.ts";
 import { disablePush } from "./lib/push.ts";
 import type { AuthResponse, MeResponse, PublicUser } from "./types.ts";
 
 const LAST_USERNAME_KEY = "onemoments:lastUsername";
 const FORCE_LOGIN_KEY = "onemoments:forceLogin";
-/** 무활동 5분 후 자동 로그아웃. 운영 정책에 맞게 조정한다. */
-const IDLE_LOGOUT_MS = 5 * 60 * 1000;
 
 export type SessionStatus =
   | "loading"
@@ -55,6 +58,16 @@ interface SessionContextValue {
   login: (username: string, password: string) => Promise<void>;
   recover: (username: string, passphrase: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** 실제 적용 중인 무활동 자동 로그아웃(초). 세션 오버라이드가 있으면 그 값. */
+  idleTimeoutSeconds: number;
+  /** 이 기기의 기본값(초). */
+  deviceIdleTimeoutSeconds: number;
+  /** 이번 로그인에만 적용하는 값(초). null 이면 기기 기본값. */
+  sessionIdleTimeoutSeconds: number | null;
+  /** 이 기기의 기본값을 변경한다(서버 저장). */
+  updateDeviceIdleTimeout: (seconds: number) => Promise<void>;
+  /** 이번 로그인에만 적용할 값을 변경한다. null 이면 오버라이드 해제. */
+  updateSessionIdleTimeout: (seconds: number | null) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -152,6 +165,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [lastUsername, setLastUsername] = useState(
     () => localStorage.getItem(LAST_USERNAME_KEY) ?? "",
   );
+  const [deviceIdleTimeoutSeconds, setDeviceIdleTimeoutSeconds] = useState(
+    DEFAULT_IDLE_TIMEOUT_SECONDS,
+  );
+  const [sessionIdleTimeoutSeconds, setSessionIdleTimeoutSeconds] = useState<number | null>(
+    null,
+  );
+  const idleTimeoutSeconds = effectiveIdleTimeoutSeconds(
+    deviceIdleTimeoutSeconds,
+    sessionIdleTimeoutSeconds,
+  );
 
   useEffect(() => {
     if (localStorage.getItem(FORCE_LOGIN_KEY) === "1") {
@@ -162,6 +185,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     api<MeResponse>("/api/auth/me")
       .then(async (me) => {
         if (cancelled) return;
+        // 기기 기본값과 세션 오버라이드를 먼저 반영한다(구버전 응답은 기본값으로 대체).
+        setDeviceIdleTimeoutSeconds(
+          me.deviceIdleTimeoutSeconds ??
+            me.devices.find((device) => device.id === me.deviceId)?.idleTimeoutSeconds ??
+            DEFAULT_IDLE_TIMEOUT_SECONDS,
+        );
+        setSessionIdleTimeoutSeconds(me.sessionIdleTimeoutSeconds ?? null);
         const stored = await loadIdentityForUser(me.user.id, me.user.username);
         if (!stored) {
           setSession({ user: me.user, deviceId: me.deviceId });
@@ -216,6 +246,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       },
     });
     setCsrfToken(response.csrfToken);
+
+    // 새 기기/세션이므로 기기 기본값을 쓰고 세션 오버라이드는 없다.
+    setDeviceIdleTimeoutSeconds(
+      response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
+    );
+    setSessionIdleTimeoutSeconds(null);
 
     const stored: StoredIdentity = {
       ...generated,
@@ -283,6 +319,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     setCsrfToken(response.csrfToken);
+    setDeviceIdleTimeoutSeconds(
+      response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
+    );
+    setSessionIdleTimeoutSeconds(null);
     // decoy 프로필에서는 실제 프로필의 브라우저 푸시 구독이 남지 않게 한다.
     if (response.user.username.toLowerCase() !== normalized) {
       await disablePush().catch(() => undefined);
@@ -348,6 +388,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
 
     setCsrfToken(response.csrfToken);
+    setDeviceIdleTimeoutSeconds(
+      response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
+    );
+    setSessionIdleTimeoutSeconds(null);
     const { state, ...device } = restored;
     const stored: StoredIdentity = {
       ...device,
@@ -377,12 +421,45 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setIdentity(null);
     setSession(null);
     setStatus("anonymous");
+    setDeviceIdleTimeoutSeconds(DEFAULT_IDLE_TIMEOUT_SECONDS);
+    setSessionIdleTimeoutSeconds(null);
     queryClient.clear();
     clearDecryptedMessageCache();
     await Promise.all([serverLogout, pushOff]);
   }, [queryClient]);
 
+  /** 기기 기본값을 서버에 저장하고 이 화면의 타이머에 즉시 반영한다. */
+  const updateDeviceIdleTimeout = useCallback(
+    async (seconds: number) => {
+      if (!session) throw new Error("로그인이 필요합니다.");
+      const clamped = clampIdleTimeoutSeconds(seconds);
+      const response = await api<{ device: { idleTimeoutSeconds: number } }>(
+        `/api/devices/${session.deviceId}/timeout`,
+        { method: "PUT", body: { seconds: clamped } },
+      );
+      setDeviceIdleTimeoutSeconds(
+        response.device.idleTimeoutSeconds ?? clamped,
+      );
+      await queryClient.invalidateQueries({ queryKey: ["devices"] });
+    },
+    [session, queryClient],
+  );
+
+  /** 이번 로그인(세션)에만 적용할 값을 저장한다. null 이면 오버라이드 해제. */
+  const updateSessionIdleTimeout = useCallback(async (seconds: number | null) => {
+    const response = await api<{ idleTimeoutSeconds: number | null }>(
+      "/api/auth/session/timeout",
+      {
+        method: "PUT",
+        body: { seconds: seconds === null ? null : clampIdleTimeoutSeconds(seconds) },
+      },
+    );
+    setSessionIdleTimeoutSeconds(response.idleTimeoutSeconds);
+  }, []);
+
   // 무활동 자동 로그아웃: 입력/스크롤/포인터 활동이 없으면 세션과 화면 캐시를 지운다.
+  // 값은 기기 기본값 또는 세션 오버라이드를 따르며, 설정 변경 시 타이머가 재시작된다.
+  const idleTimeoutMs = idleTimeoutSeconds * 1000;
   useEffect(() => {
     if (status !== "authenticated") return;
 
@@ -403,7 +480,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     const checkIdle = () => {
-      if (Date.now() - lastActivity >= IDLE_LOGOUT_MS) {
+      if (Date.now() - lastActivity >= idleTimeoutMs) {
         void logout();
       }
     };
@@ -420,7 +497,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       }
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [status, logout]);
+  }, [status, logout, idleTimeoutMs]);
 
   const value = useMemo<SessionContextValue>(
     () => ({
@@ -432,8 +509,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       login,
       recover,
       logout,
+      idleTimeoutSeconds,
+      deviceIdleTimeoutSeconds,
+      sessionIdleTimeoutSeconds,
+      updateDeviceIdleTimeout,
+      updateSessionIdleTimeout,
     }),
-    [status, session, identity, lastUsername, register, login, recover, logout],
+    [
+      status,
+      session,
+      identity,
+      lastUsername,
+      register,
+      login,
+      recover,
+      logout,
+      idleTimeoutSeconds,
+      deviceIdleTimeoutSeconds,
+      sessionIdleTimeoutSeconds,
+      updateDeviceIdleTimeout,
+      updateSessionIdleTimeout,
+    ],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

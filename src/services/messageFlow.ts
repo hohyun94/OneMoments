@@ -20,6 +20,7 @@ import {
   unhideConversation,
   type ActiveDeviceKey,
 } from "./conversations.js";
+import { isBlockedBetween } from "./contacts.js";
 import { createMessage } from "./messages.js";
 import { sendMessagePushes } from "./push.js";
 
@@ -65,6 +66,13 @@ export async function sendEncryptedMessage(
   });
   if (context.peer?.deletedAt) {
     throw new AppError(403, "PEER_DELETED", "This account no longer exists");
+  }
+  if (
+    context.conversation.kind === "direct" &&
+    context.peer &&
+    (await isBlockedBetween(db, input.senderUserId, context.peer.id))
+  ) {
+    throw new AppError(403, "USER_BLOCKED", "This conversation is blocked");
   }
 
   const payload = normalizeMessagePayload(input.payload, {

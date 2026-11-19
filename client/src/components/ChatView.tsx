@@ -349,6 +349,7 @@ export function ChatView({
     ? (conversation.name ?? "그룹")
     : (peer?.username ?? "삭제된 사용자");
   const peerDeleted = !isGroup && Boolean(peer?.deleted);
+  const blocked = isGroup ? null : conversation.blocked;
   const memberNames = useMemo(
     () =>
       new Map(
@@ -545,6 +546,8 @@ export function ChatView({
     } catch (error) {
       if (error instanceof ApiError && error.code === "PEER_DELETED") {
         setSendError("상대가 계정을 삭제했습니다.");
+      } else if (error instanceof ApiError && error.code === "USER_BLOCKED") {
+        setSendError("차단된 대화입니다. 연락처에서 차단 상태를 확인하세요.");
       } else if (error instanceof ApiError) {
         setSendError(error.message);
       } else {
@@ -760,7 +763,7 @@ export function ChatView({
           >
             {peerName}
           </h2>
-          <p className="flex items-center gap-1.5 text-xs text-zinc-500">
+          <p className="flex items-center gap-1.5 truncate text-xs text-zinc-500">
             {typingNames.length > 0 ? (
               <span className="text-accent-600">
                 {isGroup
@@ -784,10 +787,21 @@ export function ChatView({
                 <span
                   className={cn(
                     "h-1.5 w-1.5 rounded-full",
-                    peerOnline ? "bg-emerald-500" : "bg-zinc-300",
+                    blocked
+                      ? "bg-amber-400"
+                      : peerOnline
+                        ? "bg-emerald-500"
+                        : "bg-zinc-300",
                   )}
                 />
-                {peerOnline ? "온라인" : "오프라인"}
+                {blocked
+                  ? blocked === "me"
+                    ? "차단함"
+                    : "차단됨"
+                  : peerOnline
+                    ? "온라인"
+                    : "오프라인"}
+                {peer?.statusMessage ? ` · ${peer.statusMessage}` : ""}
                 {conversation.autoDeleteAfterReadSeconds !== null
                   ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
                   : ""}
@@ -1069,6 +1083,12 @@ export function ChatView({
           <p className="py-2 text-center text-sm text-zinc-500">
             이 사용자는 계정을 삭제했습니다.
           </p>
+        ) : blocked ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-center text-sm leading-relaxed text-amber-900">
+            {blocked === "me"
+              ? "이 사용자를 차단했습니다. 연락처에서 차단을 해제하면 다시 메시지를 보낼 수 있습니다."
+              : "차단된 대화입니다. 메시지를 보낼 수 없습니다."}
+          </div>
         ) : (
           <div className="flex items-end gap-2">
             <input

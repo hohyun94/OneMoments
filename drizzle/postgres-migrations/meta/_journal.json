@@ -162,6 +162,13 @@
       "when": 1795062063515,
       "tag": "0022_glamorous_avengers",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1795064543122,
+      "tag": "0023_curvy_marvex",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,7 @@ import {
   oneTimePreKeysBodySchema,
   updateSessionIdleTimeoutBodySchema,
   updateThemeBodySchema,
+  updateProfileBodySchema,
 } from "../http/validation.js";
 import {
   addOneTimePreKeys,
@@ -50,6 +51,7 @@ import {
   registerDevice,
   updateDeviceSignedPreKey,
   updateSessionIdleTimeout,
+  updateUserStatus,
   updateUserTheme,
   verifyLoginCredentials,
 } from "../services/accounts.js";
@@ -436,6 +438,21 @@ export function createAuthRouter(db: Database, config: Config): Router {
         accent: body.accent,
       });
       res.json({ theme: toThemeSettings(user) });
+    }),
+  );
+
+  router.put(
+    "/profile",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = updateProfileBodySchema.parse(req.body);
+      const user = await updateUserStatus(db, {
+        userId: auth.userId,
+        statusMessage: body.statusMessage,
+      });
+      res.json({ user: authUser(user) });
     }),
   );
 

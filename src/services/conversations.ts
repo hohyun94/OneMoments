@@ -9,6 +9,8 @@ import {
   devices,
   messageReads,
   messages,
+  userBlocks,
+  userFavorites,
   users,
   type ConversationRow,
   type ParticipantRow,
@@ -17,6 +19,7 @@ import {
 import { AppError } from "../http/errors.js";
 import { toConversationSummary } from "../http/serializers.js";
 import type { ConversationSummary } from "../types/protocol.js";
+import { isBlockedBetween } from "./contacts.js";
 
 export interface ConversationContext {
   conversation: ConversationRow;
@@ -82,6 +85,9 @@ export async function findOrCreateDirectConversation(
     .limit(1);
   if (!peer || peer.deletedAt !== null) {
     throw AppError.notFound("USER_NOT_FOUND", "User not found");
+  }
+  if (await isBlockedBetween(db, input.creatorUserId, input.peerUserId)) {
+    throw new AppError(403, "USER_BLOCKED", "This user cannot be messaged right now");
   }
 
   const existing = await findDirectConversation(db, [
@@ -478,6 +484,49 @@ async function lastMessageAt(
   return row?.lastMessageAt ?? null;
 }
 
+/** 1:1 상대와의 즐겨찾기/차단 상태. */
+async function directRelation(
+  db: Database,
+  userId: string,
+  peerUserId: string | null,
+): Promise<{ favorite: boolean; blocked: "me" | "peer" | null }> {
+  if (!peerUserId) return { favorite: false, blocked: null };
+  const [favorite] = await db
+    .select({ userId: userFavorites.userId })
+    .from(userFavorites)
+    .where(
+      and(
+        eq(userFavorites.userId, userId),
+        eq(userFavorites.favoriteUserId, peerUserId),
+      ),
+    )
+    .limit(1);
+  const [blockedByMe] = await db
+    .select({ blockerUserId: userBlocks.blockerUserId })
+    .from(userBlocks)
+    .where(
+      and(
+        eq(userBlocks.blockerUserId, userId),
+        eq(userBlocks.blockedUserId, peerUserId),
+      ),
+    )
+    .limit(1);
+  const [blockedMe] = await db
+    .select({ blockerUserId: userBlocks.blockerUserId })
+    .from(userBlocks)
+    .where(
+      and(
+        eq(userBlocks.blockerUserId, peerUserId),
+        eq(userBlocks.blockedUserId, userId),
+      ),
+    )
+    .limit(1);
+  return {
+    favorite: Boolean(favorite),
+    blocked: blockedByMe ? "me" : blockedMe ? "peer" : null,
+  };
+}
+
 export async function getConversationSummary(
   db: Database,
   context: ConversationContext,
@@ -486,6 +535,11 @@ export async function getConversationSummary(
     db,
     context.conversation.id,
     context.participant.userId,
+  );
+  const relation = await directRelation(
+    db,
+    context.participant.userId,
+    context.conversation.kind === "direct" ? (context.peer?.id ?? null) : null,
   );
   return toConversationSummary(
     context.conversation,
@@ -500,6 +554,8 @@ export async function getConversationSummary(
       joinedAt: context.participant.joinedAt,
     }),
     await lastMessageAt(db, context.conversation.id),
+    relation.favorite,
+    relation.blocked,
   );
 }
 
@@ -570,6 +626,11 @@ export async function listConversations(
     if (members.length === 0 && row.conversation.kind === "direct") continue;
     const peer = row.conversation.kind === "direct" ? (members[0] ?? null) : null;
     if (row.conversation.kind === "direct" && !peer) continue;
+    const relation = await directRelation(
+      db,
+      userId,
+      row.conversation.kind === "direct" ? (peer?.id ?? null) : null,
+    );
     summaries.push(
       toConversationSummary(
         row.conversation,
@@ -584,11 +645,14 @@ export async function listConversations(
           joinedAt: row.participant.joinedAt,
         }),
         lastByConversation.get(row.conversation.id) ?? null,
+        relation.favorite,
+        relation.blocked,
       ),
     );
   }
 
   return summaries.sort((a, b) => {
+    if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
     const left = a.lastMessageAt ?? a.createdAt;
     const right = b.lastMessageAt ?? b.createdAt;
     return right.localeCompare(left);

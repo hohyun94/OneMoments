@@ -27,6 +27,7 @@ export function toPublicUser(row: UserRow): PublicUser {
   return {
     id: row.id,
     username: row.username,
+    statusMessage: row.statusMessage,
     createdAt: row.createdAt.toISOString(),
     deleted: row.deletedAt !== null,
   };
@@ -37,6 +38,7 @@ export function toPeerUser(row: UserRow): PeerUser {
   return {
     id: row.id,
     username: deleted ? null : row.username,
+    statusMessage: deleted ? null : row.statusMessage,
     deleted,
   };
 }
@@ -69,6 +71,8 @@ export function toConversationSummary(
   isAdmin: boolean,
   unreadCount: number,
   lastMessageAt: Date | string | null,
+  favorite: boolean,
+  blocked: "me" | "peer" | null,
 ): ConversationSummary {
   return {
     id: conversation.id,
@@ -81,6 +85,8 @@ export function toConversationSummary(
     memberCount,
     muted,
     isAdmin,
+    favorite,
+    blocked,
     unreadCount,
     lastMessageAt: iso(lastMessageAt),
   };

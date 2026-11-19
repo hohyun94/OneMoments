@@ -79,6 +79,8 @@ interface SessionContextValue {
   theme: ThemeSettings;
   /** 테마를 즉시 적용하고 계정에 저장한다. */
   updateTheme: (theme: ThemeSettings) => Promise<void>;
+  /** 공개 프로필 상태 메시지를 저장한다(null/빈 문자열이면 지움). */
+  updateStatusMessage: (statusMessage: string | null) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -509,6 +511,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setTheme(applyTheme(response.theme));
   }, []);
 
+  /** 공개 프로필 상태 메시지를 저장하고 세션 사용자 정보를 갱신한다. */
+  const updateStatusMessage = useCallback(async (statusMessage: string | null) => {
+    const response = await api<{ user: PublicUser }>("/api/auth/profile", {
+      method: "PUT",
+      body: { statusMessage },
+    });
+    setSession((current) =>
+      current ? { ...current, user: response.user } : current,
+    );
+  }, []);
+
   // 무활동 자동 로그아웃: 입력/스크롤/포인터 활동이 없으면 세션과 화면 캐시를 지운다.
   // 값은 기기 기본값 또는 세션 오버라이드를 따르며, 설정 변경 시 타이머가 재시작된다.
   const idleTimeoutMs = idleTimeoutSeconds * 1000;
@@ -568,6 +581,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateSessionIdleTimeout,
       theme,
       updateTheme,
+      updateStatusMessage,
     }),
     [
       status,
@@ -585,6 +599,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateSessionIdleTimeout,
       theme,
       updateTheme,
+      updateStatusMessage,
     ],
   );
 

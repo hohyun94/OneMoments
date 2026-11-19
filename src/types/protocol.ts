@@ -3,6 +3,7 @@
 export interface PublicUser {
   id: string;
   username: string;
+  statusMessage: string | null;
   createdAt: string;
   deleted: boolean;
   /** ADMIN_USERNAMES allowlist 에 포함된 경우에만 true */
@@ -21,6 +22,7 @@ export interface PeerUser {
   id: string;
   /** 계정이 삭제(익명화)되면 null */
   username: string | null;
+  statusMessage: string | null;
   deleted: boolean;
 }
 
@@ -57,6 +59,10 @@ export interface ConversationSummary {
   muted: boolean;
   /** 그룹 소유자(이름 변경·참여자 추가 가능) */
   isAdmin: boolean;
+  /** 1:1 상대를 즐겨찾기했는지(내 기준) */
+  favorite: boolean;
+  /** 1:1 차단 상태. null 이면 차단 없음 */
+  blocked: "me" | "peer" | null;
   /** 읽지 않은(내가 보내지 않은) 메시지 수 */
   unreadCount: number;
   lastMessageAt: string | null;
@@ -138,6 +144,15 @@ export interface MomentView {
   viewCount?: number;
   /** 내가 이미 조회했는지 */
   viewed?: boolean;
+}
+
+export interface ContactView {
+  id: string;
+  username: string;
+  statusMessage: string | null;
+  favorite: boolean;
+  blockedByMe: boolean;
+  blockedMe: boolean;
 }
 
 export interface DeviceKeySet {

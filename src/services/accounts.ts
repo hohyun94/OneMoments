@@ -3,6 +3,7 @@ import {
   desc,
   eq,
   isNull,
+  or,
   sql,
 } from "drizzle-orm";
 
@@ -14,6 +15,8 @@ import {
   loginProfiles,
   pushSubscriptions,
   sessions,
+  userBlocks,
+  userFavorites,
   users,
   type DeviceRow,
   type SessionRow,
@@ -276,6 +279,20 @@ export async function updateUserTheme(
   return user;
 }
 
+/** 공개 프로필 상태 메시지를 저장한다. null/빈 문자열이면 지운다. */
+export async function updateUserStatus(
+  db: Database,
+  input: { userId: string; statusMessage: string | null },
+): Promise<UserRow> {
+  const [user] = await db
+    .update(users)
+    .set({ statusMessage: input.statusMessage })
+    .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
+    .returning();
+  if (!user) throw AppError.unauthorized("Unknown account");
+  return user;
+}
+
 /**
  * 계정 익명화 삭제.
  * 세션·기기를 무효화하고 계정을 deleted_at 으로 표시하되, 메시지는 유지한다.
@@ -295,13 +312,34 @@ export async function deleteAccount(
   await db.transaction(async (tx) => {
     await tx.delete(sessions).where(eq(sessions.userId, input.userId));
     await tx.delete(pushSubscriptions).where(eq(pushSubscriptions.userId, input.userId));
+    // 연락처 메타데이터(차단·즐겨찾기)도 함께 정리한다.
+    await tx
+      .delete(userBlocks)
+      .where(
+        or(
+          eq(userBlocks.blockerUserId, input.userId),
+          eq(userBlocks.blockedUserId, input.userId),
+        ),
+      );
+    await tx
+      .delete(userFavorites)
+      .where(
+        or(
+          eq(userFavorites.userId, input.userId),
+          eq(userFavorites.favoriteUserId, input.userId),
+        ),
+      );
     await tx
       .update(devices)
       .set({ revokedAt: new Date() })
       .where(and(eq(devices.userId, input.userId), isNull(devices.revokedAt)));
     await tx
       .update(users)
-      .set({ deletedAt: new Date(), passwordHash: "deleted-account" })
+      .set({
+        deletedAt: new Date(),
+        passwordHash: "deleted-account",
+        statusMessage: null,
+      })
       .where(eq(users.id, input.userId));
   });
 }

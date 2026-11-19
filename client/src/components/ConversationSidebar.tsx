@@ -1,5 +1,6 @@
 import {
   BellOff,
+  Contact,
   LogOut,
   MessageSquarePlus,
   Search,
@@ -7,6 +8,7 @@ import {
   ShieldCheck,
   Smartphone,
   Sparkles,
+  Star,
   Users,
   X,
 } from "lucide-react";
@@ -27,6 +29,7 @@ export function ConversationSidebar({
   onSelect,
   onNewConversation,
   onOpenMoments,
+  onOpenContacts,
   onOpenDevices,
   onOpenAdmin,
   onLogout,
@@ -39,6 +42,7 @@ export function ConversationSidebar({
   onSelect: (conversationId: string) => void;
   onNewConversation: () => void;
   onOpenMoments: () => void;
+  onOpenContacts: () => void;
   onOpenDevices: () => void;
   onOpenAdmin: () => void;
   onLogout: () => void;
@@ -188,6 +192,12 @@ export function ConversationSidebar({
                         >
                           {name}
                         </span>
+                        {conversation.favorite ? (
+                          <Star
+                            className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500"
+                            aria-label="즐겨찾기"
+                          />
+                        ) : null}
                         <span className="flex shrink-0 items-center gap-1.5">
                           {unread > 0 && !active ? (
                             <span
@@ -214,6 +224,9 @@ export function ConversationSidebar({
                           <ShieldCheck className="h-3 w-3" aria-hidden />
                         )}
                         {isGroup ? `${conversation.memberCount}명` : "1:1 대화"}
+                        {!isGroup && conversation.blocked
+                          ? ` · ${conversation.blocked === "me" ? "차단함" : "차단됨"}`
+                          : ""}
                       </span>
                     </span>
                   </button>
@@ -225,6 +238,14 @@ export function ConversationSidebar({
       </nav>
 
       <footer className="border-t border-zinc-100 p-2">
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={onOpenContacts}
+        >
+          <Contact className="h-4 w-4" aria-hidden />
+          연락처
+        </Button>
         <Button
           variant="ghost"
           className="w-full justify-start"

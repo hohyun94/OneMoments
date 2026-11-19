@@ -21,6 +21,12 @@ const MomentsPage = lazy(() =>
   })),
 );
 
+const ContactsPage = lazy(() =>
+  import("./pages/ContactsPage.tsx").then((module) => ({
+    default: module.ContactsPage,
+  })),
+);
+
 function Splash() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-zinc-50">
@@ -105,6 +111,16 @@ export function App() {
           <Guard>
             <Suspense fallback={<Splash />}>
               <MomentsPage />
+            </Suspense>
+          </Guard>
+        }
+      />
+      <Route
+        path="/contacts"
+        element={
+          <Guard>
+            <Suspense fallback={<Splash />}>
+              <ContactsPage />
             </Suspense>
           </Guard>
         }

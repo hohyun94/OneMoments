@@ -29,6 +29,8 @@ export const users = pgTable(
     // 화면 테마(계정 동기화). mode: light/dark/system, accent: 프리셋 ID 또는 #rrggbb.
     themeMode: text("theme_mode").notNull().default("system"),
     themeAccent: text("theme_accent").notNull().default("violet"),
+    // 공개 프로필 상태 메시지(최대 80자, 메시지 암호화 대상 아님).
+    statusMessage: text("status_message"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -39,6 +41,44 @@ export const users = pgTable(
       "users_theme_accent_chk",
       sql`${table.themeAccent} ~ '^(violet|blue|emerald|rose|amber|#[0-9a-f]{6})$'`,
     ),
+    check(
+      "users_status_message_chk",
+      sql`${table.statusMessage} is null or char_length(${table.statusMessage}) <= 80`,
+    ),
+  ],
+);
+
+export const userBlocks = pgTable(
+  "user_blocks",
+  {
+    blockerUserId: uuid("blocker_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    blockedUserId: uuid("blocked_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.blockerUserId, table.blockedUserId] }),
+    index("user_blocks_blocked_idx").on(table.blockedUserId),
+  ],
+);
+
+export const userFavorites = pgTable(
+  "user_favorites",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    favoriteUserId: uuid("favorite_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.favoriteUserId] }),
+    index("user_favorites_favorite_idx").on(table.favoriteUserId),
   ],
 );
 

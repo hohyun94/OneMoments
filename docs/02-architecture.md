@@ -89,7 +89,9 @@
 
 | 테이블 | 주요 컬럼 | 설명 |
 |---|---|---|
-| `users` | id(uuid), username(unique, 소문자), password_hash, theme_mode(light\|dark\|system), theme_accent(프리셋\|#rrggbb), created_at, deleted_at | 계정. 이메일 미수집(MVP). 삭제 시 익명화. 테마는 계정 동기화용 메타데이터 |
+| `users` | id(uuid), username(unique, 소문자), password_hash, status_message, theme_mode(light\|dark\|system), theme_accent(프리셋\|#rrggbb), created_at, deleted_at | 계정. 이메일 미수집(MVP). 삭제 시 익명화. 상태 메시지는 **공개 프로필 메타데이터(평문, 최대 80자)** 이며 메시지 암호화 대상이 아니다. 테마는 계정 동기화용 메타데이터 |
+| `user_blocks` | blocker_user_id, blocked_user_id, created_at (PK) | 1:1 차단 메타데이터. 차단자/대상만 저장하며 메시지 내용은 저장하지 않는다. 양방향 전송 차단에 사용 |
+| `user_favorites` | user_id, favorite_user_id, created_at (PK) | 연락처 즐겨찾기 메타데이터. 대화 목록 정렬에만 사용 |
 | `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent, idle_timeout_seconds | 쿠키 세션(원문 토큰 저장 안 함). idle_timeout_seconds 는 세션 오버라이드(1~30분, null 이면 기기 기본값) |
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, idle_timeout_seconds, created_at, last_seen_at, revoked_at | 기기 공개키. idle_timeout_seconds 는 기기 기본 무활동 로그아웃(1~30분, 기본 5분) |
 | `conversations` | id, kind('direct'\|'group'), name, auto_delete_after_read_seconds, created_at | 1:1 또는 그룹. 그룹은 name 필수. auto_delete 는 읽은 뒤 자동 삭제(1시간~30일, null 이면 끔) |
@@ -182,8 +184,12 @@
 |---|---|---|
 | GET | `/api/devices` | 내 기기 목록(활성/폐기, 기기별 `idleTimeoutSeconds`) |
 | POST | `/api/devices` | 기기 추가(로그인 상태) |
+| PUT | `/api/auth/profile` | `{statusMessage: string \| null}` 공개 상태 메시지(최대 80자, 평문 프로필) |
 | PUT | `/api/devices/:id/timeout` | `{seconds: 60~1800}` 기기 기본 무활동 로그아웃 변경 |
 | DELETE | `/api/devices/:id` | 기기 폐기 → 해당 세션 무효 |
+| GET | `/api/contacts` | 대화 상대 목록 + 상태 메시지·즐겨찾기·차단 상태 |
+| PUT | `/api/contacts/:userId/favorite` | `{favorite}` 즐겨찾기 설정/해제(대화 상대만) |
+| PUT | `/api/contacts/:userId/block` | `{blocked}` 1:1 차단/해제. 차단 시 즐겨찾기 자동 해제 |
 | GET | `/api/users/search?username=` | 정확 일치 검색(스로틀) |
 | POST | `/api/conversations` | `{peerUserId}`(1:1 재사용) 또는 `{kind:"group", name, memberUserIds}` |
 | GET | `/api/conversations` | 대화 목록(최근 메시지 시각, 그룹 이름·인원 포함) |
@@ -279,7 +285,7 @@
 | 무차별 대입 | 계정 탈취 | scrypt/Argon2id, 레이트리밋, 잠금 |
 | MITM | 대화 도청 | TLS + 안전번호 대조(TOFU 경고) |
 | 기기 도난 | 해당 기기 대화 노출 | OS 잠금, 세션/기기 폐기, 로그아웃 시 키 삭제 |
-| 스팸·검색 남용 | 서비스 품질 저하 | 검색/메시지 레이트리밋, 차단(P1) |
+| 스팸·검색 남용 | 서비스 품질 저하 | 검색/메시지 레이트리밋, 1:1 차단(양방향 전송 차단) |
 | 백업 블롭 유출 + 약한 복구 암호 | 오프라인 대입으로 기기 키 복원 | PBKDF2 600k, 10자 이상 권장, `key_backups` 접근 최소화 |
 | 백업 복구 악용 | 기기 세션 탈취 | 일회용 챌린지 + Ed25519 서명, 폐기 기기 복구 금지, 기존 세션 폐기 |
 | 첨부 블롭 유출 | 파일 내용 노출 | 파일별 AES-GCM, 키는 메시지 암호문 안, 참여자만 다운로드 |

@@ -265,6 +265,28 @@ export const updateThemeBodySchema = z.object({
   accent: themeAccentSchema,
 });
 
+/** 공개 프로필 상태 메시지(최대 80자). 빈 문자열은 null 로 정규화한다. */
+export const updateProfileBodySchema = z.object({
+  statusMessage: z
+    .string()
+    .trim()
+    .max(80)
+    .nullable()
+    .transform((value) => (value && value.length > 0 ? value : null)),
+});
+
+export const contactUserIdParamsSchema = z.object({
+  userId: z.string().uuid(),
+});
+
+export const updateFavoriteBodySchema = z.object({
+  favorite: z.boolean(),
+});
+
+export const updateBlockBodySchema = z.object({
+  blocked: z.boolean(),
+});
+
 export const adminUserListQuerySchema = z.object({
   query: z.string().trim().max(32).optional(),
   cursor: z.string().trim().max(32).optional(),

@@ -16,6 +16,7 @@ import { createAuthRouter } from "./routes/auth.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAttachmentsRouter } from "./routes/attachments.js";
 import { createConversationsRouter } from "./routes/conversations.js";
+import { createContactsRouter } from "./routes/contacts.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
 import { createPushRouter } from "./routes/push.js";
 import { createInvitesRouter } from "./routes/invites.js";
@@ -121,6 +122,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/invites", createInvitesRouter({ db, config }));
   app.use("/api/attachments", createAttachmentsRouter(db, config));
   app.use("/api/moments", createMomentsRouter(db, config));
+  app.use("/api/contacts", createContactsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));
 
   // 프로덕션: 클라이언트 빌드(dist)를 같은 서버에서 서빙한다.

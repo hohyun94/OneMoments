@@ -49,6 +49,7 @@ export function ChatPage() {
         onBack={() => navigate("/")}
         onNewConversation={() => setDialogOpen(true)}
         onOpenMoments={() => navigate("/moments")}
+        onOpenContacts={() => navigate("/contacts")}
         onOpenDevices={() => navigate("/devices")}
         onOpenAdmin={() => navigate("/admin")}
         onLogout={() => {
@@ -79,6 +80,7 @@ function ChatShell({
   onBack,
   onNewConversation,
   onOpenMoments,
+  onOpenContacts,
   onOpenDevices,
   onOpenAdmin,
   onLogout,
@@ -94,6 +96,7 @@ function ChatShell({
   onBack: () => void;
   onNewConversation: () => void;
   onOpenMoments: () => void;
+  onOpenContacts: () => void;
   onOpenDevices: () => void;
   onOpenAdmin: () => void;
   onLogout: () => void;
@@ -118,6 +121,7 @@ function ChatShell({
           onSelect={onSelect}
           onNewConversation={onNewConversation}
           onOpenMoments={onOpenMoments}
+          onOpenContacts={onOpenContacts}
           onOpenDevices={onOpenDevices}
           onOpenAdmin={onOpenAdmin}
           onLogout={onLogout}

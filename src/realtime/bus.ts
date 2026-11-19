@@ -5,17 +5,27 @@ import { createClient } from "redis";
 import type { MessageKeyRow, MessageRow } from "../db/schema.js";
 
 export interface MessageEvent {
+  type: "message.created";
   conversationId: string;
   message: MessageRow;
   keys: MessageKeyRow[];
   participantUserIds: string[];
 }
 
-export type MessageListener = (event: MessageEvent) => void;
+export interface MessageDeletedEvent {
+  type: "message.deleted";
+  conversationId: string;
+  messageIds: string[];
+  participantUserIds: string[];
+}
+
+export type RealtimeEvent = MessageEvent | MessageDeletedEvent;
+
+export type MessageListener = (event: RealtimeEvent) => void;
 
 export interface MessageBus {
   subscribe(listener: MessageListener): () => void;
-  publish(event: MessageEvent): void;
+  publish(event: RealtimeEvent): void;
   close(): Promise<void>;
 }
 
@@ -28,7 +38,7 @@ export class LocalMessageBus implements MessageBus {
     return () => this.#listeners.delete(listener);
   }
 
-  publish(event: MessageEvent): void {
+  publish(event: RealtimeEvent): void {
     for (const listener of this.#listeners) {
       try {
         listener(event);
@@ -49,15 +59,32 @@ export class LocalMessageBus implements MessageBus {
   }
 }
 
-export interface SerializedMessageEvent {
-  conversationId: string;
-  message: Record<string, unknown> & { createdAt: string };
-  keys: Array<Record<string, unknown> & { createdAt: string }>;
-  participantUserIds: string[];
-}
+export type SerializedRealtimeEvent =
+  | {
+      type: "message.created";
+      conversationId: string;
+      message: Record<string, unknown> & { createdAt: string };
+      keys: Array<Record<string, unknown> & { createdAt: string }>;
+      participantUserIds: string[];
+    }
+  | {
+      type: "message.deleted";
+      conversationId: string;
+      messageIds: string[];
+      participantUserIds: string[];
+    };
 
-export function serializeMessageEvent(event: MessageEvent): SerializedMessageEvent {
+export function serializeMessageEvent(event: RealtimeEvent): SerializedRealtimeEvent {
+  if (event.type === "message.deleted") {
+    return {
+      type: "message.deleted",
+      conversationId: event.conversationId,
+      messageIds: event.messageIds,
+      participantUserIds: event.participantUserIds,
+    };
+  }
   return {
+    type: "message.created",
     conversationId: event.conversationId,
     message: { ...event.message, createdAt: event.message.createdAt.toISOString() },
     keys: event.keys.map((key) => ({
@@ -68,8 +95,17 @@ export function serializeMessageEvent(event: MessageEvent): SerializedMessageEve
   };
 }
 
-export function deserializeMessageEvent(data: SerializedMessageEvent): MessageEvent {
+export function deserializeMessageEvent(data: SerializedRealtimeEvent): RealtimeEvent {
+  if (data.type === "message.deleted") {
+    return {
+      type: "message.deleted",
+      conversationId: data.conversationId,
+      messageIds: data.messageIds,
+      participantUserIds: data.participantUserIds,
+    };
+  }
   return {
+    type: "message.created",
     conversationId: data.conversationId,
     message: {
       ...data.message,
@@ -130,7 +166,7 @@ export class RedisMessageBus implements MessageBus {
     return this.#local.subscribe(listener);
   }
 
-  publish(event: MessageEvent): void {
+  publish(event: RealtimeEvent): void {
     // 같은 인스턴스의 연결에는 즉시 전달한다.
     this.#local.publish(event);
     const payload = JSON.stringify({
@@ -152,7 +188,7 @@ export class RedisMessageBus implements MessageBus {
     try {
       const parsed = JSON.parse(raw) as {
         origin?: unknown;
-        event?: SerializedMessageEvent;
+        event?: SerializedRealtimeEvent;
       };
       if (parsed.origin === this.#instanceId || !parsed.event) return;
       this.#local.publish(deserializeMessageEvent(parsed.event));

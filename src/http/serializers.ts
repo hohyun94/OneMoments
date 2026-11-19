@@ -125,6 +125,8 @@ export function toMessageView(row: MessageRow, key: MessageKeyRow | null): Messa
     senderUserId: row.senderUserId,
     senderDeviceId: row.senderDeviceId,
     senderSigningPublicKey: row.senderSigningPublicKey,
+    kind: row.kind as "text" | "reaction" | "edit",
+    targetMessageId: row.targetMessageId,
     ciphertext: row.ciphertext,
     nonce: row.nonce,
     signature: row.signature,

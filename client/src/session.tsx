@@ -33,6 +33,7 @@ import {
   effectiveIdleTimeoutSeconds,
 } from "./lib/idleTimeout.ts";
 import { disablePush } from "./lib/push.ts";
+import { clearSearchIndex } from "./lib/search.ts";
 import {
   THEME_STORAGE_KEY,
   applyTheme,
@@ -273,6 +274,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
     setCsrfToken(response.csrfToken);
 
+    // 새 계정/세션이므로 이전 계정의 로컬 검색 인덱스를 비운다.
+    void clearSearchIndex();
+
     // 새 계정은 이 브라우저의 현재 테마를 초기값으로 저장한다.
     const initialTheme = applyTheme(loadTheme());
     setTheme(initialTheme);
@@ -353,6 +357,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     setCsrfToken(response.csrfToken);
     adoptTheme(response.theme);
+    void clearSearchIndex();
     setDeviceIdleTimeoutSeconds(
       response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
     );
@@ -423,6 +428,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
     setCsrfToken(response.csrfToken);
     adoptTheme(response.theme);
+    void clearSearchIndex();
     setDeviceIdleTimeoutSeconds(
       response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
     );
@@ -460,7 +466,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionIdleTimeoutSeconds(null);
     queryClient.clear();
     clearDecryptedMessageCache();
-    await Promise.all([serverLogout, pushOff]);
+    await Promise.all([serverLogout, pushOff, clearSearchIndex()]);
   }, [queryClient]);
 
   /** 기기 기본값을 서버에 저장하고 이 화면의 타이머에 즉시 반영한다. */

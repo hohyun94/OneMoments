@@ -1,6 +1,18 @@
-import { BellOff, LogOut, MessageSquarePlus, ShieldAlert, ShieldCheck, Smartphone, Users } from "lucide-react";
+import {
+  BellOff,
+  LogOut,
+  MessageSquarePlus,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  Smartphone,
+  Users,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { formatListTime } from "../lib/format.ts";
+import { searchMessages, type SearchableMessage } from "../lib/search.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
 import type { ConversationSummary } from "../types.ts";
 import { Avatar, Button, cn } from "./ui.tsx";
@@ -28,6 +40,35 @@ export function ConversationSidebar({
   onOpenAdmin: () => void;
   onLogout: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchableMessage[]>([]);
+
+  useEffect(() => {
+    const text = query.trim();
+    if (text.length < 2) {
+      setResults([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void searchMessages(text, { limit: 30 }).then((rows) => {
+        if (!cancelled) setResults(rows);
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query]);
+
+  function conversationLabel(conversationId: string): string {
+    const conversation = conversations.find((item) => item.id === conversationId);
+    if (!conversation) return "대화";
+    return conversation.kind === "group"
+      ? (conversation.name ?? "그룹")
+      : (conversation.peer?.username ?? "삭제된 사용자");
+  }
+
   return (
     <aside className="flex h-full w-full flex-col border-r border-zinc-200 bg-white md:w-80 md:shrink-0">
       <header className="border-b border-zinc-100 px-4 py-4">
@@ -52,6 +93,58 @@ export function ConversationSidebar({
           <MessageSquarePlus className="h-4 w-4" aria-hidden />새 대화
         </Button>
       </header>
+
+      <div className="border-b border-zinc-100 px-3 py-2">
+        <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2">
+          <Search className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="메시지 검색 (2자 이상)"
+            aria-label="메시지 검색"
+            className="h-8 min-w-0 flex-1 bg-transparent text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
+          />
+          {query ? (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="검색 지우기"
+              className="rounded-md p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+        {query.trim().length >= 2 ? (
+          <div className="mt-2 max-h-64 overflow-y-auto rounded-lg border border-zinc-200 bg-white">
+            {results.length === 0 ? (
+              <p className="px-3 py-3 text-xs leading-relaxed text-zinc-500">
+                검색 결과가 없습니다. 이 기기에서 복호화된 메시지만 검색합니다.
+              </p>
+            ) : (
+              results.map((result) => (
+                <button
+                  key={result.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(result.conversationId);
+                    setQuery("");
+                    setResults([]);
+                  }}
+                  className="block w-full border-b border-zinc-100 px-3 py-2 text-left last:border-0 hover:bg-zinc-50"
+                >
+                  <span className="block text-[11px] font-medium text-zinc-600">
+                    {conversationLabel(result.conversationId)}
+                  </span>
+                  <span className="line-clamp-2 break-words text-xs text-zinc-500">
+                    {result.text}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
+        ) : null}
+      </div>
 
       <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label="대화 목록">
         {conversations.length === 0 ? (

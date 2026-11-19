@@ -8,7 +8,9 @@ import {
   createMessageBus,
   deserializeMessageEvent,
   serializeMessageEvent,
+  type MessageDeletedEvent,
   type MessageEvent,
+  type RealtimeEvent,
 } from "../src/realtime/bus.js";
 
 function event(): MessageEvent {
@@ -36,6 +38,7 @@ function event(): MessageEvent {
   } as MessageKeyRow;
 
   return {
+    type: "message.created",
     conversationId: message.conversationId,
     message,
     keys: [key],
@@ -47,6 +50,7 @@ describe("message bus", () => {
   it("round-trips dates through serialization", () => {
     const original = event();
     const restored = deserializeMessageEvent(serializeMessageEvent(original));
+    if (restored.type !== "message.created") throw new Error("expected created event");
     expect(restored.message.createdAt).toBeInstanceOf(Date);
     expect(restored.message.createdAt.toISOString()).toBe(
       original.message.createdAt.toISOString(),
@@ -55,9 +59,20 @@ describe("message bus", () => {
     expect(restored.participantUserIds).toEqual(original.participantUserIds);
   });
 
+  it("round-trips deleted events", () => {
+    const original: MessageDeletedEvent = {
+      type: "message.deleted",
+      conversationId: randomUUID(),
+      messageIds: [randomUUID(), randomUUID()],
+      participantUserIds: ["user-a", "user-b"],
+    };
+    const restored = deserializeMessageEvent(serializeMessageEvent(original));
+    expect(restored).toEqual(original);
+  });
+
   it("delivers locally and unsubscribes", async () => {
     const bus = new LocalMessageBus();
-    const received: MessageEvent[] = [];
+    const received: RealtimeEvent[] = [];
     const unsubscribe = bus.subscribe((item) => received.push(item));
     bus.publish(event());
     expect(received).toHaveLength(1);
@@ -75,11 +90,12 @@ describe("message bus", () => {
       const first = await createMessageBus({ redisUrl, redisChannel });
       const second = await createMessageBus({ redisUrl, redisChannel });
       try {
-        const received = new Promise<MessageEvent>((resolve) => {
+        const received = new Promise<RealtimeEvent>((resolve) => {
           second.subscribe((item) => resolve(item));
         });
         first.publish(event());
         const delivered = await received;
+        if (delivered.type !== "message.created") throw new Error("expected created event");
         expect(delivered.message.createdAt).toBeInstanceOf(Date);
         expect(delivered.keys).toHaveLength(1);
       } finally {

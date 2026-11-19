@@ -304,6 +304,7 @@ async function unreadCountFor(
   const conditions = [
     eq(messages.conversationId, input.conversationId),
     ne(messages.senderUserId, input.userId),
+    eq(messages.kind, "text"),
   ];
   let hasCursor = false;
   if (read) {
@@ -468,7 +469,12 @@ async function lastMessageAt(
   const [row] = await db
     .select({ lastMessageAt: sql<Date | string | null>`max(${messages.createdAt})` })
     .from(messages)
-    .where(eq(messages.conversationId, conversationId));
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        eq(messages.kind, "text"),
+      ),
+    );
   return row?.lastMessageAt ?? null;
 }
 
@@ -539,7 +545,12 @@ export async function listConversations(
         lastMessageAt: sql<Date | string | null>`max(${messages.createdAt})`,
       })
       .from(messages)
-      .where(inArray(messages.conversationId, conversationIds))
+      .where(
+        and(
+          inArray(messages.conversationId, conversationIds),
+          eq(messages.kind, "text"),
+        ),
+      )
       .groupBy(messages.conversationId),
   ]);
 

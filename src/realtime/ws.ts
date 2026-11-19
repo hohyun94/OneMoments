@@ -48,6 +48,8 @@ const clientFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("message.send"),
     conversationId,
     clientMessageId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
+    kind: z.enum(["text", "reaction", "edit"]).default("text"),
+    targetMessageId: z.string().uuid().optional(),
     ciphertext: z.string().min(1),
     nonce: z.string().min(1),
     signature: z.string().min(1),
@@ -123,6 +125,16 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
   const frameLog = new Map<WebSocket, number[]>();
 
   const unsubscribeBus = bus.subscribe((event) => {
+    if (event.type === "message.deleted") {
+      for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
+        hub.send(connection.socket, {
+          type: "message.deleted",
+          conversationId: event.conversationId,
+          messageIds: event.messageIds,
+        });
+      }
+      return;
+    }
     // 구독하지 않은 참여자 연결에도 전달해 대화 목록이 즉시 갱신되게 한다.
     for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
       // sender-key 메시지는 발신 기기에 봉투가 없으므로 REST 응답으로만 표시한다.
@@ -319,6 +331,8 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
             senderUserId: connection.userId,
             senderDeviceId: connection.deviceId,
             payload: frame,
+            kind: frame.kind ?? "text",
+            targetMessageId: frame.targetMessageId,
           });
           hub.send(socket, {
             type: "message.ack",

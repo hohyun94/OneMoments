@@ -11,10 +11,13 @@ import {
   Bell,
   BellOff,
   Clock,
+  Pencil,
   Paperclip,
+  Reply,
   Send,
   Settings,
   ShieldCheck,
+  Trash2,
   UserPlus,
   X,
 } from "lucide-react";
@@ -43,16 +46,22 @@ import {
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatDayLabel } from "../lib/format.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
+import { removeIndexedMessages } from "../lib/search.ts";
 import { useRealtime } from "../realtime.tsx";
 import type {
   ActiveDevice,
   ConversationSummary,
   MessagePage,
   MessageView,
+  ReactionSummary,
   ReadReceipt,
 } from "../types.ts";
 import { Alert, Avatar, Button, Dialog, Spinner, Textarea, cn } from "./ui.tsx";
-import { MessageBubble, deleteDecryptedMessageCache } from "./MessageBubble.tsx";
+import {
+  MessageBubble,
+  decryptMessageText,
+  deleteDecryptedMessageCache,
+} from "./MessageBubble.tsx";
 import { GroupMembersDialog } from "./GroupMembersDialog.tsx";
 import { GroupSettingsDialog } from "./GroupSettingsDialog.tsx";
 import { AutoDeleteDialog } from "./AutoDeleteDialog.tsx";
@@ -61,6 +70,8 @@ import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
 interface PendingMessage {
   clientMessageId: string;
   plaintext: string;
+  kind?: "text" | "reaction" | "edit";
+  targetMessageId?: string;
 }
 
 function prependMessage(
@@ -141,6 +152,43 @@ export function ChatView({
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (messageId: string) =>
+      api<{ deletedMessageIds: string[] }>(
+        `/api/conversations/${conversation.id}/messages/${messageId}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: (response) => {
+      const removed = new Set(response.deletedMessageIds);
+      queryClient.setQueryData<InfiniteData<MessagePage>>(
+        ["messages", conversation.id],
+        (data) => {
+          if (!data) return data;
+          const pages = data.pages.map((page) => ({
+            ...page,
+            messages: page.messages.filter((message) => !removed.has(message.id)),
+          }));
+          return { ...data, pages };
+        },
+      );
+      for (const id of removed) {
+        deleteDecryptedMessageCache(id);
+        void removeIndexedMessages([id]);
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["messages", conversation.id],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      setDeleteTarget(null);
+      setSendError(null);
+    },
+    onError: (error) => {
+      setSendError(
+        error instanceof ApiError ? error.message : "메시지를 삭제하지 못했습니다.",
+      );
+    },
+  });
+
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
@@ -152,6 +200,15 @@ export function ChatView({
   const [membersOpen, setMembersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoDeleteOpen, setAutoDeleteOpen] = useState(false);
+  const [replyTarget, setReplyTarget] = useState<{
+    message: MessageView;
+    text: string;
+  } | null>(null);
+  const [editing, setEditing] = useState<{ messageId: string; text: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MessageView | null>(null);
+  const [reactionState, setReactionState] = useState<
+    Map<string, { counts: Map<string, number>; mine: string | null }>
+  >(new Map());
   const pendingRef = useRef<PendingMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastMarkedReadRef = useRef<string | null>(null);
@@ -163,8 +220,38 @@ export function ChatView({
     () => (messagesQuery.data?.pages ?? []).flatMap((page) => page.messages),
     [messagesQuery.data],
   );
-  const chronological = useMemo(() => [...messages].reverse(), [messages]);
-  const latestId = messages[0]?.id;
+  const textMessages = useMemo(
+    () => messages.filter((message) => message.kind === "text"),
+    [messages],
+  );
+  const chronological = useMemo(() => [...textMessages].reverse(), [textMessages]);
+  const latestId = textMessages[0]?.id;
+  const editsByTarget = useMemo(() => {
+    const edits = new Map<string, MessageView>();
+    for (const message of messages) {
+      if (message.kind !== "edit" || !message.targetMessageId) continue;
+      const previous = edits.get(message.targetMessageId);
+      if (
+        !previous ||
+        message.createdAt > previous.createdAt ||
+        (message.createdAt === previous.createdAt && message.id > previous.id)
+      ) {
+        edits.set(message.targetMessageId, message);
+      }
+    }
+    return edits;
+  }, [messages]);
+  const messageById = useMemo(
+    () => new Map(messages.map((message) => [message.id, message])),
+    [messages],
+  );
+  const reactionMessages = useMemo(
+    () =>
+      messages.filter(
+        (message) => message.kind === "reaction" && message.targetMessageId !== null,
+      ),
+    [messages],
+  );
 
   // 자동 삭제로 서버에서 사라진 메시지의 복호화 캐시도 함께 제거한다.
   const decryptedIdsRef = useRef<Set<string>>(new Set());
@@ -174,10 +261,68 @@ export function ChatView({
   useEffect(() => {
     const current = new Set(chronological.map((message) => message.id));
     for (const id of decryptedIdsRef.current) {
-      if (!current.has(id)) deleteDecryptedMessageCache(id);
+      if (!current.has(id)) {
+        deleteDecryptedMessageCache(id);
+        void removeIndexedMessages([id]);
+      }
     }
     decryptedIdsRef.current = current;
   }, [chronological]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const latest = new Map<string, MessageView>();
+    for (const message of reactionMessages) {
+      const key = `${message.targetMessageId ?? ""}:${message.senderUserId}`;
+      const previous = latest.get(key);
+      if (
+        !previous ||
+        message.createdAt > previous.createdAt ||
+        (message.createdAt === previous.createdAt && message.id > previous.id)
+      ) {
+        latest.set(key, message);
+      }
+    }
+    void Promise.all(
+      [...latest.values()].map(async (message) => ({
+        message,
+        text: await decryptMessageText(identity, message),
+      })),
+    ).then((entries) => {
+      if (cancelled) return;
+      const next = new Map<
+        string,
+        { counts: Map<string, number>; mine: string | null }
+      >();
+      for (const entry of entries) {
+        const { message, text } = entry;
+        if (!message.targetMessageId || !text) continue;
+        let payload: { emoji?: unknown; op?: unknown };
+        try {
+          payload = JSON.parse(text) as { emoji?: unknown; op?: unknown };
+        } catch {
+          continue;
+        }
+        const emoji = typeof payload.emoji === "string" ? payload.emoji.trim() : "";
+        if (!emoji) continue;
+        const aggregate = next.get(message.targetMessageId) ?? {
+          counts: new Map<string, number>(),
+          mine: null,
+        };
+        if (payload.op === "remove") {
+          if (message.senderUserId === currentUserId) aggregate.mine = null;
+        } else {
+          aggregate.counts.set(emoji, (aggregate.counts.get(emoji) ?? 0) + 1);
+          if (message.senderUserId === currentUserId) aggregate.mine = emoji;
+        }
+        next.set(message.targetMessageId, aggregate);
+      }
+      setReactionState(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity, currentUserId, reactionMessages]);
   const typing = typingUsers(conversation.id);
   const isGroup = conversation.kind === "group";
   const otherReads = useMemo(
@@ -225,6 +370,9 @@ export function ChatView({
     setAttachment(null);
     setAttachmentError(null);
     setSendError(null);
+    setReplyTarget(null);
+    setEditing(null);
+    setDeleteTarget(null);
     pendingRef.current = null;
     lastMarkedReadRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = "";
@@ -321,7 +469,16 @@ export function ChatView({
         });
         const response = await api<{ message: MessageView }>(
           `/api/conversations/${conversation.id}/messages`,
-          { method: "POST", body: prepared.payload },
+          {
+            method: "POST",
+            body: {
+              ...prepared.payload,
+              kind: pending.kind ?? "text",
+              ...(pending.targetMessageId
+                ? { targetMessageId: pending.targetMessageId }
+                : {}),
+            },
+          },
         );
         return response;
       }
@@ -342,7 +499,16 @@ export function ChatView({
       });
       const response = await api<{ message: MessageView }>(
         `/api/conversations/${conversation.id}/messages`,
-        { method: "POST", body: payload },
+        {
+          method: "POST",
+          body: {
+            ...payload,
+            kind: pending.kind ?? "text",
+            ...(pending.targetMessageId
+              ? { targetMessageId: pending.targetMessageId }
+              : {}),
+          },
+        },
       );
       return response;
     };
@@ -420,7 +586,30 @@ export function ChatView({
   async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault();
     const text = draft.trim();
-    if ((!text && !attachment) || sending) return;
+    if (sending) return;
+
+    if (editing) {
+      if (!text) return;
+      setSending(true);
+      setSendError(null);
+      try {
+        const pending: PendingMessage = {
+          clientMessageId: crypto.randomUUID(),
+          plaintext: text,
+          kind: "edit",
+          targetMessageId: editing.messageId,
+        };
+        pendingRef.current = pending;
+        setDraft("");
+        await deliver(pending);
+        if (pendingRef.current === null) setEditing(null);
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
+    if (!text && !attachment) return;
 
     setSending(true);
     setSendError(null);
@@ -457,11 +646,14 @@ export function ChatView({
       const pending: PendingMessage = {
         clientMessageId,
         plaintext,
+        kind: "text",
+        targetMessageId: replyTarget?.message.id,
       };
       pendingRef.current = pending;
       setDraft("");
       if (attachment) clearAttachment();
       await deliver(pending);
+      if (pendingRef.current === null) setReplyTarget(null);
     } catch (error) {
       if (error instanceof AttachmentError) {
         setAttachmentError(error.message);
@@ -477,6 +669,21 @@ export function ChatView({
     } finally {
       setSending(false);
     }
+  }
+
+  async function reactTo(message: MessageView, emoji: string): Promise<void> {
+    const current = reactionState.get(message.id)?.mine ?? null;
+    const pending: PendingMessage = {
+      clientMessageId: crypto.randomUUID(),
+      plaintext: JSON.stringify({
+        emoji,
+        op: current === emoji ? "remove" : "add",
+      }),
+      kind: "reaction",
+      targetMessageId: message.id,
+    };
+    pendingRef.current = pending;
+    await deliver(pending);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -506,6 +713,29 @@ export function ChatView({
     const last = dayGroups.at(-1);
     if (last && last.day === day) last.items.push(message);
     else dayGroups.push({ day, items: [message] });
+  }
+
+  function senderLabel(userId: string): string {
+    return userId === currentUserId
+      ? "나"
+      : (memberNames.get(userId) ?? "알 수 없는 사용자");
+  }
+
+  function reactionsFor(messageId: string): ReactionSummary[] {
+    const entry = reactionState.get(messageId);
+    if (!entry) return [];
+    return [...entry.counts.entries()].map(([emoji, count]) => ({
+      emoji,
+      count,
+      mine: entry.mine === emoji,
+    }));
+  }
+
+  function replyTargetFor(message: MessageView): MessageView | null {
+    if (!message.targetMessageId) return null;
+    const target = messageById.get(message.targetMessageId);
+    if (!target) return null;
+    return editsByTarget.get(target.id) ?? target;
   }
 
   return (
@@ -699,16 +929,33 @@ export function ChatView({
                     message={message}
                     identity={identity}
                     own={message.senderUserId === currentUserId}
-                    senderName={
-                      message.senderUserId === currentUserId
-                        ? "나"
-                        : (memberNames.get(message.senderUserId) ?? "알 수 없는 사용자")
-                    }
+                    senderName={senderLabel(message.senderUserId)}
                     readLabel={
                       message.senderUserId === currentUserId
                         ? readLabelFor(message)
                         : undefined
                     }
+                    renderMessage={editsByTarget.get(message.id)}
+                    edited={editsByTarget.has(message.id)}
+                    replyTarget={replyTargetFor(message)}
+                    replyTargetName={
+                      replyTargetFor(message)
+                        ? senderLabel(replyTargetFor(message)?.senderUserId ?? "")
+                        : undefined
+                    }
+                    reactions={reactionsFor(message.id)}
+                    onReact={(target, emoji) => void reactTo(target, emoji)}
+                    onReply={(target, text) => {
+                      setEditing(null);
+                      setReplyTarget({ message: target, text });
+                    }}
+                    onEdit={(target, text) => {
+                      setEditing({ messageId: target.id, text });
+                      setDraft(text);
+                      setReplyTarget(null);
+                      clearAttachment();
+                    }}
+                    onDelete={(target) => setDeleteTarget(target)}
                   />
                 ))}
               </div>
@@ -745,6 +992,49 @@ export function ChatView({
                 ) : null}
               </span>
             </Alert>
+          </div>
+        ) : null}
+
+        {editing ? (
+          <div className="mb-2 flex items-start gap-2 rounded-lg border border-accent-400/40 bg-accent-50 px-3 py-2">
+            <Pencil className="mt-0.5 h-4 w-4 shrink-0 text-accent-700" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-medium text-accent-700">
+                메시지 수정 중
+              </span>
+              <span className="block truncate text-xs text-zinc-600">{editing.text}</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setDraft("");
+              }}
+              aria-label="수정 취소"
+              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : replyTarget ? (
+          <div className="mb-2 flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+            <Reply className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+            <span className="min-w-0 flex-1">
+              <span className="block text-[11px] font-medium text-zinc-600">
+                {senderLabel(replyTarget.message.senderUserId)}에게 답장
+              </span>
+              <span className="block truncate text-xs text-zinc-500">
+                {replyTarget.text || "첨부 메시지"}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setReplyTarget(null)}
+              aria-label="답장 취소"
+              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
         ) : null}
 
@@ -793,7 +1083,7 @@ export function ChatView({
               variant="ghost"
               size="icon"
               onClick={() => fileInputRef.current?.click()}
-              disabled={sending}
+              disabled={sending || editing !== null}
               aria-label="파일 첨부"
             >
               <Paperclip className="h-4 w-4" />
@@ -802,7 +1092,9 @@ export function ChatView({
               id="message-input"
               rows={1}
               className="max-h-40 min-h-10"
-              placeholder="메시지 입력"
+              placeholder={
+                editing ? "수정할 메시지" : replyTarget ? "답장 입력" : "메시지 입력"
+              }
               value={draft}
               onChange={(event) => handleDraftChange(event.target.value)}
               onKeyDown={handleKeyDown}
@@ -811,8 +1103,11 @@ export function ChatView({
             <Button
               type="submit"
               size="icon"
-              disabled={sending || (!draft.trim() && !attachment)}
-              aria-label="전송"
+              disabled={
+                sending ||
+                (editing ? !draft.trim() : !draft.trim() && !attachment)
+              }
+              aria-label={editing ? "수정 저장" : "전송"}
             >
               {sending ? <Spinner /> : <Send className="h-4 w-4" />}
             </Button>
@@ -844,6 +1139,32 @@ export function ChatView({
         <p className="mt-3 text-xs text-zinc-500">
           번호가 예상과 다르면 대화를 중단하고 상대에게 직접 확인하세요.
         </p>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => setDeleteTarget(null)}
+        title="메시지 삭제"
+      >
+        <p className="text-sm leading-relaxed text-zinc-600">
+          이 메시지를 대화 참여자 모두에게서 삭제합니다. 반응과 수정 기록, 첨부 파일도 함께
+          삭제되며 복구할 수 없습니다.
+        </p>
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+            취소
+          </Button>
+          <Button
+            variant="destructive"
+            disabled={deleteMutation.isPending}
+            onClick={() => {
+              if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+            }}
+          >
+            {deleteMutation.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />}
+            삭제
+          </Button>
+        </div>
       </Dialog>
 
       <AutoDeleteDialog

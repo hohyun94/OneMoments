@@ -10,6 +10,8 @@ import {
 } from "react";
 
 import type { MessagePage, MessageView, ServerFrame } from "./types.ts";
+import { deleteDecryptedMessageCache } from "./components/MessageBubble.tsx";
+import { removeIndexedMessages } from "./lib/search.ts";
 
 type MessagePages = InfiniteData<MessagePage>;
 
@@ -97,6 +99,29 @@ export function RealtimeProvider({
         }
         case "message.created": {
           addMessage(frame.message);
+          break;
+        }
+        case "message.deleted": {
+          const removed = new Set(frame.messageIds);
+          queryClient.setQueryData<MessagePages>(
+            ["messages", frame.conversationId],
+            (data) => {
+              if (!data) return data;
+              const pages = data.pages.map((page) => ({
+                ...page,
+                messages: page.messages.filter((item) => !removed.has(item.id)),
+              }));
+              return { ...data, pages };
+            },
+          );
+          for (const messageId of frame.messageIds) {
+            deleteDecryptedMessageCache(messageId);
+            void removeIndexedMessages([messageId]);
+          }
+          void queryClient.invalidateQueries({
+            queryKey: ["messages", frame.conversationId],
+          });
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
           break;
         }
         case "typing": {

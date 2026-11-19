@@ -148,6 +148,13 @@
       "when": 1794906656600,
       "tag": "0020_mature_cammi",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1795060761614,
+      "tag": "0021_flimsy_karnak",
+      "breakpoints": true
     }
   ]
 }

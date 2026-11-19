@@ -7,6 +7,7 @@ import {
   isNotNull,
   isNull,
   lt,
+  ne,
   notInArray,
   sql,
 } from "drizzle-orm";
@@ -68,6 +69,125 @@ function cursorReached(cursor: ReadCursor, message: CandidateMessage): boolean {
   return cursor.messageId >= message.id;
 }
 
+export interface DeleteMessagesResult {
+  deletedMessageIds: string[];
+  deletedAttachments: number;
+}
+
+/**
+ * 메시지와 그 반응/수정 이벤트, 첨부를 함께 삭제하고 읽음 커서를 보정한다.
+ * 답장(target 이 있는 text)은 남기고 target 참조만 null 이 된다(FK SET NULL).
+ */
+export async function deleteMessagesAndArtifacts(
+  db: Database,
+  storage: AttachmentStorage,
+  input: { conversationId: string; messageIds: string[] },
+): Promise<DeleteMessagesResult> {
+  if (input.messageIds.length === 0) {
+    return { deletedMessageIds: [], deletedAttachments: 0 };
+  }
+
+  // 삭제 대상 메시지에 달린 반응/수정 이벤트도 함께 정리한다.
+  const dependents = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        inArray(messages.targetMessageId, input.messageIds),
+        ne(messages.kind, "text"),
+      ),
+    );
+  const messageIds = [
+    ...new Set([...input.messageIds, ...dependents.map((row) => row.id)]),
+  ];
+
+  const attachmentRows = await db
+    .select({ id: attachments.id })
+    .from(attachments)
+    .where(inArray(attachments.messageId, messageIds));
+
+  for (const attachment of attachmentRows) {
+    await storage.delete(attachment.id).catch(() => undefined);
+  }
+
+  await db.transaction(async (tx) => {
+    // 삭제되는 메시지를 가리키는 읽음 커서를 남은 메시지로 보정한다.
+    const cursorRows = await tx
+      .select({
+        userId: conversationReads.userId,
+        messageId: conversationReads.lastReadMessageId,
+        createdAt: messages.createdAt,
+      })
+      .from(conversationReads)
+      .innerJoin(messages, eq(messages.id, conversationReads.lastReadMessageId))
+      .where(
+        and(
+          eq(conversationReads.conversationId, input.conversationId),
+          inArray(conversationReads.lastReadMessageId, messageIds),
+        ),
+      );
+
+    for (const cursor of cursorRows) {
+      const [replacement] = await tx
+        .select({ id: messages.id })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.conversationId, input.conversationId),
+            notInArray(messages.id, messageIds),
+            sql`(
+              ${messages.createdAt} < ${cursor.createdAt}
+              or (
+                ${messages.createdAt} = ${cursor.createdAt}
+                and ${messages.id} <= ${cursor.messageId}::uuid
+              )
+            )`,
+          ),
+        )
+        .orderBy(desc(messages.createdAt), desc(messages.id))
+        .limit(1);
+
+      if (replacement) {
+        await tx
+          .update(conversationReads)
+          .set({ lastReadMessageId: replacement.id })
+          .where(
+            and(
+              eq(conversationReads.conversationId, input.conversationId),
+              eq(conversationReads.userId, cursor.userId),
+            ),
+          );
+      } else {
+        await tx
+          .delete(conversationReads)
+          .where(
+            and(
+              eq(conversationReads.conversationId, input.conversationId),
+              eq(conversationReads.userId, cursor.userId),
+            ),
+          );
+      }
+    }
+
+    if (attachmentRows.length > 0) {
+      await tx
+        .delete(attachments)
+        .where(
+          inArray(
+            attachments.id,
+            attachmentRows.map((attachment) => attachment.id),
+          ),
+        );
+    }
+    await tx.delete(messages).where(inArray(messages.id, messageIds));
+  });
+
+  return {
+    deletedMessageIds: messageIds,
+    deletedAttachments: attachmentRows.length,
+  };
+}
+
 /**
  * "참여자 모두가 읽은 뒤 N일"이 지난 메시지를 삭제한다.
  *
@@ -117,7 +237,13 @@ export async function cleanupAutoDeletedMessages(
         createdAt: messages.createdAt,
       })
       .from(messages)
-      .where(and(eq(messages.conversationId, conversation.id), lt(messages.createdAt, cutoff)))
+      .where(
+        and(
+          eq(messages.conversationId, conversation.id),
+          eq(messages.kind, "text"),
+          lt(messages.createdAt, cutoff),
+        ),
+      )
       .orderBy(asc(messages.createdAt), asc(messages.id))
       .limit(limit);
 
@@ -200,75 +326,13 @@ export async function cleanupAutoDeletedMessages(
     if (deletable.length === 0) continue;
 
     const messageIds = deletable.map((message) => message.id);
-    const attachmentRows = await db
-      .select({ id: attachments.id })
-      .from(attachments)
-      .where(inArray(attachments.messageId, messageIds));
-
-    for (const attachment of attachmentRows) {
-      await storage.delete(attachment.id).catch(() => undefined);
-    }
-
-    await db.transaction(async (tx) => {
-      // 삭제되는 메시지를 가리키는 읽음 커서를 남은 메시지로 보정한다.
-      const cursorRows = cursors.filter((cursor) => messageIds.includes(cursor.messageId));
-      for (const cursor of cursorRows) {
-        const [replacement] = await tx
-          .select({ id: messages.id })
-          .from(messages)
-          .where(
-            and(
-              eq(messages.conversationId, conversation.id),
-              notInArray(messages.id, messageIds),
-              sql`(
-                ${messages.createdAt} < ${cursor.createdAt}
-                or (
-                  ${messages.createdAt} = ${cursor.createdAt}
-                  and ${messages.id} <= ${cursor.messageId}::uuid
-                )
-              )`,
-            ),
-          )
-          .orderBy(desc(messages.createdAt), desc(messages.id))
-          .limit(1);
-
-        if (replacement) {
-          await tx
-            .update(conversationReads)
-            .set({ lastReadMessageId: replacement.id })
-            .where(
-              and(
-                eq(conversationReads.conversationId, conversation.id),
-                eq(conversationReads.userId, cursor.userId),
-              ),
-            );
-        } else {
-          await tx
-            .delete(conversationReads)
-            .where(
-              and(
-                eq(conversationReads.conversationId, conversation.id),
-                eq(conversationReads.userId, cursor.userId),
-              ),
-            );
-        }
-      }
-
-      if (attachmentRows.length > 0) {
-        await tx
-          .delete(attachments)
-          .where(
-            inArray(
-              attachments.id,
-              attachmentRows.map((attachment) => attachment.id),
-            ),
-          );
-      }
-      await tx.delete(messages).where(inArray(messages.id, messageIds));
+    const result = await deleteMessagesAndArtifacts(db, storage, {
+      conversationId: conversation.id,
+      messageIds,
     });
 
-    deletedMessages += messageIds.length;
-    deletedAttachments += attachmentRows.length;
+    deletedMessages += result.deletedMessageIds.length;
+    deletedAttachments += result.deletedAttachments;
     touchedConversations += 1;
   }
 

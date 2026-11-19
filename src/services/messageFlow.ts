@@ -28,6 +28,8 @@ export interface SendEncryptedMessageInput {
   senderUserId: string;
   senderDeviceId: string;
   payload: MessagePayloadInput;
+  kind: "text" | "reaction" | "edit";
+  targetMessageId?: string | undefined;
 }
 
 export interface SendEncryptedMessageResult {
@@ -129,6 +131,8 @@ export async function sendEncryptedMessage(
     senderDeviceId: input.senderDeviceId,
     senderSigningPublicKey: senderDevice.signingPublicKey,
     payload,
+    kind: input.kind,
+    targetMessageId: input.targetMessageId,
   });
 
   const ownKey = result.keys.find(
@@ -152,7 +156,7 @@ export async function sendEncryptedMessage(
 
   const participantUserIds = await listParticipantUserIds(db, input.conversationId);
 
-  if (result.created) {
+  if (result.created && result.message.kind === "text") {
     const mutedUserIds = await listMutedParticipantUserIds(db, input.conversationId);
     // 알림은 응답을 막지 않는다. 실패해도 메시지 전달에는 영향을 주지 않는다.
     void sendMessagePushes(db, config, {
@@ -174,6 +178,7 @@ export async function sendEncryptedMessage(
   return {
     message: toMessageView(result.message, ownKey ?? null),
     event: {
+      type: "message.created",
       conversationId: input.conversationId,
       message: result.message,
       keys: result.keys,

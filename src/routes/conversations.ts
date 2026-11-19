@@ -1,7 +1,9 @@
 import express, { Router } from "express";
+import { and, eq } from "drizzle-orm";
 
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
+import { messages } from "../db/schema.js";
 import { AppError, asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import {
@@ -11,6 +13,7 @@ import {
   createInviteBodySchema,
   listMessagesQuerySchema,
   markReadBodySchema,
+  messageIdParamsSchema,
   sendMessageBodySchema,
   updateAutoDeleteBodySchema,
   updateConversationNotificationBodySchema,
@@ -26,6 +29,7 @@ import {
   listActiveDeviceKeys,
   listConversations,
   listConversationReadReceipts,
+  listParticipantUserIds,
   markConversationRead,
   leaveGroup,
   renameGroup,
@@ -39,7 +43,7 @@ import {
   createAttachment,
   createAttachmentStorage,
 } from "../services/attachments.js";
-import { cleanupAutoDeletedMessages } from "../services/autoDelete.js";
+import { cleanupAutoDeletedMessages, deleteMessagesAndArtifacts } from "../services/autoDelete.js";
 import { createConversationInvite } from "../services/invites.js";
 
 export interface ConversationsRouterOptions {
@@ -390,6 +394,49 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     }),
   );
 
+  router.delete(
+    "/:conversationId/messages/:messageId",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId, messageId } = messageIdParamsSchema.parse(req.params);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+
+      const [message] = await db
+        .select({ senderUserId: messages.senderUserId })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.id, messageId),
+            eq(messages.conversationId, conversationId),
+          ),
+        )
+        .limit(1);
+      if (!message) {
+        throw AppError.notFound("MESSAGE_NOT_FOUND", "Message not found");
+      }
+      if (message.senderUserId !== auth.userId) {
+        throw AppError.forbidden("Only the sender can delete this message");
+      }
+
+      const result = await deleteMessagesAndArtifacts(db, attachmentStorage, {
+        conversationId,
+        messageIds: [messageId],
+      });
+      if (result.deletedMessageIds.length > 0) {
+        const participantUserIds = await listParticipantUserIds(db, conversationId);
+        bus.publish({
+          type: "message.deleted",
+          conversationId,
+          messageIds: result.deletedMessageIds,
+          participantUserIds,
+        });
+      }
+      res.json({ deletedMessageIds: result.deletedMessageIds });
+    }),
+  );
+
   router.post(
     "/:conversationId/messages",
     session,
@@ -405,6 +452,8 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         senderUserId: auth.userId,
         senderDeviceId: auth.deviceId,
         payload: body,
+        kind: body.kind,
+        targetMessageId: body.targetMessageId,
       });
       // 멱등 재전송은 새 이벤트가 아니므로 다시 브로드캐스트하지 않는다.
       if (result.created) bus.publish(result.event);

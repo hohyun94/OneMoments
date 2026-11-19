@@ -66,12 +66,22 @@ export type DeviceKeyEnvelope =
       distribution?: { ciphertext: string; nonce: string };
     };
 
+export interface ReactionSummary {
+  emoji: string;
+  count: number;
+  mine: boolean;
+}
+
 export interface MessageView {
   id: string;
   conversationId: string;
   senderUserId: string;
   senderDeviceId: string;
   senderSigningPublicKey: string;
+  /** text: 일반/답장, reaction: 이모지 반응, edit: 수정 이벤트 */
+  kind: "text" | "reaction" | "edit";
+  /** 반응/수정/답장의 대상 메시지 */
+  targetMessageId: string | null;
   ciphertext: string;
   nonce: string;
   signature: string;
@@ -237,6 +247,7 @@ export type ServerFrame =
   | { type: "subscribed"; conversationIds: string[] }
   | { type: "unsubscribed"; conversationIds: string[] }
   | { type: "message.created"; message: MessageView }
+  | { type: "message.deleted"; conversationId: string; messageIds: string[] }
   | { type: "message.ack"; clientMessageId: string; message: MessageView }
   | { type: "typing"; conversationId: string; userId: string; state: "start" | "stop" }
   | {

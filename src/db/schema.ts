@@ -11,6 +11,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -189,6 +190,13 @@ export const messages = pgTable(
     // Ed25519 서명 base64 (conversationId, clientMessageId, sha256(ciphertext))
     signature: text("signature").notNull(),
     clientMessageId: text("client_message_id").notNull(),
+    // text(일반/답장), reaction(이모지), edit(수정 이벤트). 내용은 모두 암호문 안에 있다.
+    kind: text("kind").notNull().default("text"),
+    // 반응/수정/답장의 대상 메시지. 대상이 삭제되면 참조만 해제된다(반응·수정은 삭제 시 함께 정리).
+    targetMessageId: uuid("target_message_id").references(
+      (): AnyPgColumn => messages.id,
+      { onDelete: "set null" },
+    ),
     // 그룹 Sender Keys(v3): 발신자 체인 ID/반복. pairwise 메시지는 null.
     senderKeyId: text("sender_key_id"),
     senderKeyIteration: integer("sender_key_iteration"),
@@ -201,6 +209,11 @@ export const messages = pgTable(
       table.clientMessageId,
     ),
     index("messages_conversation_created_idx").on(table.conversationId, table.createdAt),
+    index("messages_target_idx").on(table.targetMessageId),
+    check(
+      "messages_kind_chk",
+      sql`${table.kind} in ('text', 'reaction', 'edit')`,
+    ),
     check(
       "messages_sender_key_chk",
       sql`(${table.senderKeyId} is null and ${table.senderKeyIteration} is null) or (${table.senderKeyId} is not null and ${table.senderKeyIteration} is not null)`,

@@ -124,12 +124,16 @@ export const addConversationMembersBodySchema = z.object({
   userIds: z.array(z.string().uuid()).min(1).max(19),
 });
 
+export const messageKindSchema = z.enum(["text", "reaction", "edit"]);
+
 export const sendMessageBodySchema = z.object({
   clientMessageId: z
     .string()
     .min(1, "clientMessageId is required")
     .max(64, "clientMessageId must be at most 64 characters")
     .regex(/^[A-Za-z0-9_-]+$/, "clientMessageId may contain letters, digits, dash, underscore"),
+  kind: messageKindSchema.default("text"),
+  targetMessageId: z.string().uuid().optional(),
   ciphertext: z.string().min(1, "ciphertext is required"),
   nonce: z.string().min(1, "nonce is required"),
   signature: z.string().min(1, "signature is required"),
@@ -217,6 +221,11 @@ export const searchUsersQuerySchema = z.object({
 
 export const conversationIdParamsSchema = z.object({
   conversationId: z.string().uuid(),
+});
+
+export const messageIdParamsSchema = z.object({
+  conversationId: z.string().uuid(),
+  messageId: z.string().uuid(),
 });
 
 /** 대화별 자동 삭제(읽은 뒤 N초). null 이면 끔. 1시간~30일. */

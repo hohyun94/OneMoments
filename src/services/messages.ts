@@ -21,6 +21,8 @@ export interface CreateMessageInput {
   senderDeviceId: string;
   senderSigningPublicKey: string;
   payload: NormalizedMessagePayload;
+  kind: "text" | "reaction" | "edit";
+  targetMessageId?: string | undefined;
 }
 
 export interface CreateMessageResult {
@@ -40,6 +42,55 @@ export async function createMessage(
   const { payload } = input;
 
   return db.transaction(async (tx) => {
+    if (input.kind !== "text" && !input.targetMessageId) {
+      throw AppError.badRequest(
+        "TARGET_REQUIRED",
+        "Reaction and edit messages require targetMessageId",
+      );
+    }
+
+    if (input.targetMessageId) {
+      const [target] = await tx
+        .select({
+          id: messages.id,
+          kind: messages.kind,
+          senderUserId: messages.senderUserId,
+        })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.id, input.targetMessageId),
+            eq(messages.conversationId, input.conversationId),
+          ),
+        )
+        .limit(1);
+      if (!target) {
+        throw AppError.badRequest("INVALID_TARGET", "Target message not found");
+      }
+      if (target.kind !== "text") {
+        throw AppError.badRequest(
+          "INVALID_TARGET",
+          "Only text messages can be replied to, reacted to, or edited",
+        );
+      }
+      if (input.kind === "edit" && target.senderUserId !== input.senderUserId) {
+        throw AppError.forbidden("Only the sender can edit this message");
+      }
+      if (input.kind === "edit") {
+        const [attachment] = await tx
+          .select({ id: attachments.id })
+          .from(attachments)
+          .where(eq(attachments.messageId, target.id))
+          .limit(1);
+        if (attachment) {
+          throw AppError.badRequest(
+            "INVALID_TARGET",
+            "Messages with attachments cannot be edited",
+          );
+        }
+      }
+    }
+
     const [inserted] = await tx
       .insert(messages)
       .values({
@@ -51,6 +102,8 @@ export async function createMessage(
         nonce: payload.nonce,
         signature: payload.signature,
         clientMessageId: payload.clientMessageId,
+        kind: input.kind,
+        targetMessageId: input.targetMessageId ?? null,
         senderKeyId: payload.senderKeyId,
         senderKeyIteration: payload.senderKeyIteration,
       })

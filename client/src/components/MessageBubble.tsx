@@ -1,4 +1,4 @@
-import { Download, FileText, ShieldAlert } from "lucide-react";
+import { Download, FileText, Pencil, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -10,7 +10,8 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock } from "../lib/format.ts";
-import type { MessageView } from "../types.ts";
+import { indexDecryptedMessage } from "../lib/search.ts";
+import type { MessageView, ReactionSummary } from "../types.ts";
 import { cn } from "./ui.tsx";
 
 async function decryptAttachmentBlob(attachment: AttachmentPayload): Promise<Blob> {
@@ -241,6 +242,15 @@ function decryptCached(identity: StoredIdentity, message: MessageView): Promise<
   return promise;
 }
 
+/** 반응/답장/수정 UI에서 다른 메시지의 평문이 필요할 때 사용한다. */
+export async function decryptMessageText(
+  identity: StoredIdentity,
+  message: MessageView,
+): Promise<string | null> {
+  const result = await decryptCached(identity, message);
+  return result.status === "ok" ? result.text : null;
+}
+
 function parseAttachment(text: string): AttachmentPayload | null {
   return parseAttachmentPayload(text);
 }
@@ -251,28 +261,79 @@ export function MessageBubble({
   own,
   senderName,
   readLabel,
+  renderMessage,
+  edited = false,
+  replyTarget,
+  replyTargetName,
+  reactions = [],
+  onReact,
+  onReply,
+  onEdit,
+  onDelete,
 }: {
   message: MessageView;
   identity: StoredIdentity;
   own: boolean;
   senderName: string;
-  readLabel?: string;
+  readLabel?: string | undefined;
+  /** 수정된 본문을 복호화할 때 사용하는 이벤트 메시지 */
+  renderMessage?: MessageView | null;
+  edited?: boolean;
+  replyTarget?: MessageView | null;
+  replyTargetName?: string | undefined;
+  reactions?: ReactionSummary[];
+  onReact?: (message: MessageView, emoji: string) => void;
+  onReply?: (message: MessageView, text: string) => void;
+  onEdit?: (message: MessageView, text: string) => void;
+  onDelete?: (message: MessageView) => void;
 }) {
   const [result, setResult] = useState<Result | null>(() => cache.get(message.id) ?? null);
+  const [reactionOpen, setReactionOpen] = useState(false);
+  const [replyText, setReplyText] = useState<string | null>(null);
+  const source = renderMessage ?? message;
 
   useEffect(() => {
     let cancelled = false;
     setResult(null);
-    void decryptCached(identity, message).then((value) => {
+    void decryptCached(identity, source).then((value) => {
       if (!cancelled) setResult(value);
+      if (value.status !== "ok" || message.kind !== "text") return;
+      const searchable = [value.text, value.attachment?.name ?? ""]
+        .filter((part) => part.length > 0)
+        .join(" ");
+      void indexDecryptedMessage({
+        id: message.id,
+        conversationId: message.conversationId,
+        senderUserId: message.senderUserId,
+        createdAt: message.createdAt,
+        text: searchable,
+      });
     });
     return () => {
       cancelled = true;
     };
-  }, [identity, message]);
+  }, [identity, message, source]);
+
+  useEffect(() => {
+    if (!replyTarget) {
+      setReplyText(null);
+      return;
+    }
+    let cancelled = false;
+    void decryptCached(identity, replyTarget).then((value) => {
+      if (!cancelled) setReplyText(value.status === "ok" ? value.text : null);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity, replyTarget]);
+
+  const canAct = message.kind === "text";
+  const canEdit = own && canAct && result?.status === "ok" && !result.attachment;
+  const reactionPicker = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
   return (
-    <div className={cn("flex w-full", own ? "justify-end" : "justify-start")}>
+    <div className={cn("group flex w-full flex-col", own ? "items-end" : "items-start")}>
       <div
         className={cn(
           "max-w-[85%] rounded-2xl px-3.5 py-2 text-sm shadow-sm md:max-w-[70%]",
@@ -281,6 +342,24 @@ export function MessageBubble({
             : "rounded-bl-md border border-zinc-200 bg-white text-zinc-900",
         )}
       >
+        {replyTarget !== undefined && replyTarget !== null ? (
+          <div
+            className={cn(
+              "mb-1.5 rounded-lg border-l-2 px-2 py-1 text-[11px]",
+              own
+                ? "border-accent-contrast/60 bg-white/10 text-accent-contrast/90"
+                : "border-accent-400 bg-zinc-50 text-zinc-600",
+            )}
+          >
+            <p className="font-medium">{replyTargetName ?? "메시지"}</p>
+            <p className="line-clamp-2 break-words">
+              {replyText === null
+                ? "원문을 불러오는 중…"
+                : replyText || "첨부 메시지"}
+            </p>
+          </div>
+        ) : null}
+
         {!own ? (
           <p className="mb-1 text-[11px] font-medium text-zinc-500">{senderName}</p>
         ) : null}
@@ -319,9 +398,95 @@ export function MessageBubble({
           )}
         >
           {formatClock(message.createdAt)}
+          {edited ? " · 수정됨" : ""}
           {own && readLabel ? ` · ${readLabel}` : ""}
         </p>
       </div>
+
+      {reactions.length > 0 ? (
+        <div className="mt-1 flex flex-wrap gap-1">
+          {reactions.map((reaction) => (
+            <button
+              key={reaction.emoji}
+              type="button"
+              onClick={() => onReact?.(message, reaction.emoji)}
+              aria-pressed={reaction.mine}
+              className={cn(
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                reaction.mine
+                  ? "border-accent-400 bg-accent-50 text-accent-700"
+                  : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
+              )}
+            >
+              <span>{reaction.emoji}</span>
+              <span>{reaction.count}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {canAct ? (
+        <div className="mt-1 flex flex-wrap items-center gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
+          <button
+            type="button"
+            onClick={() => setReactionOpen((value) => !value)}
+            aria-label="반응"
+            className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            <Smile className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (result?.status === "ok") onReply?.(message, result.text);
+            }}
+            aria-label="답장"
+            className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            <Reply className="h-3.5 w-3.5" />
+          </button>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (result?.status === "ok") onEdit?.(message, result.text);
+              }}
+              aria-label="수정"
+              className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          {own ? (
+            <button
+              type="button"
+              onClick={() => onDelete?.(message)}
+              aria-label="삭제"
+              className="rounded-md p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          {reactionOpen ? (
+            <span className="flex items-center gap-0.5 rounded-full border border-zinc-200 bg-white px-1 py-0.5 shadow-sm">
+              {reactionPicker.map((emoji) => (
+                <button
+                  key={emoji}
+                  type="button"
+                  aria-label={`${emoji} 반응`}
+                  onClick={() => {
+                    setReactionOpen(false);
+                    onReact?.(message, emoji);
+                  }}
+                  className="rounded-full px-1 text-sm hover:bg-zinc-100"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -94,7 +94,7 @@
 | `devices` | id, user_id, name, identity_public_key, signing_public_key, idle_timeout_seconds, created_at, last_seen_at, revoked_at | 기기 공개키. idle_timeout_seconds 는 기기 기본 무활동 로그아웃(1~30분, 기본 5분) |
 | `conversations` | id, kind('direct'\|'group'), name, auto_delete_after_read_seconds, created_at | 1:1 또는 그룹. 그룹은 name 필수. auto_delete 는 읽은 뒤 자동 삭제(1시간~30일, null 이면 끔) |
 | `conversation_participants` | conversation_id, user_id, joined_at, hidden_at, muted_at, role('owner'\|'member') (PK) | 참여자. 그룹 최대 20명, 사용자별 숨김/음소거, 소유자 권한 |
-| `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, sender_key_id, sender_key_iteration, created_at | 암호문 1건. sender-key 메시지는 체인 ID/반복 포함 |
+| `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, kind('text'\|'reaction'\|'edit'), target_message_id, sender_key_id, sender_key_iteration, created_at | 암호문 1건. kind/target 은 반응·수정·답장 메타데이터, 내용은 암호문 안 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, ratchet_public_key, previous_chain_length, message_number, distribution_ciphertext, distribution_nonce, version (PK) | 기기별 봉투(v1/v2), sender-key 최초 배포 블롭 |
 | `message_reads` | message_id, user_id, read_at (PK: message_id+user_id) | 메시지별 읽은 시각. 참여자 전원 읽은 뒤 자동 삭제 계산용 |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
@@ -192,7 +192,7 @@
 | PUT | `/api/conversations/:id/group` | 그룹 이름 변경(참여자) |
 | PUT | `/api/conversations/:id/notification` | `{muted}` 대화별 푸시 음소거 |
 | PUT | `/api/conversations/:id/auto-delete` | `{seconds: 3600~2592000 \| null}` 읽은 뒤 자동 삭제(그룹은 owner만) |
-| PUT | `/api/conversations/:id/read` | `{messageId}` 읽음 커서 전진, `unreadCount` 계산 |
+| PUT | `/api/conversations/:id/read` | `{messageId}` 읽음 커서 전진, `unreadCount` 계산(반응/수정 제외) |
 | GET | `/api/conversations/:id/devices` | **대화 참여자 전체** 활성 기기 공개키(암호화 대상 목록) |
 | POST | `/api/conversations/:id/attachments` | 암호화된 파일 업로드(`application/octet-stream`) |
 | GET | `/api/attachments/:attachmentId` | 참여자만 첨부 암호문 다운로드 |
@@ -207,10 +207,13 @@
 |---|---|---|
 | GET | `/api/conversations/:id/messages?before=&limit=` | 최신순, 내 기기 봉투만 포함 |
 | POST | `/api/conversations/:id/messages` | 아래 본문. `clientMessageId` 멱등 |
+| DELETE | `/api/conversations/:id/messages/:messageId` | 발신자만. 봉투·첨부·반응/수정 이벤트 삭제(답장은 target만 해제) |
 
 ```jsonc
 {
   "clientMessageId": "c-01J...",
+  "kind": "text",                   // text | reaction | edit
+  "targetMessageId": "uuid",        // 반응·수정·답장의 대상(선택)
   "ciphertext": "base64",          // AES-256-GCM(ciphertext||tag)
   "nonce": "base64",               // 12 bytes
   "signature": "base64",           // Ed25519(conversationId, clientMessageId, sha256(ciphertext))
@@ -240,7 +243,8 @@
 | C→S | `{type:"message.send", ...POST와 동일 본문}` |
 | C→S | `{type:"typing", conversationId, state}` / `{type:"ping"}` |
 | S→C | `{type:"ready"}` / `{type:"subscribed", conversationIds}` |
-| S→C | `{type:"message.created", message:{..., key: 내 기기 봉투}}` |
+| S→C | `{type:"message.created", message:{..., kind, targetMessageId, key: 내 기기 봉투}}` |
+| S→C | `{type:"message.deleted", conversationId, messageIds[]}` |
 | S→C | `{type:"message.ack", clientMessageId, message}` |
 | S→C | `{type:"typing"|"presence"}`, `{type:"error", code, message}` |
 

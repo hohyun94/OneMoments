@@ -100,6 +100,7 @@
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
+| `moments` (+`moment_audience`, `moment_keys`, `moment_views`, `moment_attachments`) | moment id, author, audience, 기기 봉투, 조회, 암호화 이미지 | 24시간 선택 공개 스토리. 내용은 암호문, 대상/조회만 메타데이터 |
 | `push_subscriptions` | id, user_id, device_id, endpoint(unique), p256dh, auth, failure_count, last_success_at | Web Push 구독(기기별, 로그아웃/폐기 시 삭제) |
 | `conversation_reads` | conversation_id, user_id, last_read_message_id, updated_at (PK: conversation_id+user_id) | 사용자별 읽음 커서(읽지 않은 수 계산) |
 
@@ -200,6 +201,20 @@
 | POST | `/api/push/subscriptions` | Web Push 구독 저장/갱신 |
 | DELETE | `/api/push/subscriptions` | 구독 삭제 |
 | DELETE | `/api/conversations/:id` | 내 화면에서 숨김 |
+
+### Moments (24시간 스토리)
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| GET | `/api/moments/contacts` | 내 대화 상대 + 활성 기기 공개키/프리키 |
+| POST | `/api/moments/attachments` | 암호화 이미지 업로드(`x-moment-id`) |
+| GET | `/api/moments/attachments/:id` | 작성자/공개 대상만 다운로드 |
+| POST | `/api/moments` | `{id, audienceUserIds, ciphertext, nonce, signature, keys, attachmentId?}` |
+| GET | `/api/moments/feed` | 내가 작성/대상인 활성 스토리 |
+| GET | `/api/moments/:id` | 상세 + 내 기기 봉투 |
+| POST | `/api/moments/:id/view` | 조회 기록 |
+| GET | `/api/moments/:id/views` | 작성자만 조회자 목록 |
+| DELETE | `/api/moments/:id` | 작성자만 삭제 |
 
 ### 메시지
 

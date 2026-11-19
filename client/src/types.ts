@@ -72,6 +72,37 @@ export interface ReactionSummary {
   mine: boolean;
 }
 
+export interface MomentDevice {
+  id: string;
+  identityPublicKey: string;
+  signingPublicKey: string;
+  signedPreKeyId?: string | null;
+  signedPreKeyPublicKey?: string | null;
+  signedPreKeySignature?: string | null;
+  oneTimePreKeyId?: string | null;
+  oneTimePreKeyPublicKey?: string | null;
+}
+
+export interface MomentContact {
+  id: string;
+  username: string;
+  devices: MomentDevice[];
+}
+
+export interface MomentView {
+  id: string;
+  author: PeerUser;
+  authorSigningPublicKey: string;
+  ciphertext: string;
+  nonce: string;
+  signature: string;
+  createdAt: string;
+  expiresAt: string;
+  key: DeviceKeyEnvelope | null;
+  viewCount?: number;
+  viewed?: boolean;
+}
+
 export interface MessageView {
   id: string;
   conversationId: string;

@@ -14,6 +14,13 @@ const AdminPage = lazy(() =>
   import("./pages/AdminPage.tsx").then((module) => ({ default: module.AdminPage })),
 );
 
+// Moments 화면도 필요할 때만 로드한다.
+const MomentsPage = lazy(() =>
+  import("./pages/MomentsPage.tsx").then((module) => ({
+    default: module.MomentsPage,
+  })),
+);
+
 function Splash() {
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-zinc-50">
@@ -89,6 +96,16 @@ export function App() {
         element={
           <Guard>
             <DevicesPage />
+          </Guard>
+        }
+      />
+      <Route
+        path="/moments"
+        element={
+          <Guard>
+            <Suspense fallback={<Splash />}>
+              <MomentsPage />
+            </Suspense>
           </Guard>
         }
       />

@@ -3,12 +3,15 @@ import type {
   DeviceRow,
   MessageKeyRow,
   MessageRow,
+  MomentKeyRow,
+  MomentRow,
   UserRow,
 } from "../db/schema.js";
 import type {
   ConversationSummary,
   DeviceKeyEnvelope,
   MessageView,
+  MomentView,
   OwnDevice,
   PeerUser,
   PublicDevice,
@@ -135,5 +138,54 @@ export function toMessageView(row: MessageRow, key: MessageKeyRow | null): Messa
     senderKeyIteration: row.senderKeyIteration,
     createdAt: row.createdAt.toISOString(),
     key: key ? toDeviceKeyEnvelope(key) : null,
+  };
+}
+
+export function toMomentDeviceKey(row: MomentKeyRow): DeviceKeyEnvelope {
+  if (row.version === 2 && row.ratchetPublicKey) {
+    return {
+      deviceId: row.recipientDeviceId,
+      version: 2,
+      ratchetPublicKey: row.ratchetPublicKey,
+      previousChainLength: row.previousChainLength ?? 0,
+      messageNumber: row.messageNumber ?? 0,
+      ...(row.senderIdentityPublicKey && row.signedPreKeyId
+        ? {
+            senderIdentityPublicKey: row.senderIdentityPublicKey,
+            signedPreKeyId: row.signedPreKeyId,
+          }
+        : {}),
+      ...(row.oneTimePreKeyId ? { oneTimePreKeyId: row.oneTimePreKeyId } : {}),
+      wrappedKey: row.wrappedKey,
+      wrapNonce: row.wrapNonce,
+    };
+  }
+  return {
+    deviceId: row.recipientDeviceId,
+    version: 1,
+    ephemeralPublicKey: row.ephemeralPublicKey ?? "",
+    wrappedKey: row.wrappedKey,
+    wrapNonce: row.wrapNonce,
+  };
+}
+
+export function toMomentView(
+  moment: MomentRow,
+  author: UserRow,
+  key: MomentKeyRow | null,
+  extras: { viewCount?: number; viewed?: boolean } = {},
+): MomentView {
+  return {
+    id: moment.id,
+    author: toPeerUser(author),
+    authorSigningPublicKey: moment.authorSigningPublicKey,
+    ciphertext: moment.ciphertext,
+    nonce: moment.nonce,
+    signature: moment.signature,
+    createdAt: moment.createdAt.toISOString(),
+    expiresAt: moment.expiresAt.toISOString(),
+    key: key ? toMomentDeviceKey(key) : null,
+    ...(extras.viewCount !== undefined ? { viewCount: extras.viewCount } : {}),
+    ...(extras.viewed !== undefined ? { viewed: extras.viewed } : {}),
   };
 }

@@ -106,6 +106,40 @@ export interface MessageView {
   key: DeviceKeyEnvelope | null;
 }
 
+export interface MomentDevice {
+  id: string;
+  identityPublicKey: string;
+  signingPublicKey: string;
+  signedPreKeyId?: string | null;
+  signedPreKeyPublicKey?: string | null;
+  signedPreKeySignature?: string | null;
+  oneTimePreKeyId?: string | null;
+  oneTimePreKeyPublicKey?: string | null;
+}
+
+export interface MomentContact {
+  id: string;
+  username: string;
+  devices: MomentDevice[];
+}
+
+export interface MomentView {
+  id: string;
+  author: PeerUser;
+  authorSigningPublicKey: string;
+  ciphertext: string;
+  nonce: string;
+  signature: string;
+  createdAt: string;
+  expiresAt: string;
+  /** 내 기기 봉투. 새 기기처럼 없으면 null 이다. */
+  key: DeviceKeyEnvelope | null;
+  /** 작성자에게만 제공되는 조회 수 */
+  viewCount?: number;
+  /** 내가 이미 조회했는지 */
+  viewed?: boolean;
+}
+
 export interface DeviceKeySet {
   devices: Array<{
     id: string;

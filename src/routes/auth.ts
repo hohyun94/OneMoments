@@ -54,6 +54,10 @@ import {
   verifyLoginCredentials,
 } from "../services/accounts.js";
 import {
+  createAttachmentStorage,
+} from "../services/attachments.js";
+import { deleteUserMoments, listUserMomentAttachmentIds } from "../services/moments.js";
+import {
   consumeRecoveryChallenge,
   createRecoveryChallenge,
   findDeviceForRecovery,
@@ -233,7 +237,14 @@ export function createAuthRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       const body = deleteAccountBodySchema.parse(req.body);
+      // 계정 삭제로 모먼트 행이 cascade 삭제되기 전에 이미지 블롭 ID를 모아둔다.
+      const momentAttachmentIds = await listUserMomentAttachmentIds(db, auth.userId);
       await deleteAccount(db, { userId: auth.userId, password: body.password });
+      await deleteUserMoments(db, auth.userId);
+      const storage = createAttachmentStorage(config);
+      await Promise.all(
+        momentAttachmentIds.map((id) => storage.delete(id).catch(() => undefined)),
+      );
       res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions(config));
       res.status(204).end();
     }),

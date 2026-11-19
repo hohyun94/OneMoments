@@ -351,6 +351,114 @@ export const attachments = pgTable(
   ],
 );
 
+/** 24시간 스토리. id 는 클라이언트가 생성해 서명/AAD 에 사용한다. */
+export const moments = pgTable(
+  "moments",
+  {
+    id: uuid("id").primaryKey(),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    authorDeviceId: uuid("author_device_id")
+      .notNull()
+      .references(() => devices.id),
+    // 발신 기기 서명 공개키 스냅샷(기기 폐기 후에도 서명 검증 가능).
+    authorSigningPublicKey: text("author_signing_public_key").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    nonce: text("nonce").notNull(),
+    signature: text("signature").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("moments_author_idx").on(table.authorUserId),
+    index("moments_expires_idx").on(table.expiresAt),
+  ],
+);
+
+export const momentAudience = pgTable(
+  "moment_audience",
+  {
+    momentId: uuid("moment_id")
+      .notNull()
+      .references(() => moments.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.momentId, table.userId] }),
+    index("moment_audience_user_idx").on(table.userId),
+  ],
+);
+
+export const momentKeys = pgTable(
+  "moment_keys",
+  {
+    momentId: uuid("moment_id")
+      .notNull()
+      .references(() => moments.id, { onDelete: "cascade" }),
+    recipientDeviceId: uuid("recipient_device_id")
+      .notNull()
+      .references(() => devices.id),
+    ephemeralPublicKey: text("ephemeral_public_key"),
+    ratchetPublicKey: text("ratchet_public_key"),
+    previousChainLength: integer("previous_chain_length"),
+    messageNumber: integer("message_number"),
+    senderIdentityPublicKey: text("sender_identity_public_key"),
+    signedPreKeyId: text("signed_pre_key_id"),
+    oneTimePreKeyId: text("one_time_pre_key_id"),
+    wrappedKey: text("wrapped_key").notNull(),
+    wrapNonce: text("wrap_nonce").notNull(),
+    version: integer("version").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.momentId, table.recipientDeviceId] }),
+    index("moment_keys_device_idx").on(table.recipientDeviceId),
+  ],
+);
+
+export const momentViews = pgTable(
+  "moment_views",
+  {
+    momentId: uuid("moment_id")
+      .notNull()
+      .references(() => moments.id, { onDelete: "cascade" }),
+    viewerUserId: uuid("viewer_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    viewedAt: timestamp("viewed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.momentId, table.viewerUserId] }),
+    index("moment_views_viewer_idx").on(table.viewerUserId),
+  ],
+);
+
+export const momentAttachments = pgTable(
+  "moment_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    uploaderUserId: uuid("uploader_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // 업로드 시 예약한 moment id. 스토리 생성 시 momentId로 연결된다.
+    clientMomentId: uuid("client_moment_id"),
+    momentId: uuid("moment_id").references(() => moments.id, {
+      onDelete: "cascade",
+    }),
+    // 암호문 크기만 저장한다.
+    size: integer("size").notNull(),
+    lastAccessedAt: timestamp("last_accessed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("moment_attachments_uploader_idx").on(table.uploaderUserId),
+    index("moment_attachments_client_idx").on(table.clientMomentId),
+  ],
+);
+
 export const pushSubscriptions = pgTable(
   "push_subscriptions",
   {
@@ -475,4 +583,9 @@ export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type MessageRow = typeof messages.$inferSelect;
 export type MessageKeyRow = typeof messageKeys.$inferSelect;
 export type MessageReadRow = typeof messageReads.$inferSelect;
+export type MomentRow = typeof moments.$inferSelect;
+export type MomentKeyRow = typeof momentKeys.$inferSelect;
+export type MomentAudienceRow = typeof momentAudience.$inferSelect;
+export type MomentViewRow = typeof momentViews.$inferSelect;
+export type MomentAttachmentRow = typeof momentAttachments.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;

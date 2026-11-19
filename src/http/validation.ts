@@ -126,6 +126,25 @@ export const addConversationMembersBodySchema = z.object({
 
 export const messageKindSchema = z.enum(["text", "reaction", "edit"]);
 
+export const messageKeyEnvelopeSchema = z.object({
+  deviceId: z.string().uuid(),
+  ephemeralPublicKey: z.string().min(1).optional(),
+  ratchetPublicKey: z.string().min(1).optional(),
+  previousChainLength: z.number().int().min(0).optional(),
+  messageNumber: z.number().int().min(0).optional(),
+  senderIdentityPublicKey: z.string().min(1).optional(),
+  signedPreKeyId: z.string().uuid().optional(),
+  oneTimePreKeyId: z.string().uuid().optional(),
+  wrappedKey: z.string().min(1),
+  wrapNonce: z.string().min(1),
+  distributionCiphertext: z.string().min(1).optional(),
+  distributionNonce: z.string().min(1).optional(),
+  distribution: z
+    .object({ ciphertext: z.string().min(1), nonce: z.string().min(1) })
+    .optional(),
+  version: z.number().int().optional(),
+});
+
 export const sendMessageBodySchema = z.object({
   clientMessageId: z
     .string()
@@ -137,30 +156,26 @@ export const sendMessageBodySchema = z.object({
   ciphertext: z.string().min(1, "ciphertext is required"),
   nonce: z.string().min(1, "nonce is required"),
   signature: z.string().min(1, "signature is required"),
-  keys: z
-    .array(
-      z.object({
-        deviceId: z.string().uuid(),
-        ephemeralPublicKey: z.string().min(1).optional(),
-        ratchetPublicKey: z.string().min(1).optional(),
-        previousChainLength: z.number().int().min(0).optional(),
-        messageNumber: z.number().int().min(0).optional(),
-        senderIdentityPublicKey: z.string().min(1).optional(),
-        signedPreKeyId: z.string().uuid().optional(),
-        oneTimePreKeyId: z.string().uuid().optional(),
-        wrappedKey: z.string().min(1),
-        wrapNonce: z.string().min(1),
-        distributionCiphertext: z.string().min(1).optional(),
-        distributionNonce: z.string().min(1).optional(),
-        distribution: z
-          .object({ ciphertext: z.string().min(1), nonce: z.string().min(1) })
-          .optional(),
-        version: z.number().int().optional(),
-      }),
-    )
-    .max(200),
+  keys: z.array(messageKeyEnvelopeSchema).max(200),
   senderKeyId: z.string().uuid().optional(),
   senderKeyIteration: z.number().int().min(0).optional(),
+});
+
+/** 24시간 스토리. id 는 클라이언트가 생성한다. */
+export const momentBodySchema = z.object({
+  id: z.string().uuid(),
+  audienceUserIds: z.array(z.string().uuid()).min(1).max(50),
+  ciphertext: z.string().min(1),
+  nonce: z.string().min(1),
+  signature: z.string().min(1),
+  keys: z.array(messageKeyEnvelopeSchema).max(200),
+  attachmentId: z.string().uuid().optional(),
+});
+
+export type MomentBody = z.infer<typeof momentBodySchema>;
+
+export const momentIdParamsSchema = z.object({
+  momentId: z.string().uuid(),
 });
 
 export const createInviteBodySchema = z.object({

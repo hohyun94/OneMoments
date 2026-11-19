@@ -19,6 +19,7 @@ import { createConversationsRouter } from "./routes/conversations.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
 import { createPushRouter } from "./routes/push.js";
 import { createInvitesRouter } from "./routes/invites.js";
+import { createMomentsRouter } from "./routes/moments.js";
 
 export interface AppOptions {
   db: Database;
@@ -35,7 +36,7 @@ function corsMiddleware(origins: string[]): RequestHandler {
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader(
         "Access-Control-Allow-Headers",
-        "Content-Type, X-CSRF-Token, X-Attachment-Client-Message-Id",
+        "Content-Type, X-CSRF-Token, X-Attachment-Client-Message-Id, X-Moment-Id",
       );
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
       res.setHeader("Access-Control-Max-Age", "600");
@@ -119,6 +120,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/push", createPushRouter(db, config));
   app.use("/api/invites", createInvitesRouter({ db, config }));
   app.use("/api/attachments", createAttachmentsRouter(db, config));
+  app.use("/api/moments", createMomentsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));
 
   // 프로덕션: 클라이언트 빌드(dist)를 같은 서버에서 서빙한다.

@@ -14,8 +14,11 @@ import { indexDecryptedMessage } from "../lib/search.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { cn } from "./ui.tsx";
 
-async function decryptAttachmentBlob(attachment: AttachmentPayload): Promise<Blob> {
-  const response = await fetch(`/api/attachments/${attachment.id}`, {
+export async function decryptAttachmentBlob(
+  attachment: AttachmentPayload,
+  url = `/api/attachments/${attachment.id}`,
+): Promise<Blob> {
+  const response = await fetch(url, {
     credentials: "same-origin",
   });
   if (!response.ok) {

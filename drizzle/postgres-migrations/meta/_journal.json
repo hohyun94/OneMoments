@@ -155,6 +155,13 @@
       "when": 1795060761614,
       "tag": "0021_flimsy_karnak",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1795062063515,
+      "tag": "0022_glamorous_avengers",
+      "breakpoints": true
     }
   ]
 }

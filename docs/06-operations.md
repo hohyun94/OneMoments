@@ -134,3 +134,11 @@ pnpm bench:crypto
 - 백업을 복원하면 삭제 전 메시지가 되살아날 수 있다.
 - 상세: [`docs/22-auto-delete.md`](22-auto-delete.md)
 
+## 10. Moments 만료 정리
+
+- 24시간이 지난 스토리와 연결되지 않은 오래된 이미지 업로드를 삭제한다.
+- `pnpm build` 후 `pnpm moments:cleanup`을 **1시간 주기**로 실행한다(Coolify Scheduled Task 등). 조회 시 lazy 정리도 동작한다.
+- 만료 시 스토리·대상·기기 봉투·조회 기록·첨부 블롭이 함께 삭제된다.
+- 로그는 스토리/첨부 삭제 건수만 남긴다.
+- 상세: [`docs/25-moments.md`](25-moments.md)
+

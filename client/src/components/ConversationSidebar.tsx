@@ -6,6 +6,7 @@ import {
   ShieldAlert,
   ShieldCheck,
   Smartphone,
+  Sparkles,
   Users,
   X,
 } from "lucide-react";
@@ -25,6 +26,7 @@ export function ConversationSidebar({
   isAdmin,
   onSelect,
   onNewConversation,
+  onOpenMoments,
   onOpenDevices,
   onOpenAdmin,
   onLogout,
@@ -36,6 +38,7 @@ export function ConversationSidebar({
   isAdmin: boolean;
   onSelect: (conversationId: string) => void;
   onNewConversation: () => void;
+  onOpenMoments: () => void;
   onOpenDevices: () => void;
   onOpenAdmin: () => void;
   onLogout: () => void;
@@ -222,6 +225,14 @@ export function ConversationSidebar({
       </nav>
 
       <footer className="border-t border-zinc-100 p-2">
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={onOpenMoments}
+        >
+          <Sparkles className="h-4 w-4" aria-hidden />
+          Moments
+        </Button>
         {isAdmin ? (
           <Button variant="ghost" className="w-full justify-start" onClick={onOpenAdmin}>
             <ShieldAlert className="h-4 w-4" aria-hidden />

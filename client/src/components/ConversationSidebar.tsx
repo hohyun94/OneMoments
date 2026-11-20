@@ -27,6 +27,7 @@ export function ConversationSidebar({
   connection,
   isAdmin,
   onSelect,
+  onSelectMessage,
   onNewConversation,
   onOpenMoments,
   onOpenContacts,
@@ -40,6 +41,7 @@ export function ConversationSidebar({
   connection: RealtimeStatus;
   isAdmin: boolean;
   onSelect: (conversationId: string) => void;
+  onSelectMessage: (conversationId: string, messageId: string) => void;
   onNewConversation: () => void;
   onOpenMoments: () => void;
   onOpenContacts: () => void;
@@ -134,7 +136,7 @@ export function ConversationSidebar({
                   key={result.id}
                   type="button"
                   onClick={() => {
-                    onSelect(result.conversationId);
+                    onSelectMessage(result.conversationId, result.id);
                     setQuery("");
                     setResults([]);
                   }}

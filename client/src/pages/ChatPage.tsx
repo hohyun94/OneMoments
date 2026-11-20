@@ -46,6 +46,7 @@ export function ChatPage() {
         loading={conversationsQuery.isLoading}
         isAdmin={session.user.isAdmin === true}
         onSelect={(id) => navigate(`/c/${id}`)}
+        onSelectMessage={(id, messageId) => navigate(`/c/${id}?anchor=${messageId}`)}
         onBack={() => navigate("/")}
         onNewConversation={() => setDialogOpen(true)}
         onOpenMoments={() => navigate("/moments")}
@@ -77,6 +78,7 @@ function ChatShell({
   loading,
   isAdmin,
   onSelect,
+  onSelectMessage,
   onBack,
   onNewConversation,
   onOpenMoments,
@@ -93,6 +95,7 @@ function ChatShell({
   loading: boolean;
   isAdmin: boolean;
   onSelect: (id: string) => void;
+  onSelectMessage: (id: string, messageId: string) => void;
   onBack: () => void;
   onNewConversation: () => void;
   onOpenMoments: () => void;
@@ -119,6 +122,7 @@ function ChatShell({
           connection={status}
           isAdmin={isAdmin}
           onSelect={onSelect}
+          onSelectMessage={onSelectMessage}
           onNewConversation={onNewConversation}
           onOpenMoments={onOpenMoments}
           onOpenContacts={onOpenContacts}

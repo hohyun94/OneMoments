@@ -12,6 +12,7 @@ import {
 import { formatBytes, formatClock } from "../lib/format.ts";
 import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
+import { formatDuration } from "../lib/voice.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { cn } from "./ui.tsx";
@@ -48,13 +49,15 @@ function AttachmentCard({
   own: boolean;
 }) {
   const isImage = attachment.mime.toLowerCase().startsWith("image/");
+  const isAudio = attachment.mime.toLowerCase().startsWith("audio/");
+  const needsPreview = isImage || isAudio;
   const [downloading, setDownloading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(isImage);
+  const [previewLoading, setPreviewLoading] = useState(needsPreview);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isImage) return;
+    if (!needsPreview) return;
     let cancelled = false;
     let objectUrl: string | null = null;
     setPreviewLoading(true);
@@ -66,7 +69,7 @@ function AttachmentCard({
       })
       .catch((caught) => {
         if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "이미지를 열 수 없습니다.");
+          setError(caught instanceof Error ? caught.message : "미디어를 열 수 없습니다.");
         }
       })
       .finally(() => {
@@ -76,7 +79,7 @@ function AttachmentCard({
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [attachment.id, attachment.iv, attachment.key, attachment.mime, isImage]);
+  }, [attachment.id, attachment.iv, attachment.key, attachment.mime, needsPreview]);
 
   async function download(): Promise<void> {
     setDownloading(true);
@@ -130,6 +133,15 @@ function AttachmentCard({
           ) : null}
         </div>
       ) : null}
+      {isAudio ? (
+        <div className="mb-2">
+          {previewUrl ? (
+            <audio controls src={previewUrl} className="w-full min-w-56" />
+          ) : previewLoading ? (
+            <div className="flex h-10 items-center text-xs text-zinc-500">음성 복호화 중…</div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="flex items-center gap-2">
         <span
           className={cn(
@@ -149,6 +161,9 @@ function AttachmentCard({
             {attachment.name}
           </span>
           <span className={cn("text-[11px]", own ? "text-accent-contrast/80" : "text-zinc-500")}>
+            {attachment.durationSeconds !== undefined
+              ? `${formatDuration(attachment.durationSeconds)} · `
+              : ""}
             {formatBytes(attachment.size)}
           </span>
         </span>

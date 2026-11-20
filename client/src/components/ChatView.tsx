@@ -13,6 +13,7 @@ import {
   BellOff,
   Clock,
   Code2,
+  Mic,
   Pencil,
   Paperclip,
   Pin,
@@ -53,6 +54,12 @@ import {
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock, formatDayLabel } from "../lib/format.ts";
 import { applyMention, mentionQueryAtCursor } from "../lib/mentions.ts";
+import {
+  MAX_VOICE_SECONDS,
+  formatDuration,
+  pickVoiceMimeType,
+  voiceFileName,
+} from "../lib/voice.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { useRealtime } from "../realtime.tsx";
@@ -92,6 +99,8 @@ interface PendingAttachment {
   id: string;
   file: File;
   name: string;
+  /** 음성 메시지 길이(초). */
+  durationSeconds?: number;
 }
 
 /** 한 번에 첨부할 수 있는 파일 수(파일마다 별도 메시지로 전송). */
@@ -272,6 +281,16 @@ export function ChatView({
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [recordingSeconds, setRecordingSeconds] = useState<number | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recorderChunksRef = useRef<Blob[]>([]);
+  const recorderStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<number | undefined>(undefined);
+  const recordingStartedAtRef = useRef(0);
+  const voiceSupported =
+    typeof navigator !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    typeof MediaRecorder !== "undefined";
   const recoveredAt = recoveredAtFor(identity.deviceId);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -553,8 +572,22 @@ export function ChatView({
     setDeleteTarget(null);
     pendingRef.current = null;
     lastMarkedReadRef.current = null;
+    cancelRecording();
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [conversation.id]);
+
+  // 컴포넌트가 사라질 때도 마이크 스트림과 타이머를 정리한다.
+  useEffect(() => {
+    return () => {
+      const recorder = recorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        recorder.onstop = null;
+        recorder.stop();
+      }
+      recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -807,6 +840,87 @@ export function ChatView({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function startRecording(): Promise<void> {
+    if (recordingSeconds !== null) return;
+    if (!voiceSupported) {
+      setAttachmentError("이 브라우저는 음성 녹음을 지원하지 않습니다.");
+      return;
+    }
+    setAttachmentError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = pickVoiceMimeType((type) => MediaRecorder.isTypeSupported(type));
+      if (!mime) {
+        stream.getTracks().forEach((track) => track.stop());
+        setAttachmentError("지원되는 음성 녹음 형식이 없습니다.");
+        return;
+      }
+      const recorder = new MediaRecorder(stream, { mimeType: mime });
+      recorderChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recorderChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(recorderChunksRef.current, { type: mime });
+        recorderChunksRef.current = [];
+        stream.getTracks().forEach((track) => track.stop());
+        recorderStreamRef.current = null;
+        recorderRef.current = null;
+        if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+        const seconds = Math.max(
+          1,
+          Math.round((Date.now() - recordingStartedAtRef.current) / 1000),
+        );
+        setRecordingSeconds(null);
+        if (blob.size === 0) return;
+        if (blob.size > MAX_ATTACHMENT_BYTES) {
+          setAttachmentError("음성이 너무 큽니다. 5MB 이하만 보낼 수 있습니다.");
+          return;
+        }
+        const name = voiceFileName(mime);
+        const file = new File([blob], name, { type: mime, lastModified: Date.now() });
+        setAttachments((current) => [
+          ...current,
+          { id: crypto.randomUUID(), file, name, durationSeconds: seconds },
+        ]);
+      };
+      recorderRef.current = recorder;
+      recorderStreamRef.current = stream;
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
+      recorder.start();
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor((Date.now() - recordingStartedAtRef.current) / 1000);
+        setRecordingSeconds(elapsed);
+        if (elapsed >= MAX_VOICE_SECONDS) {
+          const active = recorderRef.current;
+          if (active && active.state !== "inactive") active.stop();
+        }
+      }, 500);
+    } catch {
+      setAttachmentError("마이크 권한을 허용해야 음성을 보낼 수 있습니다.");
+    }
+  }
+
+  function stopRecording(): void {
+    const recorder = recorderRef.current;
+    if (recorder && recorder.state !== "inactive") recorder.stop();
+  }
+
+  function cancelRecording(): void {
+    const recorder = recorderRef.current;
+    recorderChunksRef.current = [];
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recorderStreamRef.current = null;
+    recorderRef.current = null;
+    if (recordingTimerRef.current) window.clearInterval(recordingTimerRef.current);
+    setRecordingSeconds(null);
+  }
+
   async function handleSubmit(event?: FormEvent<HTMLFormElement>): Promise<void> {
     event?.preventDefault();
     const text = draft.trim();
@@ -869,6 +983,9 @@ export function ChatView({
             key: encrypted.key,
             iv: encrypted.iv,
             text: index === 0 ? text : "",
+            ...(item.durationSeconds !== undefined
+              ? { durationSeconds: item.durationSeconds }
+              : {}),
           }),
           kind: "text",
           targetMessageId: index === 0 ? targetMessageId : undefined,
@@ -1396,6 +1513,26 @@ export function ChatView({
           </div>
         ) : null}
 
+        {recordingSeconds !== null ? (
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-red-700">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" aria-hidden />
+              녹음 중 {formatDuration(recordingSeconds)}
+            </span>
+            <span className="text-[11px] text-red-600">
+              최대 {formatDuration(MAX_VOICE_SECONDS)}
+            </span>
+            <span className="ml-auto flex items-center gap-1">
+              <Button type="button" size="sm" variant="outline" onClick={cancelRecording}>
+                취소
+              </Button>
+              <Button type="button" size="sm" onClick={stopRecording}>
+                완료
+              </Button>
+            </span>
+          </div>
+        ) : null}
+
         {attachments.length > 0 || attachmentError ? (
           <div className="mb-2 space-y-1">
             {attachments.map((item, index) => (
@@ -1479,6 +1616,19 @@ export function ChatView({
                 aria-label="파일 선택"
                 onChange={handleAttachmentChange}
               />
+              {voiceSupported ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => void startRecording()}
+                  disabled={sending || editing !== null || recordingSeconds !== null}
+                  aria-label="음성 녹음"
+                  title="음성 메시지 녹음 (최대 5분)"
+                >
+                  <Mic className="h-4 w-4" />
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="ghost"

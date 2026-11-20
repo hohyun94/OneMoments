@@ -166,6 +166,7 @@ function ChatShell({
             conversation={selected}
             identity={identity}
             currentUserId={currentUserId}
+            currentUsername={username}
             onBack={onBack}
             onLeft={onBack}
           />

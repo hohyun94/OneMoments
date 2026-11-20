@@ -30,6 +30,8 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -49,6 +51,7 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock, formatDayLabel } from "../lib/format.ts";
+import { applyMention, mentionQueryAtCursor } from "../lib/mentions.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { useRealtime } from "../realtime.tsx";
@@ -109,12 +112,14 @@ export function ChatView({
   conversation,
   identity,
   currentUserId,
+  currentUsername,
   onBack,
   onLeft,
 }: {
   conversation: ConversationSummary;
   identity: StoredIdentity;
   currentUserId: string;
+  currentUsername: string;
   onBack: () => void;
   onLeft: () => void;
 }) {
@@ -254,6 +259,8 @@ export function ChatView({
   });
 
   const [draft, setDraft] = useState("");
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const draftRef = useRef<HTMLTextAreaElement>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [attachmentName, setAttachmentName] = useState("");
   const recoveredAt = recoveredAtFor(identity.deviceId);
@@ -508,6 +515,19 @@ export function ChatView({
       ),
     [conversation.members],
   );
+  /** 멘션 강조·자동완성에 쓰는 참여자 username 목록(나 포함). */
+  const mentionNames = useMemo(
+    () => [...new Set([...memberNames.values(), currentUsername])],
+    [memberNames, currentUsername],
+  );
+  const mentionOptions = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const query = mentionQuery.toLowerCase();
+    return mentionNames
+      .filter((name) => name.toLowerCase() !== currentUsername.toLowerCase())
+      .filter((name) => name.toLowerCase().startsWith(query))
+      .slice(0, 6);
+  }, [mentionQuery, mentionNames, currentUsername]);
   const typingNames = typing
     .map((userId) => memberNames.get(userId))
     .filter((name): name is string => Boolean(name));
@@ -706,31 +726,51 @@ export function ChatView({
     }
   }
 
-  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
-    const selected = event.target.files?.[0] ?? null;
+  /** 파일 선택·드래그&드롭·붙여넣기가 모두 이 경로로 들어온다. */
+  function acceptAttachmentFile(file: File): boolean {
     setAttachmentError(null);
-    if (!selected) {
-      setAttachment(null);
-      setAttachmentName("");
-      return;
-    }
-    if (selected.size === 0) {
+    if (file.size === 0) {
       setAttachment(null);
       setAttachmentName("");
       setAttachmentError("빈 파일은 첨부할 수 없습니다.");
-      event.target.value = "";
-      return;
+      return false;
     }
-    if (selected.size > MAX_ATTACHMENT_BYTES) {
+    if (file.size > MAX_ATTACHMENT_BYTES) {
       setAttachment(null);
       setAttachmentName("");
       setAttachmentError("파일은 5MB 이하만 첨부할 수 있습니다.");
-      event.target.value = "";
+      return false;
+    }
+    setAttachment(file);
+    // 브라우저가 원본 이름을 주지 못하면 날짜 기반 이름으로 채우고, 사용자가 수정할 수 있다.
+    setAttachmentName(suggestedAttachmentName(file));
+    return true;
+  }
+
+  function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
+    const selected = event.target.files?.[0] ?? null;
+    if (!selected) {
+      setAttachment(null);
+      setAttachmentName("");
+      setAttachmentError(null);
       return;
     }
-    setAttachment(selected);
-    // 브라우저가 원본 이름을 주지 못하면 날짜 기반 이름으로 채우고, 사용자가 수정할 수 있다.
-    setAttachmentName(suggestedAttachmentName(selected));
+    if (!acceptAttachmentFile(selected)) event.target.value = "";
+  }
+
+  function handleAttachmentDrop(event: DragEvent<HTMLDivElement>): void {
+    if (sending || editing) return;
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    event.preventDefault();
+    acceptAttachmentFile(file);
+  }
+
+  function handleAttachmentPaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
+    const file = Array.from(event.clipboardData?.files ?? [])[0];
+    if (!file) return;
+    event.preventDefault();
+    acceptAttachmentFile(file);
   }
 
   function clearAttachment(): void {
@@ -850,8 +890,10 @@ export function ChatView({
     void handleSubmit();
   }
 
-  function handleDraftChange(value: string) {
+  function handleDraftChange(value: string, cursor?: number | null) {
     setDraft(value);
+    const at = mentionQueryAtCursor(value, cursor ?? value.length);
+    setMentionQuery(at ? at.query : null);
     if (!value.trim()) return;
     const now = Date.now();
     if (now - lastTypingAtRef.current > 2_000) {
@@ -862,6 +904,18 @@ export function ChatView({
     typingTimerRef.current = window.setTimeout(() => {
       sendTyping(conversation.id, "stop");
     }, 2_500);
+  }
+
+  function insertMention(username: string): void {
+    const textarea = draftRef.current;
+    const cursor = textarea?.selectionStart ?? draft.length;
+    const next = applyMention(draft, cursor, username);
+    setDraft(next.text);
+    setMentionQuery(null);
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(next.cursor, next.cursor);
+    });
   }
 
   const dayGroups: Array<{ day: string; items: MessageView[] }> = [];
@@ -1046,7 +1100,14 @@ export function ChatView({
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto px-3 py-4 md:px-6" aria-live="polite">
+      <div
+        className="flex-1 overflow-y-auto px-3 py-4 md:px-6"
+        aria-live="polite"
+        onDragOver={(event) => {
+          if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
+        }}
+        onDrop={handleAttachmentDrop}
+      >
         {messagesQuery.hasNextPage ? (
           <div className="mb-3 flex justify-center">
             <Button
@@ -1173,6 +1234,8 @@ export function ChatView({
                             pinned: !target.pinned,
                           })
                         }
+                        mentionNames={mentionNames}
+                        mentionUser={currentUsername}
                         onReply={(target, text) => {
                           setEditing(null);
                           setReplyTarget({ message: target, text });
@@ -1326,48 +1389,68 @@ export function ChatView({
               : "차단된 대화입니다. 메시지를 보낼 수 없습니다."}
           </div>
         ) : (
-          <div className="flex items-end gap-2">
-            <input
-              ref={fileInputRef}
-              type="file"
-              className="hidden"
-              aria-label="파일 선택"
-              onChange={handleAttachmentChange}
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={sending || editing !== null}
-              aria-label="파일 첨부"
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <Textarea
-              id="message-input"
-              rows={1}
-              className="max-h-40 min-h-10"
-              placeholder={
-                editing ? "수정할 메시지" : replyTarget ? "답장 입력" : "메시지 입력"
-              }
-              value={draft}
-              onChange={(event) => handleDraftChange(event.target.value)}
-              onKeyDown={handleKeyDown}
-              aria-label="메시지 입력"
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={
-                sending ||
-                (editing ? !draft.trim() : !draft.trim() && !attachment)
-              }
-              aria-label={editing ? "수정 저장" : "전송"}
-            >
-              {sending ? <Spinner /> : <Send className="h-4 w-4" />}
-            </Button>
-          </div>
+          <>
+            {mentionOptions.length > 0 ? (
+              <div className="mb-2 flex flex-wrap gap-1 rounded-lg border border-zinc-200 bg-white p-1.5 shadow-sm">
+                {mentionOptions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => insertMention(name)}
+                    className="rounded-md px-2 py-1 text-xs font-medium text-accent-700 hover:bg-accent-50"
+                  >
+                    @{name}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex items-end gap-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                className="hidden"
+                aria-label="파일 선택"
+                onChange={handleAttachmentChange}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={sending || editing !== null}
+                aria-label="파일 첨부"
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+              <Textarea
+                ref={draftRef}
+                id="message-input"
+                rows={1}
+                className="max-h-40 min-h-10"
+                placeholder={
+                  editing ? "수정할 메시지" : replyTarget ? "답장 입력" : "메시지 입력"
+                }
+                value={draft}
+                onChange={(event) =>
+                  handleDraftChange(event.target.value, event.target.selectionStart)
+                }
+                onPaste={handleAttachmentPaste}
+                onKeyDown={handleKeyDown}
+                aria-label="메시지 입력"
+              />
+              <Button
+                type="submit"
+                size="icon"
+                disabled={
+                  sending ||
+                  (editing ? !draft.trim() : !draft.trim() && !attachment)
+                }
+                aria-label={editing ? "수정 저장" : "전송"}
+              >
+                {sending ? <Spinner /> : <Send className="h-4 w-4" />}
+              </Button>
+            </div>
+          </>
         )}
         <p className="mt-1 text-[11px] text-zinc-400">
           Enter 전송 · Shift+Enter 줄바꿈

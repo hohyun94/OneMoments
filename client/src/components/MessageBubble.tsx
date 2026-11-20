@@ -1,5 +1,5 @@
 import { Download, FileText, Pencil, Pin, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import {
   DecryptionError,
@@ -10,6 +10,7 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock } from "../lib/format.ts";
+import { mentionsUser, splitMentions } from "../lib/mentions.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { cn } from "./ui.tsx";
@@ -275,6 +276,8 @@ export function MessageBubble({
   onDelete,
   pinned = false,
   onTogglePin,
+  mentionNames = [],
+  mentionUser,
 }: {
   message: MessageView;
   identity: StoredIdentity;
@@ -293,11 +296,20 @@ export function MessageBubble({
   onDelete?: (message: MessageView) => void;
   pinned?: boolean;
   onTogglePin?: (message: MessageView) => void;
+  /** 참여자 username 목록(멘션 강조용) */
+  mentionNames?: string[];
+  /** 현재 사용자 username. 이 값이 멘션되면 '나를 멘션' 배지를 표시한다. */
+  mentionUser?: string;
 }) {
   const [result, setResult] = useState<Result | null>(() => cache.get(message.id) ?? null);
   const [reactionOpen, setReactionOpen] = useState(false);
   const [replyText, setReplyText] = useState<string | null>(null);
   const source = renderMessage ?? message;
+  const mentionsMe =
+    Boolean(mentionUser) &&
+    result?.status === "ok" &&
+    Boolean(result.text) &&
+    mentionsUser(result.text, mentionUser ?? "");
 
   useEffect(() => {
     let cancelled = false;
@@ -368,14 +380,35 @@ export function MessageBubble({
         ) : null}
 
         {!own ? (
-          <p className="mb-1 text-[11px] font-medium text-zinc-500">{senderName}</p>
+          <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
+            {senderName}
+            {mentionsMe ? (
+              <span className="rounded bg-accent-100 px-1 text-[10px] font-medium text-accent-700">
+                나를 멘션
+              </span>
+            ) : null}
+          </p>
         ) : null}
 
         {result?.status === "ok" ? (
           <div className="space-y-1.5">
             {result.text ? (
               <p className="whitespace-pre-wrap break-words leading-relaxed">
-                {result.text}
+                {splitMentions(result.text, mentionNames).map((segment, index) =>
+                  segment.mention ? (
+                    <span
+                      key={index}
+                      className={cn(
+                        "rounded px-0.5 font-medium",
+                        own ? "bg-white/25" : "bg-accent-100 text-accent-800",
+                      )}
+                    >
+                      {segment.text}
+                    </span>
+                  ) : (
+                    <Fragment key={index}>{segment.text}</Fragment>
+                  ),
+                )}
               </p>
             ) : null}
             {result.attachment ? (

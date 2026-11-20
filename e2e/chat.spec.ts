@@ -659,12 +659,12 @@ test("이모지 반응 개수가 읽기 좋은 크기로 표시된다", async ({
     const chip = alice.getByRole("button", { name: "👍 1", exact: true });
     await expect(chip).toBeVisible();
 
-    // 개수 글자는 12px 이상이어야 한다(이전 11px, 2026-11 조정).
-    const countSize = await chip
-      .locator("span")
-      .nth(1)
-      .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
-    expect(countSize).toBeGreaterThanOrEqual(12);
+    // 이모지는 18px 이상, 개수 글자는 12px 이상이어야 한다(2026-11 조정).
+    const sizes = await chip.locator("span").evaluateAll((nodes) =>
+      nodes.map((node) => Number.parseFloat(getComputedStyle(node).fontSize)),
+    );
+    expect(sizes[0]).toBeGreaterThanOrEqual(18);
+    expect(sizes[1]).toBeGreaterThanOrEqual(12);
 
     const bobList = bob.getByRole("navigation", { name: "대화 목록" });
     const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });

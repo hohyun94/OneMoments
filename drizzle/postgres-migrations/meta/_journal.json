@@ -169,6 +169,13 @@
       "when": 1795064543122,
       "tag": "0023_curvy_marvex",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795141362807,
+      "tag": "0024_curved_green_goblin",
+      "breakpoints": true
     }
   ]
 }

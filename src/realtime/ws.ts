@@ -135,6 +135,17 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
       }
       return;
     }
+    if (event.type === "message.hidden") {
+      // 나에게만 삭제: 해당 사용자의 연결된 기기에만 로컬 제거를 알린다.
+      for (const connection of hub.connectionsForUsers([event.userId])) {
+        hub.send(connection.socket, {
+          type: "message.deleted",
+          conversationId: event.conversationId,
+          messageIds: event.messageIds,
+        });
+      }
+      return;
+    }
     // 구독하지 않은 참여자 연결에도 전달해 대화 목록이 즉시 갱신되게 한다.
     for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
       // sender-key 메시지는 발신 기기에 봉투가 없으므로 REST 응답으로만 표시한다.

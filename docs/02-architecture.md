@@ -99,6 +99,7 @@
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, kind('text'\|'reaction'\|'edit'), target_message_id, sender_key_id, sender_key_iteration, created_at | 암호문 1건. kind/target 은 반응·수정·답장 메타데이터, 내용은 암호문 안 |
 | `message_keys` | message_id, recipient_device_id, wrapped_key, wrap_nonce, ephemeral_public_key, ratchet_public_key, previous_chain_length, message_number, distribution_ciphertext, distribution_nonce, version (PK) | 기기별 봉투(v1/v2), sender-key 최초 배포 블롭 |
 | `message_reads` | message_id, user_id, read_at (PK: message_id+user_id) | 메시지별 읽은 시각. 참여자 전원 읽은 뒤 자동 삭제 계산용 |
+| `message_deletions` | message_id, user_id, created_at (PK: message_id+user_id) | 나에게만 삭제한 메시지. 이력·읽지 않은 수·마지막 메시지 계산에서 제외(원본은 유지) |
 | `key_backups` | id, user_id, device_id(unique), blob, updated_at | 복구 암호로 암호화된 기기 키 백업(서버는 불투명) |
 | `recovery_challenges` | id, device_id, nonce, created_at, expires_at | 기기 복구용 일회용 챌린지 |
 | `attachments` | id, conversation_id, uploader_user_id, size, created_at | 암호화된 첨부 블롭 메타데이터(파일명·MIME 없음) |
@@ -228,7 +229,7 @@
 |---|---|---|
 | GET | `/api/conversations/:id/messages?before=&limit=` | 최신순, 내 기기 봉투만 포함 |
 | POST | `/api/conversations/:id/messages` | 아래 본문. `clientMessageId` 멱등 |
-| DELETE | `/api/conversations/:id/messages/:messageId` | 발신자만. 봉투·첨부·반응/수정 이벤트 삭제(답장은 target만 해제) |
+| DELETE | `/api/conversations/:id/messages/:messageId?scope=all\|me` | `all`은 발신자만 모두에게서 삭제(봉투·첨부·반응/수정 cascade). `me`는 참여자 누구나 내 화면/내 기기에서만 숨김 |
 
 ```jsonc
 {

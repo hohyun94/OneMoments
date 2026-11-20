@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, isNotNull, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull, isNull, ne, notExists, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
@@ -7,6 +7,7 @@ import {
   conversations,
   deviceOneTimePreKeys,
   devices,
+  messageDeletions,
   messageReads,
   messages,
   userBlocks,
@@ -311,6 +312,18 @@ async function unreadCountFor(
     eq(messages.conversationId, input.conversationId),
     ne(messages.senderUserId, input.userId),
     eq(messages.kind, "text"),
+    // 나에게만 삭제한 메시지는 읽지 않은 수에서 제외한다.
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(messageDeletions)
+        .where(
+          and(
+            eq(messageDeletions.messageId, messages.id),
+            eq(messageDeletions.userId, input.userId),
+          ),
+        ),
+    ),
   ];
   let hasCursor = false;
   if (read) {
@@ -471,6 +484,7 @@ export async function listConversationReadReceipts(
 async function lastMessageAt(
   db: Database,
   conversationId: string,
+  userId: string,
 ): Promise<Date | string | null> {
   const [row] = await db
     .select({ lastMessageAt: sql<Date | string | null>`max(${messages.createdAt})` })
@@ -479,6 +493,17 @@ async function lastMessageAt(
       and(
         eq(messages.conversationId, conversationId),
         eq(messages.kind, "text"),
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(messageDeletions)
+            .where(
+              and(
+                eq(messageDeletions.messageId, messages.id),
+                eq(messageDeletions.userId, userId),
+              ),
+            ),
+        ),
       ),
     );
   return row?.lastMessageAt ?? null;
@@ -553,7 +578,7 @@ export async function getConversationSummary(
       userId: context.participant.userId,
       joinedAt: context.participant.joinedAt,
     }),
-    await lastMessageAt(db, context.conversation.id),
+    await lastMessageAt(db, context.conversation.id, context.participant.userId),
     relation.favorite,
     relation.blocked,
   );
@@ -605,6 +630,17 @@ export async function listConversations(
         and(
           inArray(messages.conversationId, conversationIds),
           eq(messages.kind, "text"),
+          notExists(
+            db
+              .select({ one: sql`1` })
+              .from(messageDeletions)
+              .where(
+                and(
+                  eq(messageDeletions.messageId, messages.id),
+                  eq(messageDeletions.userId, userId),
+                ),
+              ),
+          ),
         ),
       )
       .groupBy(messages.conversationId),

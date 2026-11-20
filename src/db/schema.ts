@@ -261,6 +261,23 @@ export const messages = pgTable(
   ],
 );
 
+export const messageDeletions = pgTable(
+  "message_deletions",
+  {
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.userId] }),
+    index("message_deletions_user_idx").on(table.userId),
+  ],
+);
+
 export const messageKeys = pgTable(
   "message_keys",
   {

@@ -460,16 +460,15 @@ export function MessageBubble({
               <Pencil className="h-3.5 w-3.5" />
             </button>
           ) : null}
-          {own ? (
-            <button
-              type="button"
-              onClick={() => onDelete?.(message)}
-              aria-label="삭제"
-              className="rounded-md p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          ) : null}
+          <button
+            type="button"
+            onClick={() => onDelete?.(message)}
+            aria-label={own ? "전송 취소 또는 삭제" : "나에게만 삭제"}
+            title={own ? "전송 취소 또는 삭제" : "나에게만 삭제"}
+            className="rounded-md p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
           {reactionOpen ? (
             <span className="flex items-center gap-0.5 rounded-full border border-zinc-200 bg-white px-1 py-0.5 shadow-sm">
               {reactionPicker.map((emoji) => (

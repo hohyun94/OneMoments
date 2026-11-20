@@ -11,6 +11,7 @@ import {
   conversationIdParamsSchema,
   createConversationBodySchema,
   createInviteBodySchema,
+  deleteMessageQuerySchema,
   listMessagesQuerySchema,
   markReadBodySchema,
   messageIdParamsSchema,
@@ -38,7 +39,7 @@ import {
   setConversationMuted,
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
-import { listMessages } from "../services/messages.js";
+import { hideMessageForUser, listMessages } from "../services/messages.js";
 import {
   createAttachment,
   createAttachmentStorage,
@@ -401,7 +402,25 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       const { conversationId, messageId } = messageIdParamsSchema.parse(req.params);
+      const query = deleteMessageQuerySchema.parse(req.query);
       await requireParticipant(db, { conversationId, userId: auth.userId });
+
+      if (query.scope === "me") {
+        await hideMessageForUser(db, {
+          conversationId,
+          messageId,
+          userId: auth.userId,
+        });
+        // 같은 사용자의 다른 기기에만 로컬 제거를 알린다.
+        bus.publish({
+          type: "message.hidden",
+          conversationId,
+          messageIds: [messageId],
+          userId: auth.userId,
+        });
+        res.json({ deletedMessageIds: [messageId], scope: "me" });
+        return;
+      }
 
       const [message] = await db
         .select({ senderUserId: messages.senderUserId })
@@ -433,7 +452,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
           participantUserIds,
         });
       }
-      res.json({ deletedMessageIds: result.deletedMessageIds });
+      res.json({ deletedMessageIds: result.deletedMessageIds, scope: "all" });
     }),
   );
 

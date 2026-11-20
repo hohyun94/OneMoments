@@ -1,10 +1,11 @@
-import { and, desc, eq, gte, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNotNull, isNull, lt, notExists, or, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
   attachments,
   conversationParticipants,
   deviceOneTimePreKeys,
+  messageDeletions,
   messageKeys,
   messages,
   type MessageKeyRow,
@@ -288,6 +289,18 @@ export async function listMessages(
           isNotNull(messageKeys.messageId),
           and(isNotNull(messages.senderKeyId), gte(messages.createdAt, joinedAt)),
         ),
+        // 나에게만 삭제한 메시지는 이력에서 제외한다(다른 참여자에게는 유지).
+        notExists(
+          db
+            .select({ one: sql`1` })
+            .from(messageDeletions)
+            .where(
+              and(
+                eq(messageDeletions.messageId, messages.id),
+                eq(messageDeletions.userId, input.viewerUserId),
+              ),
+            ),
+        ),
         cursor
           ? or(
               lt(messages.createdAt, cursor.createdAt),
@@ -312,6 +325,33 @@ export async function listMessageKeys(
   messageId: string,
 ): Promise<MessageKeyRow[]> {
   return db.select().from(messageKeys).where(eq(messageKeys.messageId, messageId));
+}
+
+/**
+ * 나에게만 메시지를 숨긴다. 메시지·봉투·첨부는 삭제하지 않고,
+ * 해당 사용자의 이력/읽지 않은 수/마지막 메시지 계산에서만 제외한다.
+ */
+export async function hideMessageForUser(
+  db: Database,
+  input: { conversationId: string; messageId: string; userId: string },
+): Promise<void> {
+  const [message] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.id, input.messageId),
+        eq(messages.conversationId, input.conversationId),
+      ),
+    )
+    .limit(1);
+  if (!message) {
+    throw AppError.notFound("MESSAGE_NOT_FOUND", "Message not found");
+  }
+  await db
+    .insert(messageDeletions)
+    .values({ messageId: input.messageId, userId: input.userId })
+    .onConflictDoNothing();
 }
 
 export async function getMessageViewForDevice(

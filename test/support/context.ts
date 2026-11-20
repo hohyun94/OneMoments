@@ -96,6 +96,6 @@ export async function createTestContext(
 
 export async function resetDatabase(db: Database): Promise<void> {
   await db.execute(
-    sql`truncate table user_blocks, user_favorites, moment_views, moment_keys, moment_audience, moment_attachments, moments, message_reads, message_keys, messages, conversation_participants, conversations, sessions, devices, users restart identity cascade`,
+    sql`truncate table message_deletions, user_blocks, user_favorites, moment_views, moment_keys, moment_audience, moment_attachments, moments, message_reads, message_keys, messages, conversation_participants, conversations, sessions, devices, users restart identity cascade`,
   );
 }

@@ -33,12 +33,15 @@
 - 클라이언트는 대상별 **최신 edit 이벤트**의 평문을 표시하고 원문 위에 "수정됨"을 표시한다.
 - 원문 암호문은 남지만 화면에는 최신 수정본만 보인다(감사/복구 목적).
 
-### 삭제(모두에게)
-- `DELETE /api/conversations/:conversationId/messages/:messageId` — **발신자만**
-- 다음을 함께 삭제한다: 메시지 행, 기기 봉투(`message_keys`), 첨부 행·블롭, 대상에 달린 반응/수정 이벤트
-- 답장은 삭제하지 않고 `target_message_id`만 `NULL`로 만든다.
-- 삭제 전에 읽음 커서를 남은 메시지로 보정한다(자동 삭제와 동일 로직 재사용).
-- WS `message.deleted`로 즉시 알리고, 클라이언트는 메시지 캐시·복호화 캐시·검색 인덱스에서 제거한다.
+### 삭제: 모두에게서 전송 취소 / 나에게만 삭제
+- `DELETE /api/conversations/:conversationId/messages/:messageId?scope=all|me`
+- `scope=all`(기본값) — **발신자만**. 메시지 행, 기기 봉투(`message_keys`), 첨부 행·블롭, 대상에 달린 반응/수정 이벤트를 함께 삭제한다. 답장은 삭제하지 않고 `target_message_id`만 `NULL`로 만든다.
+- `scope=me` — **참여자 누구나**. `message_deletions(message_id, user_id)` 행만 추가하고 메시지·봉투·첨부는 유지한다.
+  - 해당 사용자의 이력 조회·읽지 않은 수·마지막 메시지 시각에서 제외한다.
+  - 같은 사용자의 다른 기기에는 WS `message.hidden`(클라이언트에는 `message.deleted`로 전달)으로 즉시 알린다.
+  - 상대방 화면에서는 그대로 보인다.
+- `scope=all` 삭제 전에 읽음 커서를 남은 메시지로 보정한다(자동 삭제와 동일 로직 재사용).
+- 클라이언트는 메시지 캐시·복호화 캐시·검색 인덱스에서 제거한다.
 
 ## 3. 클라이언트 검색
 
@@ -53,15 +56,15 @@
 | 종류 | 변경 |
 |---|---|
 | POST | `/api/conversations/:id/messages` body에 `kind?`, `targetMessageId?` 추가 |
-| DELETE | `/api/conversations/:id/messages/:messageId` (발신자, CSRF) |
+| DELETE | `/api/conversations/:id/messages/:messageId?scope=all\|me` (`all`은 발신자, CSRF) |
 | WS client | `message.send`에 `kind?`, `targetMessageId?` |
 | WS server | `message.deleted { conversationId, messageIds[] }` 추가 |
-| bus | `message.created` / `message.deleted` 이벤트 union (Redis 직렬화 포함) |
+| bus | `message.created` / `message.deleted` / `message.hidden` 이벤트 union (Redis 직렬화 포함) |
 
 ## 5. 검증
 
-- 서버 `test/api-conversation-ux.test.ts`: 반응·답장·수정 메타데이터, 대상/소유권 검증, unread 제외, 삭제 권한·cascade·답장 유지
-- `test/bus.test.ts`: `message.deleted` 직렬화 왕복
+- 서버 `test/api-conversation-ux.test.ts`: 반응·답장·수정 메타데이터, 대상/소유권 검증, unread 제외, `scope=all` 삭제 권한·cascade·답장 유지, `scope=me` 사용자별 숨김·unread/lastMessage 제외·비참여자 거절
+- `test/bus.test.ts`: `message.deleted` / `message.hidden` 직렬화 왕복
 - 클라이언트 `client/src/lib/search.test.ts`: 부분 일치·대화 범위·정렬·삭제 반영
 - 클라이언트: 타입 체크·빌드, 기존 읽음/자동삭제 테스트 회귀
 - E2E는 환경에 Chrome이 없어 미실행
@@ -74,5 +77,6 @@
 - 로그아웃/자동 잠금 시 인덱스를 지우지만, 브라우저가 비정상 종료되면 로컬 저장소에 남을 수 있다(브라우저 저장소 보호에 의존).
 - 검색 결과는 대화로 이동만 하고 특정 메시지로 스크롤하지 않는다(후속 개선).
 - 삭제는 복구할 수 없고, 이미 내려받은 첨부·화면 캡처는 회수할 수 없다.
+- “나에게만 삭제”는 메타데이터로 숨기는 방식이라 원본·첨부가 서버에 남는다. 첨부 URL을 직접 아는 경우 다운로드 자체를 막지는 않는다.
 - 자동 삭제는 대상 메시지 삭제 시 반응/수정 이벤트를 함께 정리하지만, 답장은 유지한다.
 - 다중 인스턴스 **롤링 배포** 중 이전 인스턴스는 `message.deleted` 이벤트를 해석하지 못할 수 있으므로 함께 재시작한다.

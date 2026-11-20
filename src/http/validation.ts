@@ -243,6 +243,11 @@ export const messageIdParamsSchema = z.object({
   messageId: z.string().uuid(),
 });
 
+/** 나에게만 삭제(me) 또는 모두에게서 삭제(all). 기본값은 기존 동작(all). */
+export const deleteMessageQuerySchema = z.object({
+  scope: z.enum(["me", "all"]).default("all"),
+});
+
 /** 대화별 자동 삭제(읽은 뒤 N초). null 이면 끔. 1시간~30일. */
 export const updateAutoDeleteBodySchema = z.object({
   seconds: z.number().int().min(3600).max(30 * 24 * 60 * 60).nullable(),

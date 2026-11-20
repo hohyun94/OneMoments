@@ -13,6 +13,7 @@ import {
   deviceOneTimePreKeys,
   devices,
   loginProfiles,
+  messageDeletions,
   pushSubscriptions,
   sessions,
   userBlocks,
@@ -329,6 +330,10 @@ export async function deleteAccount(
           eq(userFavorites.favoriteUserId, input.userId),
         ),
       );
+    // 나에게만 삭제 메타데이터도 계정 익명화 시 정리한다.
+    await tx
+      .delete(messageDeletions)
+      .where(eq(messageDeletions.userId, input.userId));
     await tx
       .update(devices)
       .set({ revokedAt: new Date() })

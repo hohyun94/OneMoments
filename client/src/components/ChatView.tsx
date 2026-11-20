@@ -153,9 +153,9 @@ export function ChatView({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (messageId: string) =>
-      api<{ deletedMessageIds: string[] }>(
-        `/api/conversations/${conversation.id}/messages/${messageId}`,
+    mutationFn: (input: { messageId: string; scope: "me" | "all" }) =>
+      api<{ deletedMessageIds: string[]; scope: "me" | "all" }>(
+        `/api/conversations/${conversation.id}/messages/${input.messageId}?scope=${input.scope}`,
         { method: "DELETE" },
       ),
     onSuccess: (response) => {
@@ -1167,23 +1167,40 @@ export function ChatView({
         title="메시지 삭제"
       >
         <p className="text-sm leading-relaxed text-zinc-600">
-          이 메시지를 대화 참여자 모두에게서 삭제합니다. 반응과 수정 기록, 첨부 파일도 함께
-          삭제되며 복구할 수 없습니다.
+          {deleteTarget?.senderUserId === currentUserId
+            ? "모두에게서 전송을 취소하면 대화 참여자 전원의 화면에서 사라지고, 반응·수정 기록·첨부 파일도 함께 삭제됩니다. 나에게만 삭제하면 내 화면과 내 다른 기기에서만 숨겨집니다."
+            : "나에게만 삭제하면 내 화면과 내 다른 기기에서만 이 메시지가 숨겨집니다. 상대방의 화면에서는 그대로 유지됩니다."}
         </p>
-        <div className="mt-4 flex justify-end gap-2">
+        <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={() => setDeleteTarget(null)}>
             취소
           </Button>
           <Button
-            variant="destructive"
+            variant="ghost"
             disabled={deleteMutation.isPending}
             onClick={() => {
-              if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+              if (deleteTarget) {
+                deleteMutation.mutate({ messageId: deleteTarget.id, scope: "me" });
+              }
             }}
           >
-            {deleteMutation.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />}
-            삭제
+            {deleteMutation.isPending ? <Spinner /> : null}
+            나에게만 삭제
           </Button>
+          {deleteTarget?.senderUserId === currentUserId ? (
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (deleteTarget) {
+                  deleteMutation.mutate({ messageId: deleteTarget.id, scope: "all" });
+                }
+              }}
+            >
+              {deleteMutation.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />}
+              모두에게서 전송 취소
+            </Button>
+          ) : null}
         </div>
       </Dialog>
 

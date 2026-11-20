@@ -19,7 +19,15 @@ export interface MessageDeletedEvent {
   participantUserIds: string[];
 }
 
-export type RealtimeEvent = MessageEvent | MessageDeletedEvent;
+/** 한 사용자에게서만 메시지를 숨겼을 때 그 사용자의 다른 기기에 알린다. */
+export interface MessageHiddenEvent {
+  type: "message.hidden";
+  conversationId: string;
+  messageIds: string[];
+  userId: string;
+}
+
+export type RealtimeEvent = MessageEvent | MessageDeletedEvent | MessageHiddenEvent;
 
 export type MessageListener = (event: RealtimeEvent) => void;
 
@@ -72,6 +80,12 @@ export type SerializedRealtimeEvent =
       conversationId: string;
       messageIds: string[];
       participantUserIds: string[];
+    }
+  | {
+      type: "message.hidden";
+      conversationId: string;
+      messageIds: string[];
+      userId: string;
     };
 
 export function serializeMessageEvent(event: RealtimeEvent): SerializedRealtimeEvent {
@@ -81,6 +95,14 @@ export function serializeMessageEvent(event: RealtimeEvent): SerializedRealtimeE
       conversationId: event.conversationId,
       messageIds: event.messageIds,
       participantUserIds: event.participantUserIds,
+    };
+  }
+  if (event.type === "message.hidden") {
+    return {
+      type: "message.hidden",
+      conversationId: event.conversationId,
+      messageIds: event.messageIds,
+      userId: event.userId,
     };
   }
   return {
@@ -102,6 +124,14 @@ export function deserializeMessageEvent(data: SerializedRealtimeEvent): Realtime
       conversationId: data.conversationId,
       messageIds: data.messageIds,
       participantUserIds: data.participantUserIds,
+    };
+  }
+  if (data.type === "message.hidden") {
+    return {
+      type: "message.hidden",
+      conversationId: data.conversationId,
+      messageIds: data.messageIds,
+      userId: data.userId,
     };
   }
   return {

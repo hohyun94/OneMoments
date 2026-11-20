@@ -10,6 +10,7 @@ import {
   serializeMessageEvent,
   type MessageDeletedEvent,
   type MessageEvent,
+  type MessageHiddenEvent,
   type RealtimeEvent,
 } from "../src/realtime/bus.js";
 
@@ -65,6 +66,17 @@ describe("message bus", () => {
       conversationId: randomUUID(),
       messageIds: [randomUUID(), randomUUID()],
       participantUserIds: ["user-a", "user-b"],
+    };
+    const restored = deserializeMessageEvent(serializeMessageEvent(original));
+    expect(restored).toEqual(original);
+  });
+
+  it("round-trips hidden events", () => {
+    const original: MessageHiddenEvent = {
+      type: "message.hidden",
+      conversationId: randomUUID(),
+      messageIds: [randomUUID()],
+      userId: randomUUID(),
     };
     const restored = deserializeMessageEvent(serializeMessageEvent(original));
     expect(restored).toEqual(original);

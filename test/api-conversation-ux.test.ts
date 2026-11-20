@@ -295,4 +295,70 @@ describe("conversation UX message kinds", () => {
     expect(history[0]?.kind).toBe("text");
     expect(history[0]?.targetMessageId).toBeNull();
   });
+
+  it("hides a message only for the requesting user", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createDirect(alice, bob);
+
+    const sent = await sendMessage(alice, conversationId, "m1", "secret");
+    const messageId = sent.body.message.id as string;
+
+    const hidden = await bob.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${messageId}?scope=me`,
+    );
+    expect(hidden.status).toBe(200);
+    expect(hidden.body.scope).toBe("me");
+
+    const bobHistory = await listMessages(bob.client, conversationId);
+    expect(bobHistory).toHaveLength(0);
+    const aliceHistory = await listMessages(alice.client, conversationId);
+    expect(aliceHistory).toHaveLength(1);
+
+    const bobConversations = await bob.client.request("GET", "/api/conversations");
+    expect(bobConversations.body.conversations[0].unreadCount).toBe(0);
+    expect(bobConversations.body.conversations[0].lastMessageAt).toBeNull();
+
+    // idempotent
+    const again = await bob.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${messageId}?scope=me`,
+    );
+    expect(again.status).toBe(200);
+
+    // 받은 메시지는 모두에게서 삭제할 수 없다.
+    const foreignDelete = await bob.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${messageId}?scope=all`,
+    );
+    expect(foreignDelete.status).toBe(403);
+
+    // 새 메시지는 정상적으로 보이고, 숨긴 메시지는 계속 제외된다.
+    await sendMessage(alice, conversationId, "m2", "visible");
+    const bobAfter = await listMessages(bob.client, conversationId);
+    expect(bobAfter).toHaveLength(1);
+    expect(bobAfter[0]?.clientMessageId).toBe("m2");
+
+    const invalid = await bob.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${messageId}?scope=everyone`,
+    );
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects hiding a message in a conversation the user does not belong to", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const carol = await registerAccount("carol");
+    const conversationId = await createDirect(alice, bob);
+    const sent = await sendMessage(alice, conversationId, "m1", "hello");
+
+    const response = await carol.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${sent.body.message.id}?scope=me`,
+    );
+    expect(response.status).toBe(404);
+  });
 });

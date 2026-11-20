@@ -599,6 +599,43 @@ test("굵게·코드·링크 서식을 렌더링한다", async ({ browser }) => 
   }
 });
 
+test("음성 첨부를 보내면 오디오 플레이어로 표시된다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("voice");
+  const bobName = uniqueName("voicepeer");
+  const fileName = "음성-테스트.webm";
+  // 실제 재생 가능한 오디오는 아니지만, 복호화·렌더 경로를 검증하기에 충분한 바이트.
+  const audioBytes = Buffer.from(new Uint8Array(256));
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice.getByLabel("파일 선택").setInputFiles({
+      name: fileName,
+      mimeType: "audio/webm",
+      buffer: audioBytes,
+    });
+    await expect(alice.getByLabel("파일 이름")).toHaveValue(fileName);
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
+
+    await expect(alice.locator("audio")).toHaveCount(1);
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.locator("audio")).toHaveCount(1);
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

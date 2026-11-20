@@ -74,6 +74,8 @@ export interface AttachmentPayload {
   key: string;
   iv: string;
   text: string;
+  /** 음성 메시지 길이(초). 일반 파일에는 없다. */
+  durationSeconds?: number;
 }
 
 export function encodeAttachmentPayload(payload: AttachmentPayload): string {
@@ -98,6 +100,16 @@ export function parseAttachmentPayload(content: string): AttachmentPayload | nul
     if (typeof value.key !== "string" || value.key.length === 0) return null;
     if (typeof value.iv !== "string" || value.iv.length === 0) return null;
     if (typeof value.text !== "string" || value.text.length > 4096) return null;
+    if (value.durationSeconds !== undefined) {
+      if (
+        typeof value.durationSeconds !== "number" ||
+        !Number.isFinite(value.durationSeconds) ||
+        value.durationSeconds < 0 ||
+        value.durationSeconds > 7_200
+      ) {
+        return null;
+      }
+    }
     return {
       id: value.id,
       name: value.name,
@@ -106,6 +118,9 @@ export function parseAttachmentPayload(content: string): AttachmentPayload | nul
       key: value.key,
       iv: value.iv,
       text: value.text,
+      ...(typeof value.durationSeconds === "number"
+        ? { durationSeconds: value.durationSeconds }
+        : {}),
     };
   } catch {
     return null;

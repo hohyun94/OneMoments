@@ -240,6 +240,8 @@ export const messages = pgTable(
     // 그룹 Sender Keys(v3): 발신자 체인 ID/반복. pairwise 메시지는 null.
     senderKeyId: text("sender_key_id"),
     senderKeyIteration: integer("sender_key_iteration"),
+    /** 대화 상단에 고정된 시각. null 이면 고정 아님(내용은 여전히 암호문). */
+    pinnedAt: timestamp("pinned_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

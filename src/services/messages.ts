@@ -4,6 +4,7 @@ import type { Database } from "../db/client.js";
 import {
   attachments,
   conversationParticipants,
+  conversations,
   deviceOneTimePreKeys,
   messageDeletions,
   messageKeys,
@@ -238,6 +239,8 @@ export interface ListMessagesInput {
   viewerUserId: string;
   before?: string | undefined;
   limit: number;
+  /** true 면 고정된 메시지만 최신순으로 조회한다(커서 무시). */
+  pinnedOnly?: boolean;
 }
 
 export async function listMessages(
@@ -301,12 +304,15 @@ export async function listMessages(
               ),
             ),
         ),
-        cursor
-          ? or(
-              lt(messages.createdAt, cursor.createdAt),
-              and(eq(messages.createdAt, cursor.createdAt), lt(messages.id, cursor.id)),
-            )
-          : undefined,
+        input.pinnedOnly ? isNotNull(messages.pinnedAt) : undefined,
+        input.pinnedOnly
+          ? undefined
+          : cursor
+            ? or(
+                lt(messages.createdAt, cursor.createdAt),
+                and(eq(messages.createdAt, cursor.createdAt), lt(messages.id, cursor.id)),
+              )
+            : undefined,
       ),
     )
     .orderBy(desc(messages.createdAt), desc(messages.id))
@@ -325,6 +331,60 @@ export async function listMessageKeys(
   messageId: string,
 ): Promise<MessageKeyRow[]> {
   return db.select().from(messageKeys).where(eq(messageKeys.messageId, messageId));
+}
+
+/**
+ * 메시지 고정 토글. 서버에는 `pinned_at` 메타데이터만 저장하고 본문은 건드리지 않는다.
+ * 권한: 1:1 은 참여자 누구나, 그룹은 소유자(owner) 또는 원 발신자만.
+ */
+export async function setMessagePinned(
+  db: Database,
+  input: {
+    conversationId: string;
+    messageId: string;
+    userId: string;
+    pinned: boolean;
+  },
+): Promise<MessageRow> {
+  const [row] = await db
+    .select({
+      message: messages,
+      conversationKind: conversations.kind,
+      role: conversationParticipants.role,
+    })
+    .from(messages)
+    .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+    .leftJoin(
+      conversationParticipants,
+      and(
+        eq(conversationParticipants.conversationId, messages.conversationId),
+        eq(conversationParticipants.userId, input.userId),
+      ),
+    )
+    .where(
+      and(
+        eq(messages.id, input.messageId),
+        eq(messages.conversationId, input.conversationId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) throw AppError.notFound("MESSAGE_NOT_FOUND", "Message not found");
+  if (row.message.kind !== "text") {
+    throw AppError.badRequest("INVALID_MESSAGE_KIND", "Only text messages can be pinned");
+  }
+  const isGroupOwner = row.role === "owner";
+  const isSender = row.message.senderUserId === input.userId;
+  if (row.conversationKind === "group" && !isGroupOwner && !isSender) {
+    throw AppError.forbidden("Only the group owner or the sender can pin a message");
+  }
+
+  const [updated] = await db
+    .update(messages)
+    .set({ pinnedAt: input.pinned ? new Date() : null })
+    .where(eq(messages.id, row.message.id))
+    .returning();
+  return updated ?? row.message;
 }
 
 /**

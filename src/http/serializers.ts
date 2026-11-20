@@ -142,6 +142,7 @@ export function toMessageView(row: MessageRow, key: MessageKeyRow | null): Messa
     clientMessageId: row.clientMessageId,
     senderKeyId: row.senderKeyId,
     senderKeyIteration: row.senderKeyIteration,
+    pinned: row.pinnedAt !== null,
     createdAt: row.createdAt.toISOString(),
     key: key ? toDeviceKeyEnvelope(key) : null,
   };

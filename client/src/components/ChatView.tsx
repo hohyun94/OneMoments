@@ -14,6 +14,7 @@ import {
   Clock,
   Pencil,
   Paperclip,
+  Pin,
   Reply,
   Send,
   Settings,
@@ -138,6 +139,60 @@ export function ChatView({
       ).then((response) => response.reads),
     staleTime: 2_000,
     refetchInterval: 5_000,
+  });
+
+  const pinnedQuery = useQuery({
+    queryKey: ["pinned", conversation.id],
+    queryFn: () =>
+      api<MessagePage>(
+        `/api/conversations/${conversation.id}/messages?limit=20&pinned=1`,
+      ),
+    refetchInterval: 30_000,
+  });
+  const pinnedMessages = useMemo(
+    () => pinnedQuery.data?.messages ?? [],
+    [pinnedQuery.data],
+  );
+  const [pinnedTexts, setPinnedTexts] = useState<Record<string, string>>({});
+
+  // 고정 메시지는 배너에 미리보기로 보여준다(복호화 실패 시 자리표시).
+  useEffect(() => {
+    if (pinnedMessages.length === 0) {
+      setPinnedTexts({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      pinnedMessages.slice(0, 5).map(async (message) => {
+        try {
+          return { id: message.id, text: await decryptMessageText(identity, message) };
+        } catch {
+          return { id: message.id, text: "" };
+        }
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const row of rows) {
+        if (row.text) next[row.id] = row.text;
+      }
+      setPinnedTexts(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity, pinnedMessages]);
+
+  const pinMutation = useMutation({
+    mutationFn: (input: { messageId: string; pinned: boolean }) =>
+      api(`/api/conversations/${conversation.id}/messages/${input.messageId}/pin`, {
+        method: "PUT",
+        body: { pinned: input.pinned },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["pinned", conversation.id] });
+      void queryClient.invalidateQueries({ queryKey: ["messages", conversation.id] });
+    },
   });
 
   const devicesQuery = useQuery({
@@ -297,8 +352,14 @@ export function ChatView({
   }, [conversation.unreadCount, readsQuery.data, currentUserId, chronological]);
 
   function jumpToMessage(messageId: string): void {
-    document.getElementById(`message-${messageId}`)?.scrollIntoView({ block: "center" });
-    setHighlightId(messageId);
+    const node = document.getElementById(`message-${messageId}`);
+    if (node) {
+      node.scrollIntoView({ block: "center" });
+      setHighlightId(messageId);
+      return;
+    }
+    // 아직 로드되지 않은 이전 메시지면 앵커로 이동해 이어 불러온다.
+    setSearchParams({ anchor: messageId }, { replace: true });
   }
 
   const editsByTarget = useMemo(() => {
@@ -997,6 +1058,28 @@ export function ChatView({
           </div>
         ) : null}
 
+        {pinnedMessages.length > 0 ? (
+          <div className="mb-3 rounded-lg border border-accent-200 bg-accent-50/60 px-3 py-2">
+            <p className="flex items-center gap-1.5 text-[11px] font-medium text-accent-700">
+              <Pin className="h-3.5 w-3.5" aria-hidden />
+              고정된 메시지 {pinnedMessages.length}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {pinnedMessages.slice(0, 3).map((message) => (
+                <li key={message.id}>
+                  <button
+                    type="button"
+                    onClick={() => jumpToMessage(message.id)}
+                    className="w-full truncate text-left text-xs text-zinc-700 hover:underline"
+                  >
+                    {pinnedTexts[message.id] ?? "고정된 메시지"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {recoveredAt ? (
           <div className="pb-3">
             <Alert>
@@ -1080,6 +1163,13 @@ export function ChatView({
                         }
                         reactions={reactionsFor(message.id)}
                         onReact={(target, emoji) => void reactTo(target, emoji)}
+                        pinned={message.pinned}
+                        onTogglePin={(target) =>
+                          pinMutation.mutate({
+                            messageId: target.id,
+                            pinned: !target.pinned,
+                          })
+                        }
                         onReply={(target, text) => {
                           setEditing(null);
                           setReplyTarget({ message: target, text });

@@ -108,6 +108,8 @@ export interface MessageView {
   clientMessageId: string;
   senderKeyId: string | null;
   senderKeyIteration: number | null;
+  /** 대화 상단에 고정되었는지(메타데이터). */
+  pinned: boolean;
   createdAt: string;
   key: DeviceKeyEnvelope | null;
 }

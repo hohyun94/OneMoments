@@ -11,6 +11,7 @@ import { formatBytes } from "../lib/format.ts";
 import { useSession } from "../session.tsx";
 import type {
   AdminAuditEntry,
+  AdminAuthEventPage,
   AdminOverview,
   AdminUserDetail,
   AdminUserPage,
@@ -26,6 +27,17 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
+
+/** 인증 이벤트 라벨. 서버는 이벤트 코드만 저장한다. */
+const AUTH_EVENT_LABELS: Record<string, string> = {
+  register: "가입",
+  login: "로그인",
+  logout: "로그아웃",
+  device_logout: "기기 로그아웃",
+  device_revoked: "기기 폐기",
+  recover: "키 복구",
+  admin_sessions_revoked: "관리자 세션 종료",
+};
 
 const ACTION_LABELS: Record<string, string> = {
   "user.sessions.revoked": "세션 강제 종료",
@@ -355,6 +367,18 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
     },
   });
 
+  const authEventsQuery = useInfiniteQuery({
+    queryKey: ["admin", "auth-events", userId],
+    queryFn: ({ pageParam }) =>
+      api<AdminAuthEventPage>(
+        `/api/admin/users/${userId}/auth-events?limit=20${
+          pageParam ? `&before=${encodeURIComponent(pageParam)}` : ""
+        }`,
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+  });
+
   if (detailQuery.isLoading) {
     return (
       <Card className="p-4">
@@ -371,6 +395,7 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
   }
   const detail = detailQuery.data;
   if (!detail) return null;
+  const authEvents = (authEventsQuery.data?.pages ?? []).flatMap((page) => page.events);
 
   return (
     <Card className="p-4">
@@ -471,6 +496,61 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
           </ul>
         </section>
       </div>
+
+      <section className="mt-5">
+        <h3 className="text-sm font-semibold text-zinc-900">
+          로그인 기록 {authEvents.length > 0 ? `(${authEvents.length})` : ""}
+        </h3>
+        <p className="mt-1 text-xs text-zinc-500">
+          로그인·로그아웃·복구·기기 조치 이력입니다. IP와 User-Agent는 관리자만 볼 수 있습니다.
+        </p>
+        {authEventsQuery.isLoading ? (
+          <div className="mt-2">
+            <Spinner className="h-4 w-4 text-violet-600" />
+          </div>
+        ) : authEventsQuery.isError ? (
+          <div className="mt-2">
+            <Alert variant="error">로그인 기록을 불러오지 못했습니다.</Alert>
+          </div>
+        ) : (
+          <>
+            <ul className="mt-2 space-y-1.5">
+              {authEvents.map((event) => (
+                <li key={event.id} className="rounded-lg border border-zinc-100 px-3 py-2">
+                  <p className="flex items-center justify-between gap-2 text-sm text-zinc-900">
+                    <span className="font-medium">
+                      {AUTH_EVENT_LABELS[event.event] ?? event.event}
+                    </span>
+                    <span className="text-xs text-zinc-500">
+                      {formatDateTime(event.createdAt)}
+                    </span>
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-zinc-500">
+                    IP {event.ip ?? "기록 없음"}
+                    {event.deviceId ? ` · 기기 ${event.deviceId.slice(0, 8)}` : ""}
+                    {event.userAgent ? ` · ${event.userAgent}` : ""}
+                  </p>
+                </li>
+              ))}
+              {authEvents.length === 0 ? (
+                <li className="text-xs text-zinc-500">기록이 없습니다.</li>
+              ) : null}
+            </ul>
+            {authEventsQuery.hasNextPage ? (
+              <div className="mt-2 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void authEventsQuery.fetchNextPage()}
+                  disabled={authEventsQuery.isFetchingNextPage}
+                >
+                  {authEventsQuery.isFetchingNextPage ? "불러오는 중" : "더 보기"}
+                </Button>
+              </div>
+            ) : null}
+          </>
+        )}
+      </section>
 
       <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title="세션 강제 종료">
         <p className="text-sm leading-relaxed text-zinc-600">

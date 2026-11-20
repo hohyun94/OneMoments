@@ -11,6 +11,7 @@ import {
   requireSession,
 } from "../http/middleware.js";
 import {
+  adminAuthEventsQuerySchema,
   adminDeviceListQuerySchema,
   adminDeviceParamsSchema,
   adminUserIdParamsSchema,
@@ -37,6 +38,7 @@ import {
   rotateDecoyPassword,
   setDecoyProfileDisabled,
 } from "../services/decoyProfiles.js";
+import { listAuthEvents, recordAuthEvent } from "../services/authEvents.js";
 
 /**
  * 관리자 전용 API. ADMIN_USERNAMES allowlist + 세션 + CSRF 를 모두 통과해야 한다.
@@ -76,6 +78,22 @@ export function createAdminRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const { userId } = adminUserIdParamsSchema.parse(req.params);
       res.json({ user: await getAdminUserDetail(db, userId) });
+    }),
+  );
+
+  /** 사용자별 로그인·로그아웃·복구·기기 이벤트(관리자 전용, IP 포함). */
+  router.get(
+    "/users/:userId/auth-events",
+    asyncHandler(async (req, res) => {
+      const { userId } = adminUserIdParamsSchema.parse(req.params);
+      const query = adminAuthEventsQuerySchema.parse(req.query);
+      res.json(
+        await listAuthEvents(db, {
+          userId,
+          before: query.before,
+          limit: query.limit,
+        }),
+      );
     }),
   );
 
@@ -137,6 +155,13 @@ export function createAdminRouter(db: Database, config: Config): Router {
         adminUserId: auth.userId,
         adminUsername: auth.username,
         targetUserId: userId,
+      });
+      await recordAuthEvent(db, {
+        userId,
+        deviceId: null,
+        event: "admin_sessions_revoked",
+        ip: req.ip ?? null,
+        userAgent: req.header("user-agent") ?? null,
       });
       res.json(result);
     }),

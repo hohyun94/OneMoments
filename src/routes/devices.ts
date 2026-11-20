@@ -6,6 +6,7 @@ import type { Database } from "../db/client.js";
 import { asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import { toOwnDevice } from "../http/serializers.js";
+import { recordAuthEvent } from "../services/authEvents.js";
 import {
   deviceIdParamsSchema,
   registerDeviceBodySchema,
@@ -77,6 +78,13 @@ export function createDevicesRouter(db: Database, config: Config): Router {
       const auth = getAuth(req);
       const deviceId = String(req.params.deviceId ?? "");
       const device = await revokeDevice(db, { userId: auth.userId, deviceId });
+      await recordAuthEvent(db, {
+        userId: auth.userId,
+        deviceId: device.id,
+        event: "device_revoked",
+        ip: req.ip ?? null,
+        userAgent: req.header("user-agent") ?? null,
+      });
       res.json({ device: toOwnDevice(device) });
     }),
   );

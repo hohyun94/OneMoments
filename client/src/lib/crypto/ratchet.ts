@@ -10,6 +10,7 @@ import {
   type DeviceIdentity,
 } from "./keys.ts";
 import { encoder, fromBase64, toBase64, toBytes } from "./encoding.ts";
+import { withCryptoLock } from "./lock.ts";
 import {
   importHistoryKeys,
   importRatchetSessions,
@@ -133,17 +134,6 @@ async function dh(
   publicKey: string,
 ): Promise<Uint8Array<ArrayBuffer>> {
   return deriveSharedSerialized(identity.backend, privateKeySerialized, publicKey);
-}
-
-const locks = new Map<string, Promise<unknown>>();
-
-function withLock<T>(key: string, task: () => Promise<T>): Promise<T> {
-  const previous = locks.get(key) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(task);
-  locks.set(key, next);
-  return next.finally(() => {
-    if (locks.get(key) === next) locks.delete(key);
-  });
 }
 
 function localDeviceId(identity: DeviceIdentity): string {
@@ -329,8 +319,12 @@ async function advanceSendRatchet(
   };
 }
 
-function sessionLockKey(conversationId: string, remoteDeviceId: string): string {
-  return `${conversationId}:${remoteDeviceId}`;
+function sessionLockKey(
+  localDevice: string,
+  conversationId: string,
+  remoteDeviceId: string,
+): string {
+  return `${localDevice}:${conversationId}:${remoteDeviceId}`;
 }
 
 
@@ -350,10 +344,15 @@ export async function wrapContentKey(input: {
   remoteOneTimePreKeyPublicKey?: string | null;
   contentKey: Uint8Array<ArrayBuffer>;
 }): Promise<WrappedContentKey> {
-  return withLock(
-    sessionLockKey(input.conversationId, input.remoteDeviceId),
+  const localDevice = localDeviceId(input.identity);
+  return withCryptoLock(
+    sessionLockKey(localDevice, input.conversationId, input.remoteDeviceId),
     async () => {
-      let session = await loadRatchetSession(input.conversationId, input.remoteDeviceId);
+      let session = await loadRatchetSession(
+        localDevice,
+        input.conversationId,
+        input.remoteDeviceId,
+      );
       let initialHeader:
         | {
             senderIdentityPublicKey: string;
@@ -424,10 +423,15 @@ export async function unwrapContentKey(input: {
   wrappedKey: string;
   wrapNonce: string;
 }): Promise<{ contentKey: Uint8Array<ArrayBuffer>; messageKey: string }> {
-  return withLock(
-    sessionLockKey(input.conversationId, input.senderDeviceId),
+  const localDevice = localDeviceId(input.identity);
+  return withCryptoLock(
+    sessionLockKey(localDevice, input.conversationId, input.senderDeviceId),
     async () => {
-      let session = await loadRatchetSession(input.conversationId, input.senderDeviceId);
+      let session = await loadRatchetSession(
+        localDevice,
+        input.conversationId,
+        input.senderDeviceId,
+      );
       if (!session) {
         session = await createResponderSession(
           input.identity,

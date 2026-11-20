@@ -270,6 +270,20 @@ export interface AdminUserDetail {
   decoy: { id: string; alias: string; disabledAt: string | null } | null;
 }
 
+export interface AdminAuthEvent {
+  id: string;
+  event: string;
+  deviceId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  createdAt: string;
+}
+
+export interface AdminAuthEventPage {
+  events: AdminAuthEvent[];
+  nextCursor: string | null;
+}
+
 export interface AdminAuditEntry {
   id: string;
   adminUsername: string;

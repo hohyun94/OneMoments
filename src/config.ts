@@ -82,6 +82,30 @@ const envSchema = z.object({
   VAPID_SUBJECT: z.string().min(1).default("mailto:admin@example.com"),
   PUSH_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(3600),
   TRUST_PROXY: z.coerce.number().int().min(0).max(10).default(0),
+  // Google OAuth(가입·로그인·계정 연결). CLIENT_ID/SECRET/REDIRECT_URL 이 모두 있어야 활성화된다.
+  GOOGLE_CLIENT_ID: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  GOOGLE_CLIENT_SECRET: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  GOOGLE_REDIRECT_URL: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
+  /** OAuth 완료 후 돌아갈 SPA 주소. 기본값은 REDIRECT_URL 의 origin. */
+  APP_ORIGIN: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().url().optional(),
+  ),
+  // 테스트/자체 IdP 용 엔드포인트 오버라이드. 비우면 Google 실제 주소를 쓴다.
+  GOOGLE_AUTHORIZE_URL: z.string().url().default("https://accounts.google.com/o/oauth2/v2/auth"),
+  GOOGLE_TOKEN_URL: z.string().url().default("https://oauth2.googleapis.com/token"),
+  GOOGLE_USERINFO_URL: z.string().url().default("https://openidconnect.googleapis.com/v1/userinfo"),
+  OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
+  OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
 });
 
 export interface Config {
@@ -123,6 +147,22 @@ export interface Config {
   vapidSubject: string;
   pushTtlSeconds: number;
   trustProxy: number;
+  /** Google OAuth 설정. null 이면 소셜 로그인이 비활성화된다. */
+  googleOAuth: GoogleOAuthConfig | null;
+  oauthStateTtlSeconds: number;
+  oauthTicketTtlSeconds: number;
+}
+
+export interface GoogleOAuthConfig {
+  clientId: string;
+  clientSecret: string;
+  /** Google 콘솔에 등록한 서버 콜백 주소. */
+  redirectUrl: string;
+  /** OAuth 완료 후 SPA 로 돌려보낼 origin. */
+  appOrigin: string;
+  authorizeUrl: string;
+  tokenUrl: string;
+  userInfoUrl: string;
 }
 
 export type Env = Record<string, string | undefined>;
@@ -156,6 +196,26 @@ export function loadConfig(env: Env = process.env): Config {
     }
     sessionSecret = DEVELOPMENT_SESSION_SECRET;
   }
+
+  const googleConfigured = [value.GOOGLE_CLIENT_ID, value.GOOGLE_CLIENT_SECRET, value.GOOGLE_REDIRECT_URL];
+  const googlePartial = googleConfigured.some(Boolean) && !googleConfigured.every(Boolean);
+  if (googlePartial) {
+    throw new Error(
+      "GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URL must be set together",
+    );
+  }
+  const googleOAuth: GoogleOAuthConfig | null =
+    value.GOOGLE_CLIENT_ID && value.GOOGLE_CLIENT_SECRET && value.GOOGLE_REDIRECT_URL
+      ? {
+          clientId: value.GOOGLE_CLIENT_ID,
+          clientSecret: value.GOOGLE_CLIENT_SECRET,
+          redirectUrl: value.GOOGLE_REDIRECT_URL,
+          appOrigin: value.APP_ORIGIN ?? new URL(value.GOOGLE_REDIRECT_URL).origin,
+          authorizeUrl: value.GOOGLE_AUTHORIZE_URL,
+          tokenUrl: value.GOOGLE_TOKEN_URL,
+          userInfoUrl: value.GOOGLE_USERINFO_URL,
+        }
+      : null;
 
   return {
     nodeEnv: value.NODE_ENV,
@@ -202,5 +262,8 @@ export function loadConfig(env: Env = process.env): Config {
     vapidSubject: value.VAPID_SUBJECT,
     pushTtlSeconds: value.PUSH_TTL_SECONDS,
     trustProxy: value.TRUST_PROXY,
+    googleOAuth,
+    oauthStateTtlSeconds: value.OAUTH_STATE_TTL_SECONDS,
+    oauthTicketTtlSeconds: value.OAUTH_TICKET_TTL_SECONDS,
   };
 }

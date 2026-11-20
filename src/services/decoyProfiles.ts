@@ -74,7 +74,7 @@ export async function createDecoyProfile(
     throw AppError.conflict("DECOY_EXISTS", "Decoy profile already exists for this account");
   }
 
-  if (await verifyPassword(input.password, real.passwordHash)) {
+  if (real.passwordHash && (await verifyPassword(input.password, real.passwordHash))) {
     throw AppError.badRequest(
       "DECOY_PASSWORD_SAME",
       "Decoy password must differ from the real password",
@@ -153,7 +153,7 @@ export async function rotateDecoyPassword(
     .from(users)
     .where(eq(users.username, existing.profile.alias))
     .limit(1);
-  if (real && (await verifyPassword(input.password, real.passwordHash))) {
+  if (real?.passwordHash && (await verifyPassword(input.password, real.passwordHash))) {
     throw AppError.badRequest(
       "DECOY_PASSWORD_SAME",
       "Decoy password must differ from the real password",

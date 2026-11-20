@@ -256,7 +256,11 @@ export function createAuthRouter(db: Database, config: Config): Router {
       const body = deleteAccountBodySchema.parse(req.body);
       // 계정 삭제로 모먼트 행이 cascade 삭제되기 전에 이미지 블롭 ID를 모아둔다.
       const momentAttachmentIds = await listUserMomentAttachmentIds(db, auth.userId);
-      await deleteAccount(db, { userId: auth.userId, password: body.password });
+      await deleteAccount(db, {
+        userId: auth.userId,
+        password: body.password,
+        confirmUsername: body.confirmUsername,
+      });
       await deleteUserMoments(db, auth.userId);
       const storage = createAttachmentStorage(config);
       await Promise.all(
@@ -506,6 +510,10 @@ export function createAuthRouter(db: Database, config: Config): Router {
         sessionIdleTimeoutSeconds: auth.sessionIdleTimeoutSeconds,
         theme: toThemeSettings(user),
         csrfToken: deriveCsrfToken(auth.sessionToken, config.sessionSecret),
+        // 소셜 로그인/연결 상태(클라이언트가 버튼 노출·해제 가능 여부를 판단한다).
+        oauthEnabled: config.googleOAuth !== null,
+        googleLinked: user.oauthSubject !== null,
+        hasPassword: user.passwordHash !== null,
       });
     }),
   );

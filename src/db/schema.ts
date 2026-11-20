@@ -11,6 +11,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  boolean,
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
@@ -25,7 +26,11 @@ export const users = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     // 소문자 정규화. 삭제(익명화) 후에도 행을 유지해 username 재사용을 막는다.
     username: text("username").notNull(),
-    passwordHash: text("password_hash").notNull(),
+    // 비밀번호 로그인. Google OAuth 전용 계정은 null 이며, 삭제(익명화) 시 "deleted-account" 로 덮는다.
+    passwordHash: text("password_hash"),
+    // Google OAuth 연결(제공자 + 불변 사용자 식별자 sub). 연결되지 않은 계정은 null.
+    oauthProvider: text("oauth_provider"),
+    oauthSubject: text("oauth_subject"),
     // 화면 테마(계정 동기화). mode: light/dark/system, accent: 프리셋 ID 또는 #rrggbb.
     themeMode: text("theme_mode").notNull().default("system"),
     themeAccent: text("theme_accent").notNull().default("violet"),
@@ -36,6 +41,23 @@ export const users = pgTable(
   },
   (table) => [
     uniqueIndex("users_username_uq").on(table.username),
+    // 같은 Google 계정(sub)이 두 사용자에게 연결되지 않게 한다(부분 유니크).
+    uniqueIndex("users_oauth_uq")
+      .on(table.oauthProvider, table.oauthSubject)
+      .where(sql`${table.oauthSubject} is not null`),
+    // 최소 하나의 자격 증명(비밀번호 또는 OAuth)을 항상 갖는다.
+    check(
+      "users_credential_chk",
+      sql`${table.passwordHash} is not null or ${table.oauthSubject} is not null`,
+    ),
+    check(
+      "users_oauth_provider_chk",
+      sql`${table.oauthProvider} is null or ${table.oauthProvider} in ('google')`,
+    ),
+    check(
+      "users_oauth_subject_chk",
+      sql`(${table.oauthProvider} is null) = (${table.oauthSubject} is null)`,
+    ),
     check("users_theme_mode_chk", sql`${table.themeMode} in ('light', 'dark', 'system')`),
     check(
       "users_theme_accent_chk",
@@ -565,6 +587,62 @@ export const loginProfiles = pgTable(
   ],
 );
 
+/**
+ * OAuth 진행 상태. CSRF state 와 PKCE code_verifier 를 담는 단명·1회용 행이다.
+ * state 원문은 브라우저 쿠키와 콜백 URL 에만 존재하고 DB 에는 SHA-256 해시만 저장한다.
+ */
+export const oauthStates = pgTable(
+  "oauth_states",
+  {
+    stateHash: text("state_hash").primaryKey(),
+    provider: text("provider").notNull().default("google"),
+    /** signup | login | link */
+    intent: text("intent").notNull(),
+    codeVerifier: text("code_verifier").notNull(),
+    /** link 의도일 때 연결 대상(세션 사용자) */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("oauth_states_expires_idx").on(table.expiresAt),
+    check("oauth_states_provider_chk", sql`${table.provider} in ('google')`),
+    check("oauth_states_intent_chk", sql`${table.intent} in ('signup', 'login', 'link')`),
+    check("oauth_states_link_chk", sql`${table.intent} <> 'link' or ${table.userId} is not null`),
+  ],
+);
+
+/**
+ * OAuth 콜백 → SPA 완료 단계로 넘기는 1회용 티켓.
+ * 기기 키는 브라우저에서만 생성되므로, 서버는 티켓만 주고 완료 요청에서 기기 공개키를 받는다.
+ * 이메일은 표시용으로만 잠시 보관하고 소비 시 행을 삭제한다.
+ */
+export const oauthTickets = pgTable(
+  "oauth_tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    provider: text("provider").notNull().default("google"),
+    subject: text("subject").notNull(),
+    email: text("email"),
+    emailVerified: boolean("email_verified").notNull().default(false),
+    /** signup | login | link */
+    intent: text("intent").notNull(),
+    /** login·link 의도일 때 대상 사용자 */
+    userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("oauth_tickets_expires_idx").on(table.expiresAt),
+    check("oauth_tickets_provider_chk", sql`${table.provider} in ('google')`),
+    check("oauth_tickets_intent_chk", sql`${table.intent} in ('signup', 'login', 'link')`),
+    check(
+      "oauth_tickets_link_chk",
+      sql`${table.intent} = 'signup' or ${table.userId} is not null`,
+    ),
+  ],
+);
+
 export const conversationInvites = pgTable(
   "conversation_invites",
   {
@@ -672,3 +750,5 @@ export type MomentViewRow = typeof momentViews.$inferSelect;
 export type MomentAttachmentRow = typeof momentAttachments.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
 export type AuthEventRow = typeof authEvents.$inferSelect;
+export type OAuthStateRow = typeof oauthStates.$inferSelect;
+export type OAuthTicketRow = typeof oauthTickets.$inferSelect;

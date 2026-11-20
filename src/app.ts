@@ -13,6 +13,7 @@ import { renderMetrics } from "./metrics.js";
 import { originGuard } from "./http/middleware.js";
 import type { MessageBus } from "./realtime/bus.js";
 import { createAuthRouter } from "./routes/auth.js";
+import { createGoogleOAuthRouter } from "./routes/googleOAuth.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAttachmentsRouter } from "./routes/attachments.js";
 import { createConversationsRouter } from "./routes/conversations.js";
@@ -114,6 +115,7 @@ export function createApp(options: AppOptions): Express {
     }),
   );
 
+  app.use("/api/auth/google", createGoogleOAuthRouter(db, config));
   app.use("/api/auth", createAuthRouter(db, config));
   app.use("/api/admin", createAdminRouter(db, config));
   app.use("/api/devices", createDevicesRouter(db, config));

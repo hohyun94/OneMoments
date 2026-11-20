@@ -24,11 +24,12 @@ interface KeystoreDB extends DBSchema {
 }
 
 const canUseIndexedDb = typeof indexedDB !== "undefined";
+const DB_VERSION = 4;
 let dbPromise: Promise<IDBPDatabase<KeystoreDB>> | null = null;
 
 function db(): Promise<IDBPDatabase<KeystoreDB>> {
-  dbPromise ??= openDB<KeystoreDB>("onemoments", 3, {
-    upgrade(database) {
+  dbPromise ??= openDB<KeystoreDB>("onemoments", DB_VERSION, {
+    async upgrade(database, oldVersion, _newVersion, transaction) {
       if (!database.objectStoreNames.contains("identities")) {
         database.createObjectStore("identities");
       }
@@ -41,6 +42,9 @@ function db(): Promise<IDBPDatabase<KeystoreDB>> {
       if (!database.objectStoreNames.contains("senderKeys")) {
         database.createObjectStore("senderKeys");
       }
+      if (oldVersion > 0 && oldVersion < 4) {
+        await migrateRatchetSessionKeys(transaction.objectStore("ratchetSessions"));
+      }
     },
   });
   return dbPromise;
@@ -51,8 +55,48 @@ const memorySessions = new Map<string, RatchetSession>();
 const memoryHistory = new Map<string, HistoryKeyRecord>();
 const memorySenderKeys = new Map<string, SenderKeySession>();
 
+/**
+ * DR 세션 저장 키. **내 기기(localDeviceId)** 를 포함해야 같은 브라우저에서
+ * 계정을 바꿔 로그인해도(예: 실제/decoy, 공유 PC) 서로의 세션을 덮어쓰지 않는다.
+ */
+function sessionStorageKey(
+  localDeviceId: string,
+  conversationId: string,
+  remoteDeviceId: string,
+): string {
+  return `${localDeviceId}:${conversationId}:${remoteDeviceId}`;
+}
+
 function sessionKey(session: RatchetSession): string {
+  return sessionStorageKey(
+    session.localDeviceId,
+    session.conversationId,
+    session.remoteDeviceId,
+  );
+}
+
+/** v3 이하 저장 키(`conversationId:remoteDeviceId`). v4 마이그레이션에서만 쓴다. */
+function legacySessionKey(session: RatchetSession): string {
   return `${session.conversationId}:${session.remoteDeviceId}`;
+}
+
+/**
+ * v3 까지 저장된 세션을 새 키로 옮긴다.
+ * localDeviceId 가 없는 아주 오래된 레코드는 어느 계정 것인지 알 수 없어 그대로 둔다.
+ */
+async function migrateRatchetSessionKeys(store: {
+  getAll: () => Promise<RatchetSession[]>;
+  put: (value: RatchetSession, key: string) => Promise<unknown>;
+  delete: (key: string) => Promise<unknown>;
+}): Promise<void> {
+  for (const session of await store.getAll()) {
+    if (!session.localDeviceId) continue;
+    const nextKey = sessionKey(session);
+    const previousKey = legacySessionKey(session);
+    if (nextKey === previousKey) continue;
+    await store.delete(previousKey);
+    await store.put(session, nextKey);
+  }
 }
 
 function historyKey(deviceId: string, messageId: string): string {
@@ -125,11 +169,48 @@ export async function deleteIdentityByUser(userId: string): Promise<void> {
   await deleteIdentity(userId);
 }
 
+/**
+ * 이 기기의 로컬 암호 상태(DR 세션·이력 키·sender key)를 모두 지운다.
+ * 기기 폐기/키 삭제·계정 삭제 시 호출한다. 로그아웃에서는 지우지 않는다(재로그인용).
+ */
+export async function clearDeviceState(deviceId: string): Promise<void> {
+  if (!canUseIndexedDb) {
+    for (const [key, session] of memorySessions) {
+      if (session.localDeviceId === deviceId) memorySessions.delete(key);
+    }
+    for (const [key, record] of memoryHistory) {
+      if (record.deviceId === deviceId) memoryHistory.delete(key);
+    }
+    for (const [key, session] of memorySenderKeys) {
+      if (session.localDeviceId === deviceId) memorySenderKeys.delete(key);
+    }
+    return;
+  }
+
+  const database = await db();
+  for (const session of await database.getAll("ratchetSessions")) {
+    if (session.localDeviceId === deviceId) {
+      await database.delete("ratchetSessions", sessionKey(session));
+    }
+  }
+  for (const record of await database.getAll("historyKeys")) {
+    if (record.deviceId === deviceId) {
+      await database.delete("historyKeys", historyKey(record.deviceId, record.messageId));
+    }
+  }
+  for (const session of await database.getAll("senderKeys")) {
+    if (session.localDeviceId === deviceId) {
+      await database.delete("senderKeys", session.storageKey);
+    }
+  }
+}
+
 export async function loadRatchetSession(
+  localDeviceId: string,
   conversationId: string,
   remoteDeviceId: string,
 ): Promise<RatchetSession | null> {
-  const key = `${conversationId}:${remoteDeviceId}`;
+  const key = sessionStorageKey(localDeviceId, conversationId, remoteDeviceId);
   if (!canUseIndexedDb) return memorySessions.get(key) ?? null;
   return (await (await db()).get("ratchetSessions", key)) ?? null;
 }

@@ -12,6 +12,7 @@ import {
   type DeviceIdentity,
 } from "./keys.ts";
 import { decoder, fromBase64, toBase64 } from "./encoding.ts";
+import { padPlaintext, unpadPlaintext } from "./padding.ts";
 import {
   decryptWithMessageKey,
   findHistoryKey,
@@ -115,7 +116,7 @@ export async function encryptMessage(input: {
   const ciphertext = await aesEncrypt(
     contentKey,
     nonce,
-    new TextEncoder().encode(input.plaintext),
+    new TextEncoder().encode(padPlaintext(input.plaintext)),
   );
   const ciphertextBase64 = toBase64(ciphertext);
 
@@ -322,5 +323,5 @@ export async function decryptMessage(input: {
     });
   }
 
-  return decoder.decode(plaintext);
+  return unpadPlaintext(decoder.decode(plaintext));
 }

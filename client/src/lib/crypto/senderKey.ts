@@ -12,6 +12,8 @@ import {
   type DeviceIdentity,
 } from "./keys.ts";
 import { decoder, encoder, fromBase64, toBase64 } from "./encoding.ts";
+import { withCryptoLock } from "./lock.ts";
+import { padPlaintext, unpadPlaintext } from "./padding.ts";
 import {
   findHistoryKey,
   rememberHistoryKey,
@@ -116,17 +118,6 @@ function senderLockKey(conversationId: string, deviceId: string): string {
   return `sender:${conversationId}:${deviceId}`;
 }
 
-const locks = new Map<string, Promise<unknown>>();
-
-function withLock<T>(key: string, task: () => Promise<T>): Promise<T> {
-  const previous = locks.get(key) ?? Promise.resolve();
-  const next = previous.catch(() => undefined).then(task);
-  locks.set(key, next);
-  return next.finally(() => {
-    if (locks.get(key) === next) locks.delete(key);
-  });
-}
-
 async function loadSendSession(
   localDeviceId: string,
   conversationId: string,
@@ -178,7 +169,7 @@ export async function prepareSenderKeyMessage(input: {
   memberCount?: number;
 }): Promise<PreparedSenderKeyMessage> {
   const localDeviceId = input.identity.deviceId ?? "local";
-  return withLock(senderLockKey(input.conversationId, localDeviceId), async () => {
+  return withCryptoLock(senderLockKey(input.conversationId, localDeviceId), async () => {
     let session = await loadSendSession(localDeviceId, input.conversationId);
     if (
       !session ||
@@ -240,7 +231,7 @@ export async function prepareSenderKeyMessage(input: {
     const ciphertext = await aesEncrypt(
       await importContentKey(messageKey),
       nonce,
-      encoder.encode(input.plaintext),
+      encoder.encode(padPlaintext(input.plaintext)),
     );
     const ciphertextBase64 = toBase64(ciphertext);
     const signature = await signPayload(
@@ -420,7 +411,7 @@ export async function decryptSenderKeyMessage(input: {
         fromBase64(message.nonce),
         fromBase64(message.ciphertext),
       );
-      return decoder.decode(plaintext);
+      return unpadPlaintext(decoder.decode(plaintext));
     } catch {
       throw new SenderKeyError("key");
     }
@@ -474,6 +465,6 @@ export async function decryptSenderKeyMessage(input: {
     messageId: message.id,
     messageKey,
   });
-  return decoder.decode(plaintext);
+  return unpadPlaintext(decoder.decode(plaintext));
 }
 

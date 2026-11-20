@@ -43,22 +43,64 @@ export interface RegisterAccountInput extends DeviceKeys {
   deviceName: string;
 }
 
-function isUniqueViolation(error: unknown): boolean {
+export interface RegisterOAuthAccountInput extends DeviceKeys {
+  username: string;
+  provider: "google";
+  subject: string;
+  deviceName: string;
+}
+
+/** 기기 행 + 원타임 프리키를 같은 트랜잭션에 넣는다. */
+async function insertDevice(
+  tx: Parameters<Parameters<Database["transaction"]>[0]>[0],
+  input: DeviceKeys & { userId: string; deviceName: string },
+): Promise<DeviceRow> {
+  const [device] = await tx
+    .insert(devices)
+    .values({
+      userId: input.userId,
+      name: input.deviceName,
+      identityPublicKey: input.identityPublicKey,
+      signingPublicKey: input.signingPublicKey,
+      signedPreKeyId: input.signedPreKey?.id ?? null,
+      signedPreKeyPublicKey: input.signedPreKey?.publicKey ?? null,
+      signedPreKeySignature: input.signedPreKey?.signature ?? null,
+    })
+    .returning();
+  if (!device) throw new Error("Failed to insert device");
+  if (input.oneTimePreKeys && input.oneTimePreKeys.length > 0) {
+    await tx.insert(deviceOneTimePreKeys).values(
+      input.oneTimePreKeys.map((key) => ({
+        deviceId: device.id,
+        keyId: key.id,
+        publicKey: key.publicKey,
+      })),
+    );
+  }
+  return device;
+}
+
+
+function uniqueViolationConstraint(error: unknown): string | null {
   // Drizzle 는 드라이버 오류를 DrizzleQueryError 로 감싸므로 cause 체인을 확인한다.
   let current: unknown = error;
   for (let depth = 0; depth < 5 && current; depth += 1) {
-    if (
-      typeof current === "object" &&
-      current !== null &&
-      "code" in current &&
-      (current as { code?: unknown }).code === "23505"
-    ) {
-      return true;
+    if (typeof current === "object" && current !== null && "code" in current) {
+      const code = (current as { code?: unknown }).code;
+      if (code === "23505") {
+        const constraint = (current as { constraint?: unknown }).constraint;
+        return typeof constraint === "string" ? constraint : "";
+      }
     }
     current = (current as { cause?: unknown }).cause;
   }
-  return false;
+  return null;
 }
+
+function isUniqueViolation(error: unknown): boolean {
+  return uniqueViolationConstraint(error) !== null;
+}
+
 
 let dummyHash: Promise<string> | null = null;
 function getDummyHash(): Promise<string> {
@@ -78,33 +120,46 @@ export async function registerAccount(
         .values({ username: input.username, passwordHash })
         .returning();
       if (!user) throw new Error("Failed to insert user");
-
-      const [device] = await tx
-        .insert(devices)
-        .values({
-          userId: user.id,
-          name: input.deviceName,
-          identityPublicKey: input.identityPublicKey,
-          signingPublicKey: input.signingPublicKey,
-          signedPreKeyId: input.signedPreKey?.id ?? null,
-          signedPreKeyPublicKey: input.signedPreKey?.publicKey ?? null,
-          signedPreKeySignature: input.signedPreKey?.signature ?? null,
-        })
-        .returning();
-      if (!device) throw new Error("Failed to insert device");
-      if (input.oneTimePreKeys && input.oneTimePreKeys.length > 0) {
-        await tx.insert(deviceOneTimePreKeys).values(
-          input.oneTimePreKeys.map((key) => ({
-            deviceId: device.id,
-            keyId: key.id,
-            publicKey: key.publicKey,
-          })),
-        );
-      }
+      const device = await insertDevice(tx, { ...input, userId: user.id });
       return { user, device };
     });
   } catch (error) {
     if (isUniqueViolation(error)) {
+      throw AppError.conflict("USERNAME_TAKEN", "Username is already taken");
+    }
+    throw error;
+  }
+}
+
+/**
+ * Google OAuth 전용 계정 생성(비밀번호 없음).
+ * 서버는 여전히 기기 공개키만 받고, 개인키는 브라우저에만 남는다.
+ */
+export async function registerOAuthAccount(
+  db: Database,
+  input: RegisterOAuthAccountInput,
+): Promise<{ user: UserRow; device: DeviceRow }> {
+  try {
+    return await db.transaction(async (tx) => {
+      const [user] = await tx
+        .insert(users)
+        .values({
+          username: input.username,
+          passwordHash: null,
+          oauthProvider: input.provider,
+          oauthSubject: input.subject,
+        })
+        .returning();
+      if (!user) throw new Error("Failed to insert user");
+      const device = await insertDevice(tx, { ...input, userId: user.id });
+      return { user, device };
+    });
+  } catch (error) {
+    const constraint = uniqueViolationConstraint(error);
+    if (constraint === "users_oauth_uq") {
+      throw AppError.conflict("OAUTH_ALREADY_LINKED", "This provider account is already linked");
+    }
+    if (constraint === "users_username_uq" || isUniqueViolation(error)) {
       throw AppError.conflict("USERNAME_TAKEN", "Username is already taken");
     }
     throw error;
@@ -131,8 +186,10 @@ export async function verifyLoginCredentials(
     .limit(1);
 
   if (user && user.deletedAt === null) {
-    const matches = await verifyPassword(input.password, user.passwordHash);
-    if (matches) return { user, profile: "real" };
+    // OAuth 전용 계정은 비밀번호가 없다. 존재 여부·응답 시간을 노출하지 않도록 더미 해시를 쓴다.
+    const hash = user.passwordHash ?? (await getDummyHash());
+    const matches = await verifyPassword(input.password, hash);
+    if (user.passwordHash && matches) return { user, profile: "real" };
   }
 
   const [decoy] = await db
@@ -301,14 +358,24 @@ export async function updateUserStatus(
  */
 export async function deleteAccount(
   db: Database,
-  input: { userId: string; password: string },
+  input: { userId: string; password?: string; confirmUsername?: string },
 ): Promise<void> {
   const user = await findUserById(db, input.userId);
   if (!user || user.deletedAt !== null) {
     throw AppError.unauthorized("Unknown account");
   }
-  const matches = await verifyPassword(input.password, user.passwordHash);
-  if (!matches) throw AppError.unauthorized("Invalid password");
+  if (user.passwordHash) {
+    const matches = await verifyPassword(input.password ?? "", user.passwordHash);
+    if (!matches) throw AppError.unauthorized("Invalid password");
+  } else {
+    // OAuth 전용 계정은 비밀번호가 없어 사용자명 입력으로 확인한다(세션+CSRF 는 이미 검증됨).
+    if ((input.confirmUsername ?? "").trim().toLowerCase() !== user.username) {
+      throw AppError.badRequest(
+        "CONFIRM_REQUIRED",
+        "Type your username to confirm account deletion",
+      );
+    }
+  }
 
   await db.transaction(async (tx) => {
     await tx.delete(sessions).where(eq(sessions.userId, input.userId));
@@ -343,6 +410,9 @@ export async function deleteAccount(
       .set({
         deletedAt: new Date(),
         passwordHash: "deleted-account",
+        // Google 계정(sub)은 해제해 같은 Google 계정으로 새 계정을 만들 수 있게 한다.
+        oauthProvider: null,
+        oauthSubject: null,
         statusMessage: null,
       })
       .where(eq(users.id, input.userId));
@@ -506,6 +576,82 @@ export async function findUserByUsername(
 ): Promise<UserRow | null> {
   const [row] = await db.select().from(users).where(eq(users.username, username)).limit(1);
   return row ?? null;
+}
+
+/** 제공자 계정(sub)으로 연결된 사용자를 찾는다. 삭제된 계정은 제외한다. */
+export async function findUserByOAuthSubject(
+  db: Database,
+  input: { provider: "google"; subject: string },
+): Promise<UserRow | null> {
+  const [row] = await db
+    .select()
+    .from(users)
+    .where(
+      and(
+        eq(users.oauthProvider, input.provider),
+        eq(users.oauthSubject, input.subject),
+        isNull(users.deletedAt),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+/** 로그인한 사용자에게 제공자 계정을 연결한다. 이미 연결되어 있으면 그대로 둔다(멱등). */
+export async function linkOAuthAccount(
+  db: Database,
+  input: { userId: string; provider: "google"; subject: string },
+): Promise<UserRow> {
+  const user = await findUserById(db, input.userId);
+  if (!user || user.deletedAt !== null) throw AppError.unauthorized("Unknown account");
+  if (user.oauthSubject) {
+    if (user.oauthProvider === input.provider && user.oauthSubject === input.subject) return user;
+    throw AppError.conflict("OAUTH_ALREADY_LINKED", "Account already has a linked provider");
+  }
+  try {
+    const [updated] = await db
+      .update(users)
+      .set({ oauthProvider: input.provider, oauthSubject: input.subject })
+      .where(and(eq(users.id, input.userId), isNull(users.oauthSubject)))
+      .returning();
+    if (!updated) {
+      throw AppError.conflict("OAUTH_ALREADY_LINKED", "Account already has a linked provider");
+    }
+    return updated;
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw AppError.conflict("OAUTH_ALREADY_LINKED", "This provider account is already linked");
+    }
+    throw error;
+  }
+}
+
+/**
+ * 제공자 연결을 해제한다. 비밀번호가 없는 계정은 잠기므로 거부한다(비밀번호 먼저 설정).
+ * 비밀번호 확인은 세션 탈취 시 방어선이다.
+ */
+export async function unlinkOAuthAccount(
+  db: Database,
+  input: { userId: string; password: string },
+): Promise<UserRow> {
+  const user = await findUserById(db, input.userId);
+  if (!user || user.deletedAt !== null) throw AppError.unauthorized("Unknown account");
+  if (!user.oauthSubject) throw AppError.badRequest("OAUTH_NOT_LINKED", "No linked provider");
+  if (!user.passwordHash) {
+    throw AppError.badRequest(
+      "PASSWORD_REQUIRED",
+      "Set a password before unlinking the provider",
+    );
+  }
+  const matches = await verifyPassword(input.password, user.passwordHash);
+  if (!matches) throw AppError.unauthorized("Invalid password");
+  const [updated] = await db
+    .update(users)
+    .set({ oauthProvider: null, oauthSubject: null })
+    .where(eq(users.id, input.userId))
+    .returning();
+  if (!updated) throw AppError.unauthorized("Unknown account");
+  return updated;
 }
 
 /** 정확 일치 검색. 삭제된 계정과 자기 자신은 제외한다. */

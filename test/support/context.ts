@@ -27,6 +27,16 @@ export interface TestContext {
 export interface TestContextOptions {
   /** ADMIN_USERNAMES allowlist (테스트용) */
   adminUsernames?: string[];
+  /** 스텁 IdP 를 붙일 때 넘긴다. 넘기면 Google OAuth 가 활성화된다. */
+  googleOAuth?: {
+    authorizeUrl: string;
+    tokenUrl: string;
+    userInfoUrl: string;
+    clientId?: string;
+    clientSecret?: string;
+    redirectUrl?: string;
+    appOrigin?: string;
+  };
 }
 
 export async function createTestContext(
@@ -69,6 +79,19 @@ export async function createTestContext(
     ATTACHMENT_DIR: ".test-artifacts/attachments",
     METRICS_TOKEN: "test-metrics-token-0123456789",
     ADMIN_USERNAMES: (options.adminUsernames ?? []).join(","),
+    ...(options.googleOAuth
+      ? {
+          GOOGLE_CLIENT_ID: options.googleOAuth.clientId ?? "test-google-client",
+          GOOGLE_CLIENT_SECRET: options.googleOAuth.clientSecret ?? "test-google-secret",
+          GOOGLE_REDIRECT_URL:
+            options.googleOAuth.redirectUrl ??
+            "http://127.0.0.1:3000/api/auth/google/callback",
+          APP_ORIGIN: options.googleOAuth.appOrigin ?? "http://127.0.0.1:3000",
+          GOOGLE_AUTHORIZE_URL: options.googleOAuth.authorizeUrl,
+          GOOGLE_TOKEN_URL: options.googleOAuth.tokenUrl,
+          GOOGLE_USERINFO_URL: options.googleOAuth.userInfoUrl,
+        }
+      : {}),
   });
 
   const bus = new LocalMessageBus();

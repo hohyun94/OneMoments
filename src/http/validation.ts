@@ -74,6 +74,28 @@ export const loginBodySchema = z.object({
 
 export const registerDeviceBodySchema = deviceKeysSchema;
 
+/** Google OAuth 시작. link 는 로그인 상태에서만 허용한다. */
+export const googleOAuthStartBodySchema = z.object({
+  intent: z.enum(["signup", "login", "link"]),
+});
+
+export const googleOAuthCallbackQuerySchema = z.object({
+  code: z.string().min(1).max(4096).optional(),
+  state: z.string().min(1).max(512).optional(),
+  error: z.string().min(1).max(200).optional(),
+});
+
+/** 콜백이 넘긴 1회용 티켓으로 가입/로그인/연결을 마무리한다. */
+export const googleOAuthCompleteBodySchema = z.object({
+  ticket: z.string().uuid(),
+  username: usernameSchema.optional(),
+  device: deviceKeysSchema.optional(),
+});
+
+export const googleOAuthUnlinkBodySchema = z.object({
+  password: z.string().min(1).max(200),
+});
+
 export const deviceIdParamsSchema = z.object({
   deviceId: z.string().uuid(),
 });
@@ -187,9 +209,15 @@ export const inviteTokenParamsSchema = z.object({
   token: z.string().min(20).max(120),
 });
 
-export const deleteAccountBodySchema = z.object({
-  password: z.string().min(1, "Password is required").max(200),
-});
+export const deleteAccountBodySchema = z
+  .object({
+    // 비밀번호 계정은 password, OAuth 전용 계정은 confirmUsername(아이디 재입력)로 확인한다.
+    password: z.string().min(1).max(200).optional(),
+    confirmUsername: z.string().min(1).max(32).optional(),
+  })
+  .refine((value) => Boolean(value.password) !== Boolean(value.confirmUsername), {
+    message: "Provide exactly one of password or confirmUsername",
+  });
 
 export const backupBodySchema = z.object({
   blob: z.string().min(1, "blob is required").max(25 * 1024 * 1024),

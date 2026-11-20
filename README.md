@@ -21,7 +21,7 @@
 - **성능**: 동시성 부하 테스트(Node/k6), 클라이언트 DR·첨부 암복호화 벤치마크
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
 - **관리자 콘솔**: `ADMIN_USERNAMES` allowlist 전용 `/admin` — 개요 통계, 사용자·기기·세션 조회, 세션 강제 종료, decoy 프로필 웹 관리, 감사 로그(메타데이터만)
-- **테스트 216개**: 서버 118(117 passed·1 skipped: 단위·API·WS·버스·푸시·초대·첨부 정리·decoy·관리자·자동 로그아웃·자동 삭제·테마·대화 UX·Moments·프로필/연락처) + 클라이언트 84(DR·X3DH/OPK·Sender Keys·첨부·음성·파형·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션·테마·검색·Moments·비밀번호 표시 토글) + 브라우저 E2E 14(그룹·초대·이미지·반응·음성 파형·로그인 테마·자동 로그아웃·오프라인)
+- **테스트 229개**: 서버 131(130 passed·1 skipped: 단위·API·WS·버스·푸시·초대·첨부 정리·decoy·관리자·자동 로그아웃·자동 삭제·테마·대화 UX·Moments·프로필/연락처·Google OAuth) + 클라이언트 84(DR·X3DH/OPK·Sender Keys·첨부·음성·파형·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션·테마·검색·Moments·비밀번호 표시 토글) + 브라우저 E2E 14(그룹·초대·이미지·반응·음성 파형·로그인 테마·자동 로그아웃·오프라인)
 
 ## 빠른 시작
 
@@ -70,6 +70,9 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | — | Web Push VAPID 키(`pnpm push:keys`). 없으면 푸시 비활성 |
 | `VAPID_SUBJECT` | — | `mailto:` 또는 `https://` 연락처 |
 | `PUSH_TTL_SECONDS` | — | 푸시 보관 TTL(기본 3600) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Google OAuth 클라이언트(웹). 세 값이 모두 있어야 활성화 |
+| `GOOGLE_REDIRECT_URL` | — | `https://<도메인>/api/auth/google/callback` (콘솔 등록값과 동일) |
+| `APP_ORIGIN` | — | OAuth 완료 후 돌아갈 SPA 주소(기본: 리디렉션 URL 의 origin) |
 
 3. `app` 서비스에 도메인을 연결하고 **포트 8080**, HTTPS를 켠다.
 4. 배포 → 기동 시 `scripts/start.mjs`가 마이그레이션을 적용한 뒤 서버를 띄운다.
@@ -122,6 +125,7 @@ pnpm moments:cleanup   # 만료된 Moments·고아 이미지 정리(크론 권�
 - [키 백업·기기 복구](docs/08-key-backup.md) — 복구 암호, 백업 블롭, 복구 절차와 한계
 - [그룹 대화](docs/09-groups.md) — 기기별 봉투, 참여자 추가, 인원 제한과 한계
 - [파일 첨부](docs/10-attachments.md) — 파일별 암호화, 저장·접근 제어, 백업과 한계
+- [Google OAuth](docs/27-google-oauth.md) — `state`+PKCE, 1회용 티켓, 계정 연결/해제, 운영 설정
 - [Double Ratchet](docs/11-double-ratchet.md) — v2 세션·DH 래칫, 이력 키, 백업과 한계
 - [Sender Keys](docs/14-sender-keys.md) — 그룹 체인 배포, 회전, 백업과 보안 한계
 - [X3DH](docs/15-x3dh.md) — signed prekey, 최초 세션, 백업과 OPK 후속

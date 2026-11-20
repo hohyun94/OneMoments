@@ -121,6 +121,10 @@ MVP 이후 과제를 순차 진행한다.
    - 대화 내보내기(복호화 TXT/JSON)
    - 알림 미리보기·알림 종류 세분화(문구는 내용 없는 고정 문구 유지) · `docs/12-push-mobile.md`
    - 미디어 스트리밍 재생(첨부 `Range` API 는 유지) · `docs/10-attachments.md`
+11. **Google OAuth(가입·로그인·계정 연결)** — 서버 완료, 클라이언트 UI 2단계 예정 · `docs/27-google-oauth.md`
+   - `state` 쿠키 + PKCE(S256) + 서버측 code 교환, 1회용 티켓으로 기기 키 등록
+   - Google 전용 계정(비밀번호 없음), 기존 계정 연결/해제, 아이디 확인 삭제
+   - 스텁 IdP 기반 API 테스트 13개(실제 Google 네트워크 비의존)
 
 ## 리스크
 

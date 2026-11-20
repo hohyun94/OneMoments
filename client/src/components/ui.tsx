@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { Loader2, X } from "lucide-react";
-import { useEffect, type ComponentProps, type ReactNode } from "react";
+import { Eye, EyeOff, Loader2, X } from "lucide-react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import { twMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
 
@@ -45,6 +45,39 @@ export function Input({ className, ...props }: ComponentProps<"input">) {
       )}
       {...props}
     />
+  );
+}
+
+/** 비밀번호 입력 + 표시/숨기기 토글. type 은 내부에서 관리한다. */
+export function PasswordInput({
+  className,
+  ...props
+}: Omit<ComponentProps<"input">, "type">) {
+  const [visible, setVisible] = useState(false);
+  const label = visible ? "비밀번호 숨기기" : "비밀번호 표시";
+  return (
+    <div className="relative">
+      <Input
+        {...props}
+        type={visible ? "text" : "password"}
+        className={cn("pr-10", className)}
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((value) => !value)}
+        onMouseDown={(event) => event.preventDefault()}
+        aria-label={label}
+        aria-pressed={visible}
+        title={label}
+        className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-200"
+      >
+        {visible ? (
+          <EyeOff className="h-4 w-4" aria-hidden />
+        ) : (
+          <Eye className="h-4 w-4" aria-hidden />
+        )}
+      </button>
+    </div>
   );
 }
 

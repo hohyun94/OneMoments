@@ -3,7 +3,7 @@ import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../lib/api.ts";
 import { BackupError } from "../lib/crypto/index.ts";
-import { Alert, Button, Card, Input, Label, Spinner } from "../components/ui.tsx";
+import { Alert, Button, Card, Input, Label, PasswordInput, Spinner } from "../components/ui.tsx";
 import { useSession } from "../session.tsx";
 
 function messageOf(error: unknown): string {
@@ -138,10 +138,9 @@ export function AuthPage() {
               <Label htmlFor="password">
                 {mode === "recover" ? "복구 암호" : "비밀번호"}
               </Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 autoComplete={
                   mode === "login" || mode === "recover"
                     ? "current-password"
@@ -165,10 +164,9 @@ export function AuthPage() {
             {mode === "register" ? (
               <div className="space-y-1.5">
                 <Label htmlFor="confirm">비밀번호 확인</Label>
-                <Input
+                <PasswordInput
                   id="confirm"
                   name="confirm"
-                  type="password"
                   autoComplete="new-password"
                   required
                   minLength={10}

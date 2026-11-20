@@ -17,8 +17,8 @@ import {
   Button,
   Card,
   Dialog,
-  Input,
   Label,
+  PasswordInput,
   Spinner,
 } from "../components/ui.tsx";
 import { ApiError, api } from "../lib/api.ts";
@@ -416,9 +416,8 @@ export function DevicesPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="backup-passphrase">복구 암호</Label>
-                <Input
+                <PasswordInput
                   id="backup-passphrase"
-                  type="password"
                   autoComplete="new-password"
                   minLength={10}
                   value={backupPassphrase}
@@ -428,9 +427,8 @@ export function DevicesPage() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="backup-confirm">복구 암호 확인</Label>
-                <Input
+                <PasswordInput
                   id="backup-confirm"
-                  type="password"
                   autoComplete="new-password"
                   minLength={10}
                   value={backupConfirm}
@@ -682,9 +680,8 @@ export function DevicesPage() {
           </p>
           <div className="space-y-1.5">
             <Label htmlFor="delete-account-password">비밀번호 확인</Label>
-            <Input
+            <PasswordInput
               id="delete-account-password"
-              type="password"
               autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}

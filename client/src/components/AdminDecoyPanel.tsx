@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { KeyRound } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-import { Alert, Button, Card, Dialog, Input, Label, Spinner } from "./ui.tsx";
+import { Alert, Button, Card, Dialog, Input, Label, PasswordInput, Spinner } from "./ui.tsx";
 import { api } from "../lib/api.ts";
 import type { DecoyProfile } from "../types.ts";
 
@@ -110,9 +110,8 @@ export function AdminDecoyPanel() {
           </div>
           <div>
             <Label htmlFor="decoy-password">decoy 비밀번호</Label>
-            <Input
+            <PasswordInput
               id="decoy-password"
-              type="password"
               autoComplete="new-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -231,9 +230,8 @@ function RotateDecoyDialog({
       </p>
       <div className="mt-3">
         <Label htmlFor="rotate-decoy-password">새 decoy 비밀번호</Label>
-        <Input
+        <PasswordInput
           id="rotate-decoy-password"
-          type="password"
           autoComplete="new-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}

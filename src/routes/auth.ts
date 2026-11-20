@@ -97,6 +97,14 @@ export function createAuthRouter(db: Database, config: Config): Router {
     isAdmin: isAdminUsername(config, user.username),
   });
 
+  /** 로그인 전 화면이 Google 버튼 노출 여부를 알 수 있는 공개 설정. */
+  router.get(
+    "/config",
+    asyncHandler(async (_req, res) => {
+      res.json({ oauthEnabled: config.googleOAuth !== null });
+    }),
+  );
+
   router.post(
     "/register",
     credentialLimiter,
@@ -130,6 +138,8 @@ export function createAuthRouter(db: Database, config: Config): Router {
         expiresAt: issued.expiresAt.toISOString(),
         idleTimeoutSeconds: device.idleTimeoutSeconds,
         theme: toThemeSettings(user),
+        hasPassword: user.passwordHash !== null,
+        googleLinked: user.oauthSubject !== null,
       });
     }),
   );
@@ -187,6 +197,8 @@ export function createAuthRouter(db: Database, config: Config): Router {
         expiresAt: issued.expiresAt.toISOString(),
         idleTimeoutSeconds: device.idleTimeoutSeconds,
         theme: toThemeSettings(user),
+        hasPassword: user.passwordHash !== null,
+        googleLinked: user.oauthSubject !== null,
       });
     }),
   );
@@ -407,6 +419,8 @@ export function createAuthRouter(db: Database, config: Config): Router {
         expiresAt: issued.expiresAt.toISOString(),
         idleTimeoutSeconds: device.idleTimeoutSeconds,
         theme: toThemeSettings(user),
+        hasPassword: user.passwordHash !== null,
+        googleLinked: user.oauthSubject !== null,
       });
     }),
   );

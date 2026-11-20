@@ -1,7 +1,7 @@
 # Google OAuth(가입·로그인·계정 연결)
 
 Google 계정으로 가입·로그인하고, 기존 비밀번호 계정에 Google 을 연결한다.
-**1단계(서버)** 가 완료되었고, 클라이언트 UI 는 2단계에서 붙인다.
+**서버(1단계)와 클라이언트(2단계)** 가 모두 구현되었다.
 
 ## 1. 보안 모델
 
@@ -22,8 +22,11 @@ Google 계정으로 가입·로그인하고, 기존 비밀번호 계정에 Googl
            (state 는 HttpOnly 쿠키 om_oauth_state 에도 저장)
 [브라우저] Google 인증 → GET /api/auth/google/callback?code&state
 [서버]     state 쿠키·DB 검증 → code 교환(PKCE) → userinfo(sub, email_verified)
-           → 1회용 티켓 생성 → 302 APP_ORIGIN/?oauth_ticket=…&oauth_intent=…
-[브라우저] POST /api/auth/google/complete {ticket, username?, device{공개키}}
+           → 1회용 티켓 생성 → 302 APP_ORIGIN/oauth/callback?oauth_ticket=…&oauth_intent=…
+[브라우저] /oauth/callback 에서 의도별 처리
+           - signup: 아이디 선택 후 POST /api/auth/google/complete
+           - login : 자동으로 POST /api/auth/google/complete
+           - link  : 자동으로 POST /api/auth/google/complete/link
 [서버]     티켓 소비 → 계정 생성 또는 기기 등록 → 세션 쿠키 발급
 ```
 
@@ -41,7 +44,16 @@ Google 계정으로 가입·로그인하고, 기존 비밀번호 계정에 Googl
 | `POST /api/auth/google/complete/link` | 세션 + CSRF + 티켓 | 연결 완료(티켓의 `user_id` 와 세션 사용자가 같아야 함) |
 | `POST /api/auth/google/unlink` | 세션 + CSRF + 비밀번호 | 연결 해제(비밀번호 없는 계정은 거부) |
 
+`GET /api/auth/config` 는 로그인 전에도 `{ oauthEnabled }` 를 알려 준다(버튼 노출 판단).
 `GET /api/auth/me` 가 `oauthEnabled`, `googleLinked`, `hasPassword` 를 함께 반환한다.
+
+### 클라이언트 화면
+
+| 경로/위치 | 동작 |
+|---|---|
+| 로그인/가입 카드 | `Google로 로그인`·`Google로 가입` 버튼(복구 탭에서는 숨김) |
+| `/oauth/callback` | `oauth_error` 표시, 가입은 **아이디 선택**, 로그인·연결은 자동 완료 |
+| 기기 설정 | Google 계정 카드 — 연결 / 비밀번호 확인 후 해제 |
 
 ### 콜백 오류 코드(SPA 로 `oauth_error` 전달)
 

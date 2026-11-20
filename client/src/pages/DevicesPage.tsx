@@ -39,6 +39,7 @@ import {
 import { useSession } from "../session.tsx";
 import type { Device } from "../types.ts";
 import { ThemeSettings } from "../components/ThemeSettings.tsx";
+import { GoogleAccountSection } from "../components/GoogleAccountSection.tsx";
 
 export function DevicesPage() {
   const {
@@ -606,6 +607,8 @@ export function DevicesPage() {
             </div>
           ) : null}
         </Card>
+
+        <GoogleAccountSection />
 
         <Card className="p-5">
           <h2 className="text-sm font-semibold text-zinc-900">화면 설정</h2>

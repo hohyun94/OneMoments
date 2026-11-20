@@ -66,7 +66,7 @@ function userAgent(req: Request): string | null {
 }
 
 function appRedirect(config: GoogleOAuthConfig, params: Record<string, string>): string {
-  const url = new URL("/", config.appOrigin);
+  const url = new URL("/oauth/callback", config.appOrigin);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   return url.toString();
 }

@@ -174,6 +174,10 @@ export interface AuthResponse {
   idleTimeoutSeconds?: number;
   /** 계정에 저장된 화면 테마. */
   theme: ThemeSettings;
+  /** 비밀번호 로그인 가능 여부(Google 전용 계정은 false). */
+  hasPassword?: boolean;
+  /** Google 계정 연결 여부. */
+  googleLinked?: boolean;
 }
 
 export interface MeResponse {
@@ -189,6 +193,12 @@ export interface MeResponse {
   sessionIdleTimeoutSeconds: number | null;
   /** 계정에 저장된 화면 테마. */
   theme: ThemeSettings;
+  /** 서버에 Google OAuth 설정이 있는지. */
+  oauthEnabled?: boolean;
+  /** 이 계정에 Google 이 연결되어 있는지. */
+  googleLinked?: boolean;
+  /** 비밀번호 로그인 가능 여부(Google 전용 계정은 false). */
+  hasPassword?: boolean;
 }
 
 export interface AdminOverview {

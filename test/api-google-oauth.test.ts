@@ -457,5 +457,11 @@ describe("google oauth", () => {
     });
     expect(retry.completed.status).toBe(201);
   });
+  it("exposes the public oauth availability flag", async () => {
+    const response = await new TestClient(ctx.baseUrl).request("GET", "/api/auth/config");
+    expect(response.status).toBe(200);
+    expect(response.body.oauthEnabled).toBe(true);
+  });
+
 });
 

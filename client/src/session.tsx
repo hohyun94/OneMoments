@@ -76,6 +76,22 @@ interface SessionContextValue {
   updateDeviceIdleTimeout: (seconds: number) => Promise<void>;
   /** 이번 로그인에만 적용할 값을 변경한다. null 이면 오버라이드 해제. */
   updateSessionIdleTimeout: (seconds: number | null) => Promise<void>;
+  /** 서버에 Google OAuth 설정이 있는지. */
+  oauthEnabled: boolean;
+  /** 현재 계정에 Google 계정이 연결되었는지. */
+  googleLinked: boolean;
+  /** 비밀번호 로그인 가능 여부(Google 전용 계정은 false). */
+  hasPassword: boolean;
+  /** Google 로그인/가입 시작(브라우저를 Google 로 이동). */
+  startGoogle: (intent: "signup" | "login") => Promise<void>;
+  /** 콜백 티켓으로 가입/로그인을 완료한다. username 은 가입일 때 필수. */
+  completeGoogle: (input: { ticket: string; username?: string }) => Promise<void>;
+  /** 로그인 상태에서 Google 연결 시작. */
+  startGoogleLink: () => Promise<void>;
+  /** 연결 완료(티켓). */
+  completeGoogleLink: (ticket: string) => Promise<void>;
+  /** 연결 해제(비밀번호 확인 필요). */
+  unlinkGoogle: (password: string) => Promise<void>;
   /** 계정 화면 테마. */
   theme: ThemeSettings;
   /** 테마를 즉시 적용하고 계정에 저장한다. */
@@ -185,6 +201,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessionIdleTimeoutSeconds, setSessionIdleTimeoutSeconds] = useState<number | null>(
     null,
   );
+  // Google OAuth 상태(서버 설정·계정 연결·비밀번호 유무).
+  const [oauthEnabled, setOauthEnabled] = useState(false);
+  const [googleLinked, setGoogleLinked] = useState(false);
+  const [hasPassword, setHasPassword] = useState(true);
   const idleTimeoutSeconds = effectiveIdleTimeoutSeconds(
     deviceIdleTimeoutSeconds,
     sessionIdleTimeoutSeconds,
@@ -206,6 +226,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // 로그인 전에도 Google 버튼 노출 여부를 알 수 있게 공개 설정을 읽는다.
+    let cancelled = false;
+    api<{ oauthEnabled: boolean }>("/api/auth/config")
+      .then((value) => {
+        if (!cancelled) setOauthEnabled(Boolean(value.oauthEnabled));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (localStorage.getItem(FORCE_LOGIN_KEY) === "1") {
       setStatus("anonymous");
       return;
@@ -222,6 +255,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
             DEFAULT_IDLE_TIMEOUT_SECONDS,
         );
         setSessionIdleTimeoutSeconds(me.sessionIdleTimeoutSeconds ?? null);
+        setOauthEnabled(me.oauthEnabled ?? false);
+        setGoogleLinked(me.googleLinked ?? false);
+        setHasPassword(me.hasPassword ?? true);
         const stored = await loadIdentityForUser(me.user.id, me.user.username);
         if (!stored) {
           setSession({ user: me.user, deviceId: me.deviceId });
@@ -307,6 +343,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setIdentity(stored);
     setSession({ user: response.user, deviceId: response.device.id });
     setStatus("authenticated");
+    setHasPassword(true);
+    setGoogleLinked(false);
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
@@ -385,6 +423,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setIdentity(stored);
     setSession({ user: response.user, deviceId: response.device.id });
     setStatus("authenticated");
+    setHasPassword(response.hasPassword ?? true);
+    setGoogleLinked(response.googleLinked ?? false);
   }, []);
 
   const recover = useCallback(async (username: string, passphrase: string) => {
@@ -454,6 +494,100 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setIdentity(stored);
     setSession({ user: response.user, deviceId: response.device.id });
     setStatus("authenticated");
+    setHasPassword(response.hasPassword ?? true);
+    setGoogleLinked(response.googleLinked ?? false);
+  }, []);
+
+  /** Google 로그인/가입을 시작한다(브라우저가 Google 로 이동). */
+  const startGoogle = useCallback(async (intent: "signup" | "login") => {
+    const response = await api<{ authorizationUrl: string }>("/api/auth/google/start", {
+      method: "POST",
+      csrf: false,
+      body: { intent },
+    });
+    window.location.assign(response.authorizationUrl);
+  }, []);
+
+  /**
+   * 콜백 티켓으로 가입/로그인을 완료한다.
+   * 가입은 아이디 선택이 필요하고, 기기 키는 이 브라우저에서 새로 만들어 공개키만 보낸다.
+   */
+  const completeGoogle = useCallback(
+    async (input: { ticket: string; username?: string }) => {
+      const generated = await createIdentity();
+      const username = input.username?.trim().toLowerCase();
+      const response = await api<AuthResponse>("/api/auth/google/complete", {
+        method: "POST",
+        csrf: false,
+        body: {
+          ticket: input.ticket,
+          ...(username ? { username } : {}),
+          device: {
+            name: deviceName(),
+            identityPublicKey: generated.identityPublicKey,
+            signingPublicKey: generated.signingPublicKey,
+            ...signedPreKeyBody({ ...generated, username: username ?? "" }),
+          },
+        },
+      });
+      setCsrfToken(response.csrfToken);
+      void clearSearchIndex();
+
+      // 새 세션이므로 이 브라우저의 테마를 초기값으로 저장한다.
+      const initialTheme = applyTheme(loadTheme());
+      setTheme(initialTheme);
+      void api("/api/auth/theme", { method: "PUT", body: initialTheme }).catch(() => undefined);
+
+      setDeviceIdleTimeoutSeconds(
+        response.idleTimeoutSeconds ?? DEFAULT_IDLE_TIMEOUT_SECONDS,
+      );
+      setSessionIdleTimeoutSeconds(null);
+
+      const stored: StoredIdentity = {
+        ...generated,
+        username: response.user.username,
+        loginAlias: response.user.username,
+        userId: response.user.id,
+        deviceId: response.device.id,
+      };
+      await saveIdentity(stored);
+      localStorage.removeItem(FORCE_LOGIN_KEY);
+      localStorage.setItem(LAST_USERNAME_KEY, response.user.username);
+      setLastUsername(response.user.username);
+      setIdentity(stored);
+      setSession({ user: response.user, deviceId: response.device.id });
+      setStatus("authenticated");
+      setOauthEnabled(true);
+      setGoogleLinked(response.googleLinked ?? true);
+      setHasPassword(response.hasPassword ?? false);
+    },
+    [],
+  );
+
+  const startGoogleLink = useCallback(async () => {
+    const response = await api<{ authorizationUrl: string }>("/api/auth/google/start/link", {
+      method: "POST",
+      body: {},
+    });
+    window.location.assign(response.authorizationUrl);
+  }, []);
+
+  const completeGoogleLink = useCallback(async (ticket: string) => {
+    const response = await api<{ hasPassword?: boolean; googleLinked?: boolean }>(
+      "/api/auth/google/complete/link",
+      { method: "POST", body: { ticket } },
+    );
+    setGoogleLinked(response.googleLinked ?? true);
+    if (typeof response.hasPassword === "boolean") setHasPassword(response.hasPassword);
+  }, []);
+
+  const unlinkGoogle = useCallback(async (password: string) => {
+    const response = await api<{ hasPassword?: boolean; googleLinked?: boolean }>(
+      "/api/auth/google/unlink",
+      { method: "POST", body: { password } },
+    );
+    setGoogleLinked(response.googleLinked ?? false);
+    if (typeof response.hasPassword === "boolean") setHasPassword(response.hasPassword);
   }, []);
 
   const logout = useCallback(async () => {
@@ -585,6 +719,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       theme,
       updateTheme,
       updateStatusMessage,
+      oauthEnabled,
+      googleLinked,
+      hasPassword,
+      startGoogle,
+      completeGoogle,
+      startGoogleLink,
+      completeGoogleLink,
+      unlinkGoogle,
     }),
     [
       status,
@@ -603,6 +745,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       theme,
       updateTheme,
       updateStatusMessage,
+      oauthEnabled,
+      googleLinked,
+      hasPassword,
+      startGoogle,
+      completeGoogle,
+      startGoogleLink,
+      completeGoogleLink,
+      unlinkGoogle,
     ],
   );
 

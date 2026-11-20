@@ -516,6 +516,52 @@ test("브라우저 임시 파일명은 기본 이름으로 바꾸고 사용자�
   }
 });
 
+test("여러 파일을 한 번에 첨부해 각각 메시지로 전송한다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("multi");
+  const bobName = uniqueName("multipeer");
+  const first = "여러개-1.png";
+  const second = "여러개-2.png";
+  const pngBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice.getByLabel("파일 선택").setInputFiles([
+      { name: first, mimeType: "image/png", buffer: pngBytes },
+      { name: second, mimeType: "image/png", buffer: pngBytes },
+    ]);
+    await expect(alice.getByLabel("파일 이름 1")).toHaveValue(first);
+    await expect(alice.getByLabel("파일 이름 2")).toHaveValue(second);
+    await expect(
+      alice.getByText("첨부 2개 · 파일마다 별도 메시지로 전송됩니다."),
+    ).toBeVisible();
+
+    await alice.getByLabel("메시지 입력").fill("두 장");
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
+    await expect(alice.getByRole("img", { name: first })).toBeVisible();
+    await expect(alice.getByRole("img", { name: second })).toBeVisible();
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByRole("img", { name: first })).toBeVisible();
+    await expect(bob.getByRole("img", { name: second })).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

@@ -87,6 +87,15 @@ interface PendingMessage {
   targetMessageId?: string;
 }
 
+interface PendingAttachment {
+  id: string;
+  file: File;
+  name: string;
+}
+
+/** 한 번에 첨부할 수 있는 파일 수(파일마다 별도 메시지로 전송). */
+const MAX_ATTACHMENT_COUNT = 5;
+
 function prependMessage(
   queryClient: ReturnType<typeof useQueryClient>,
   conversationId: string,
@@ -261,8 +270,7 @@ export function ChatView({
   const [draft, setDraft] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
-  const [attachment, setAttachment] = useState<File | null>(null);
-  const [attachmentName, setAttachmentName] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const recoveredAt = recoveredAtFor(identity.deviceId);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -536,7 +544,7 @@ export function ChatView({
 
   useEffect(() => {
     setDraft("");
-    setAttachment(null);
+    setAttachments([]);
     setAttachmentError(null);
     setSendError(null);
     setReplyTarget(null);
@@ -726,56 +734,74 @@ export function ChatView({
     }
   }
 
-  /** 파일 선택·드래그&드롭·붙여넣기가 모두 이 경로로 들어온다. */
-  function acceptAttachmentFile(file: File): boolean {
+  /** 파일 선택·드래그&드롭·붙여넣기가 모두 이 경로로 들어온다(여러 파일 허용). */
+  function addAttachmentFiles(files: File[]): void {
+    if (files.length === 0) return;
+    const accepted: PendingAttachment[] = [];
+    let remaining = MAX_ATTACHMENT_COUNT - attachments.length;
+    let error: string | null = null;
+
+    for (const file of files) {
+      if (remaining <= 0) {
+        error = `첨부는 한 번에 ${MAX_ATTACHMENT_COUNT}개까지 가능합니다.`;
+        break;
+      }
+      if (file.size === 0) {
+        error = "빈 파일은 첨부할 수 없습니다.";
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        error = "파일은 5MB 이하만 첨부할 수 있습니다.";
+        continue;
+      }
+      accepted.push({
+        id: crypto.randomUUID(),
+        file,
+        // 브라우저가 원본 이름을 주지 못하면 날짜 기반 이름으로 채우고, 사용자가 수정할 수 있다.
+        name: suggestedAttachmentName(file),
+      });
+      remaining -= 1;
+    }
+
+    setAttachmentError(error);
+    if (accepted.length > 0) setAttachments((current) => [...current, ...accepted]);
+  }
+
+  function renameAttachment(id: string, name: string): void {
+    setAttachments((current) =>
+      current.map((item) => (item.id === id ? { ...item, name } : item)),
+    );
+  }
+
+  function removeAttachment(id: string): void {
+    setAttachments((current) => current.filter((item) => item.id !== id));
     setAttachmentError(null);
-    if (file.size === 0) {
-      setAttachment(null);
-      setAttachmentName("");
-      setAttachmentError("빈 파일은 첨부할 수 없습니다.");
-      return false;
-    }
-    if (file.size > MAX_ATTACHMENT_BYTES) {
-      setAttachment(null);
-      setAttachmentName("");
-      setAttachmentError("파일은 5MB 이하만 첨부할 수 있습니다.");
-      return false;
-    }
-    setAttachment(file);
-    // 브라우저가 원본 이름을 주지 못하면 날짜 기반 이름으로 채우고, 사용자가 수정할 수 있다.
-    setAttachmentName(suggestedAttachmentName(file));
-    return true;
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function handleAttachmentChange(event: ChangeEvent<HTMLInputElement>): void {
-    const selected = event.target.files?.[0] ?? null;
-    if (!selected) {
-      setAttachment(null);
-      setAttachmentName("");
-      setAttachmentError(null);
-      return;
-    }
-    if (!acceptAttachmentFile(selected)) event.target.value = "";
+    addAttachmentFiles(Array.from(event.target.files ?? []));
+    // 같은 파일을 다시 선택할 수 있도록 input 을 비운다.
+    event.target.value = "";
   }
 
   function handleAttachmentDrop(event: DragEvent<HTMLDivElement>): void {
     if (sending || editing) return;
-    const file = event.dataTransfer?.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
     event.preventDefault();
-    acceptAttachmentFile(file);
+    addAttachmentFiles(files);
   }
 
   function handleAttachmentPaste(event: ClipboardEvent<HTMLTextAreaElement>): void {
-    const file = Array.from(event.clipboardData?.files ?? [])[0];
-    if (!file) return;
+    const files = Array.from(event.clipboardData?.files ?? []);
+    if (files.length === 0) return;
     event.preventDefault();
-    acceptAttachmentFile(file);
+    addAttachmentFiles(files);
   }
 
   function clearAttachment(): void {
-    setAttachment(null);
-    setAttachmentName("");
+    setAttachments([]);
     setAttachmentError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -806,17 +832,20 @@ export function ChatView({
       return;
     }
 
-    if (!text && !attachment) return;
+    if (!text && attachments.length === 0) return;
 
     setSending(true);
     setSendError(null);
     setAttachmentError(null);
     try {
-      const clientMessageId = crypto.randomUUID();
-      let plaintext = text;
-      if (attachment) {
+      const targetMessageId = replyTarget?.message.id;
+      const queue: PendingMessage[] = [];
+
+      // 파일마다 별도 메시지로 보낸다. 첫 파일에 캡션/답장을 붙인다.
+      for (const [index, item] of attachments.entries()) {
+        const clientMessageId = crypto.randomUUID();
         // 파일은 1회용 키로 암호화하고, 키는 메시지 암호문 안에 넣어 전달한다.
-        const encrypted = await encryptAttachment(attachment);
+        const encrypted = await encryptAttachment(item.file);
         const uploaded = await api<{ attachment: { id: string; size: number } }>(
           `/api/conversations/${conversation.id}/attachments`,
           {
@@ -829,27 +858,37 @@ export function ChatView({
             },
           },
         );
-        plaintext = encodeAttachmentPayload({
-          id: uploaded.attachment.id,
-          name: (attachmentName.trim() || attachment.name).slice(0, ATTACHMENT_NAME_MAX),
-          mime: attachment.type || "application/octet-stream",
-          size: attachment.size,
-          key: encrypted.key,
-          iv: encrypted.iv,
-          text,
+        queue.push({
+          clientMessageId,
+          plaintext: encodeAttachmentPayload({
+            id: uploaded.attachment.id,
+            name: (item.name.trim() || item.file.name).slice(0, ATTACHMENT_NAME_MAX),
+            mime: item.file.type || "application/octet-stream",
+            size: item.file.size,
+            key: encrypted.key,
+            iv: encrypted.iv,
+            text: index === 0 ? text : "",
+          }),
+          kind: "text",
+          targetMessageId: index === 0 ? targetMessageId : undefined,
         });
       }
 
-      const pending: PendingMessage = {
-        clientMessageId,
-        plaintext,
-        kind: "text",
-        targetMessageId: replyTarget?.message.id,
-      };
-      pendingRef.current = pending;
+      if (attachments.length === 0) {
+        queue.push({
+          clientMessageId: crypto.randomUUID(),
+          plaintext: text,
+          kind: "text",
+          targetMessageId,
+        });
+      }
+
       setDraft("");
-      if (attachment) clearAttachment();
-      await deliver(pending);
+      for (const pending of queue) {
+        pendingRef.current = pending;
+        await deliver(pending);
+      }
+      setAttachments([]);
       if (pendingRef.current === null) setReplyTarget(null);
     } catch (error) {
       if (error instanceof AttachmentError) {
@@ -1340,37 +1379,47 @@ export function ChatView({
           </div>
         ) : null}
 
-        {attachment || attachmentError ? (
-          <div className="mb-2">
-            {attachment ? (
-              <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+        {attachments.length > 0 || attachmentError ? (
+          <div className="mb-2 space-y-1">
+            {attachments.map((item, index) => (
+              <div
+                key={item.id}
+                className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2"
+              >
                 <div className="flex items-center gap-2">
                   <Paperclip className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
                   <input
-                    value={attachmentName}
-                    onChange={(event) => setAttachmentName(event.target.value)}
-                    aria-label="파일 이름"
+                    value={item.name}
+                    onChange={(event) => renameAttachment(item.id, event.target.value)}
+                    aria-label={
+                      attachments.length > 1 ? `파일 이름 ${index + 1}` : "파일 이름"
+                    }
                     maxLength={ATTACHMENT_NAME_MAX}
                     className="min-w-0 flex-1 truncate bg-transparent text-sm text-zinc-800 focus:outline-none"
                   />
                   <span className="shrink-0 text-xs text-zinc-500">
-                    {formatBytes(attachment.size)}
+                    {formatBytes(item.file.size)}
                   </span>
                   <button
                     type="button"
-                    onClick={clearAttachment}
-                    aria-label="첨부 제거"
+                    onClick={() => removeAttachment(item.id)}
+                    aria-label={`첨부 제거 ${index + 1}`}
                     className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
                   >
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                {isTemporaryFileName(attachment.name) ? (
+                {isTemporaryFileName(item.file.name) ? (
                   <p className="mt-1 text-[11px] text-zinc-500">
                     브라우저가 원본 파일명을 제공하지 않았습니다. 보낼 이름을 입력해 주세요.
                   </p>
                 ) : null}
               </div>
+            ))}
+            {attachments.length > 1 ? (
+              <p className="text-[11px] text-zinc-500">
+                첨부 {attachments.length}개 · 파일마다 별도 메시지로 전송됩니다.
+              </p>
             ) : null}
             {attachmentError ? (
               <p className="mt-1 text-xs text-red-600">{attachmentError}</p>
@@ -1408,6 +1457,7 @@ export function ChatView({
               <input
                 ref={fileInputRef}
                 type="file"
+                multiple
                 className="hidden"
                 aria-label="파일 선택"
                 onChange={handleAttachmentChange}
@@ -1443,7 +1493,7 @@ export function ChatView({
                 size="icon"
                 disabled={
                   sending ||
-                  (editing ? !draft.trim() : !draft.trim() && !attachment)
+                  (editing ? !draft.trim() : !draft.trim() && attachments.length === 0)
                 }
                 aria-label={editing ? "수정 저장" : "전송"}
               >

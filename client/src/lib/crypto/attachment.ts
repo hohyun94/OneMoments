@@ -76,6 +76,8 @@ export interface AttachmentPayload {
   text: string;
   /** 음성 메시지 길이(초). 일반 파일에는 없다. */
   durationSeconds?: number;
+  /** 음성 파형(0~100 막대). 송신자가 한 번 계산해 암호문에 담는다. */
+  waveform?: number[];
 }
 
 export function encodeAttachmentPayload(payload: AttachmentPayload): string {
@@ -110,6 +112,19 @@ export function parseAttachmentPayload(content: string): AttachmentPayload | nul
         return null;
       }
     }
+    if (value.waveform !== undefined) {
+      if (
+        !Array.isArray(value.waveform) ||
+        value.waveform.length === 0 ||
+        value.waveform.length > 64 ||
+        !value.waveform.every(
+          (peak) =>
+            typeof peak === "number" && Number.isFinite(peak) && peak >= 0 && peak <= 100,
+        )
+      ) {
+        return null;
+      }
+    }
     return {
       id: value.id,
       name: value.name,
@@ -121,6 +136,7 @@ export function parseAttachmentPayload(content: string): AttachmentPayload | nul
       ...(typeof value.durationSeconds === "number"
         ? { durationSeconds: value.durationSeconds }
         : {}),
+      ...(Array.isArray(value.waveform) ? { waveform: value.waveform } : {}),
     };
   } catch {
     return null;

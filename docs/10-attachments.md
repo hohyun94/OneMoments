@@ -76,8 +76,25 @@ onemoments:attachment:v1:<base64(JSON)>
 - 완료하면 파일 1개로 첨부 목록에 들어가고, 기존 첨부 파이프라인(1회용 AES-GCM 키 → 암호문 업로드 → 메시지 봉투)을 그대로 쓴다.
 - 파일 이름(`음성-YYYYMMDD-HHMM.webm`), MIME, **길이(초)** 는 모두 메시지 암호문 안에만 있다.
 - 수신 측은 복호화한 Blob URL 로 `<audio controls>` 를 표시하고, 메시지가 사라질 때 URL 을 해제한다.
+- **파형**: 송신자가 녹음 직후 8kHz 로 한 번만 디코딩해 0~100 피크 48개를 만들고, 그 값을 **암호문 페이로드**에 담는다. 수신자는 다시 디코딩하지 않고 막대를 그리며, 막대를 클릭하면 해당 위치로 이동한다.
 - **서버 변경·트랜스코딩 없음**(암호문만 저장), 푸시 문구도 그대로(내용 미포함).
-- 한계: Range/스트리밍이 없어 재생 시 전체 파일을 복호화해 메모리에 올린다(5분·5MB 제한으로 완화). 파형 표시는 제공하지 않는다.
+- 한계: Range/스트리밍이 없어 재생 시 전체 파일을 복호화해 메모리에 올린다(5분·5MB 제한으로 완화).
+
+## 4-2. 부분 다운로드(HTTP Range)
+
+`GET /api/attachments/:attachmentId` 가 **암호문 그대로** Range 요청을 지원한다(서버는 복호화하지 않는다).
+
+| 항목 | 동작 |
+|---|---|
+| 헤더 | 모든 응답에 `Accept-Ranges: bytes`, `Cache-Control: private, no-store` |
+| `Range: bytes=start-end` | `206` + `Content-Range: bytes start-end/total` |
+| `Range: bytes=start-` | 끝까지 |
+| `Range: bytes=-N` | 마지막 N 바이트 |
+| 만족 불가 범위 | `416` + `Content-Range: bytes */total` |
+| 저장소 | 로컬 파일은 `open`+`read(position)`, S3 는 `GetObject Range` 로 전달 |
+
+- 클라이언트는 아직 **전체를 받아 한 번에 복호화**한다(청크 암호화 + MSE 스트리밍 재생은 후속 설계).
+- Range 는 재시도·부분 다운로드·향후 스트리밍 파이프라인의 토대이며, 참여자 검증은 모든 요청에 동일하게 적용된다.
 
 ## 5. 한계·운영
 

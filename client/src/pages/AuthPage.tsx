@@ -79,7 +79,10 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-gradient-to-br from-accent-50 via-white to-zinc-100">
+    <div
+      data-testid="auth-backdrop"
+      className="min-h-dvh bg-gradient-to-br from-accent-50 via-white to-zinc-100 dark:from-accent-950 dark:via-zinc-950 dark:to-zinc-900"
+    >
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
         <div className="mb-6 flex flex-col items-center text-center">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-600 text-accent-contrast shadow-lg shadow-accent-600/20">

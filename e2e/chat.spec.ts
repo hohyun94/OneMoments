@@ -677,6 +677,36 @@ test("이모지 반응 개수가 읽기 좋은 크기로 표시된다", async ({
   }
 });
 
+test("로그인 화면 배경이 다크/라이트 테마를 따른다", async ({ browser }) => {
+  async function measure(colorScheme: "dark" | "light") {
+    const context = await browser.newContext({ colorScheme });
+    const page = await context.newPage();
+    try {
+      await page.goto("/");
+      await expect(page.getByRole("heading", { name: "OneMoments" })).toBeVisible();
+      const isDark = await page.evaluate(() =>
+        document.documentElement.classList.contains("dark"),
+      );
+      const image = await page
+        .getByTestId("auth-backdrop")
+        .evaluate((node) => getComputedStyle(node).backgroundImage);
+      return { isDark, image };
+    } finally {
+      await context.close();
+    }
+  }
+
+  const dark = await measure("dark");
+  expect(dark.isDark).toBe(true);
+  // 다크에서는 흰색/밝은 회색 그라디언트가 남아 있으면 안 된다.
+  expect(dark.image).not.toContain("255, 255, 255");
+  expect(dark.image).not.toContain("250, 250, 250");
+
+  const light = await measure("light");
+  expect(light.isDark).toBe(false);
+  expect(light.image).toContain("255, 255, 255");
+});
+
 test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();

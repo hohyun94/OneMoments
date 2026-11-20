@@ -10,7 +10,8 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock } from "../lib/format.ts";
-import { mentionsUser, splitMentions } from "../lib/mentions.ts";
+import { mentionsUser } from "../lib/mentions.ts";
+import { tokenizeMessage } from "../lib/richText.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { cn } from "./ui.tsx";
@@ -394,21 +395,57 @@ export function MessageBubble({
           <div className="space-y-1.5">
             {result.text ? (
               <p className="whitespace-pre-wrap break-words leading-relaxed">
-                {splitMentions(result.text, mentionNames).map((segment, index) =>
-                  segment.mention ? (
-                    <span
-                      key={index}
-                      className={cn(
-                        "rounded px-0.5 font-medium",
-                        own ? "bg-white/25" : "bg-accent-100 text-accent-800",
-                      )}
-                    >
-                      {segment.text}
-                    </span>
-                  ) : (
-                    <Fragment key={index}>{segment.text}</Fragment>
-                  ),
-                )}
+                {tokenizeMessage(result.text, mentionNames).map((token, index) => {
+                  switch (token.type) {
+                    case "bold":
+                      return (
+                        <strong key={index} className="font-semibold">
+                          {token.text}
+                        </strong>
+                      );
+                    case "code":
+                      return (
+                        <code
+                          key={index}
+                          className={cn(
+                            "rounded px-1 py-0.5 font-mono text-[0.85em]",
+                            own ? "bg-white/20" : "bg-zinc-100 text-zinc-800",
+                          )}
+                        >
+                          {token.text}
+                        </code>
+                      );
+                    case "link":
+                      return (
+                        <a
+                          key={index}
+                          href={token.href}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                          className={cn(
+                            "underline underline-offset-2",
+                            own ? "text-white" : "text-accent-700",
+                          )}
+                        >
+                          {token.text}
+                        </a>
+                      );
+                    case "mention":
+                      return (
+                        <span
+                          key={index}
+                          className={cn(
+                            "rounded px-0.5 font-medium",
+                            own ? "bg-white/25" : "bg-accent-100 text-accent-800",
+                          )}
+                        >
+                          {token.text}
+                        </span>
+                      );
+                    default:
+                      return <Fragment key={index}>{token.text}</Fragment>;
+                  }
+                })}
               </p>
             ) : null}
             {result.attachment ? (

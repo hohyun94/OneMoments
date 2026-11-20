@@ -12,6 +12,7 @@ import {
   Bell,
   BellOff,
   Clock,
+  Code2,
   Pencil,
   Paperclip,
   Pin,
@@ -957,6 +958,22 @@ export function ChatView({
     });
   }
 
+  /** 선택 영역을 서식 기호로 감싼다(선택이 없으면 자리표시자를 넣는다). */
+  function wrapSelection(prefix: string, suffix = prefix, placeholder = "텍스트"): void {
+    const textarea = draftRef.current;
+    const start = textarea?.selectionStart ?? draft.length;
+    const end = textarea?.selectionEnd ?? start;
+    const selected = draft.slice(start, end) || placeholder;
+    setDraft(`${draft.slice(0, start)}${prefix}${selected}${suffix}${draft.slice(end)}`);
+    window.requestAnimationFrame(() => {
+      textarea?.focus();
+      textarea?.setSelectionRange(
+        start + prefix.length,
+        start + prefix.length + selected.length,
+      );
+    });
+  }
+
   const dayGroups: Array<{ day: string; items: MessageView[] }> = [];
   for (const message of chronological) {
     const day = formatDayLabel(message.createdAt);
@@ -1462,6 +1479,28 @@ export function ChatView({
                 aria-label="파일 선택"
                 onChange={handleAttachmentChange}
               />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => wrapSelection("**", "**", "굵게")}
+                disabled={sending || editing !== null}
+                aria-label="굵게"
+                title="굵게"
+              >
+                <span className="text-xs font-bold">B</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={() => wrapSelection("`", "`", "코드")}
+                disabled={sending || editing !== null}
+                aria-label="코드"
+                title="인라인 코드"
+              >
+                <Code2 className="h-4 w-4" />
+              </Button>
               <Button
                 type="button"
                 variant="ghost"

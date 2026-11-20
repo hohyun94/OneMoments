@@ -40,6 +40,8 @@ export default defineConfig({
       COOKIE_SECURE: "false",
       CORS_ORIGINS: `http://127.0.0.1:${PORT}`,
       TRUST_PROXY: "0",
+      // 테스트는 한 IP 에서 여러 계정을 연속 생성하므로 인증 레이트리밋을 넉넉히 둔다.
+      AUTH_RATE_LIMIT_MAX: "500",
     },
   },
 });

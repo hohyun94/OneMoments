@@ -562,6 +562,43 @@ test("여러 파일을 한 번에 첨부해 각각 메시지로 전송한다", a
   }
 });
 
+test("굵게·코드·링크 서식을 렌더링한다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("rich");
+  const bobName = uniqueName("richpeer");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice
+      .getByLabel("메시지 입력")
+      .fill("**중요** `npm test` https://example.com");
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
+
+    await expect(alice.locator("strong", { hasText: "중요" })).toBeVisible();
+    await expect(alice.locator("code", { hasText: "npm test" })).toBeVisible();
+    const aliceLink = alice.getByRole("link", { name: "https://example.com" });
+    await expect(aliceLink).toHaveAttribute("href", "https://example.com");
+    await expect(aliceLink).toHaveAttribute("target", "_blank");
+    await expect(aliceLink).toHaveAttribute("rel", /noopener/);
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.locator("strong", { hasText: "중요" })).toBeVisible();
+    await expect(bob.getByRole("link", { name: "https://example.com" })).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

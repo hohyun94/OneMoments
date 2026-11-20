@@ -740,6 +740,44 @@ test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser
   }
 });
 
+test("Google 가입·로그인으로 계정을 만들고 다시 로그인한다", async ({ browser }) => {
+  const username = uniqueName("guser");
+  const signupContext = await browser.newContext();
+  const signup = await signupContext.newPage();
+  try {
+    await signup.goto("/");
+    await signup.getByRole("button", { name: "가입", exact: true }).click();
+    await signup.getByRole("button", { name: "Google로 가입" }).click();
+    // 스텁 IdP → 서버 콜백 → `/oauth/callback` 의 아이디 선택 단계
+    await expect(signup.getByRole("heading", { name: "아이디 선택" })).toBeVisible({
+      timeout: 25_000,
+    });
+    await signup.getByLabel("아이디").fill(username);
+    await signup.getByRole("button", { name: "가입 완료" }).click();
+    await expect(signup.getByRole("navigation", { name: "대화 목록" })).toBeVisible({
+      timeout: 25_000,
+    });
+
+    await signup.goto("/devices");
+    await expect(signup.getByText("현재 Google 계정이 연결되어 있습니다.")).toBeVisible();
+  } finally {
+    await signupContext.close();
+  }
+
+  // 같은 Google 계정으로 새 브라우저에서 로그인한다(기기 키는 새로 생성).
+  const loginContext = await browser.newContext();
+  const login = await loginContext.newPage();
+  try {
+    await login.goto("/");
+    await login.getByRole("button", { name: "Google로 로그인" }).click();
+    await expect(login.getByRole("navigation", { name: "대화 목록" })).toBeVisible({
+      timeout: 25_000,
+    });
+  } finally {
+    await loginContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

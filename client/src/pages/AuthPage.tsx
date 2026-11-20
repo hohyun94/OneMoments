@@ -3,6 +3,7 @@ import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../lib/api.ts";
 import { BackupError } from "../lib/crypto/index.ts";
+import { GoogleButton } from "../components/GoogleButton.tsx";
 import { Alert, Button, Card, Input, Label, PasswordInput, Spinner } from "../components/ui.tsx";
 import { useSession } from "../session.tsx";
 
@@ -41,7 +42,7 @@ function messageOf(error: unknown): string {
 }
 
 export function AuthPage() {
-  const { login, register, recover, lastUsername } = useSession();
+  const { login, register, recover, lastUsername, oauthEnabled, startGoogle } = useSession();
   const [mode, setMode] = useState<"login" | "register" | "recover">("login");
   const [username, setUsername] = useState(lastUsername);
   const [password, setPassword] = useState("");
@@ -118,6 +119,26 @@ export function AuthPage() {
               </button>
             ))}
           </div>
+
+          {oauthEnabled && mode !== "recover" ? (
+            <div className="mb-5 space-y-3">
+              <GoogleButton
+                label={mode === "register" ? "Google로 가입" : "Google로 로그인"}
+                disabled={busy}
+                onClick={() => {
+                  setError(null);
+                  void startGoogle(mode === "register" ? "signup" : "login").catch(
+                    (caught: unknown) => setError(messageOf(caught)),
+                  );
+                }}
+              />
+              <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+                <span className="h-px flex-1 bg-zinc-200" />
+                또는 아이디로 계속
+                <span className="h-px flex-1 bg-zinc-200" />
+              </div>
+            </div>
+          ) : null}
 
           <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-1.5">

@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 import { Button, Card, Spinner } from "./components/ui.tsx";
 import { AuthPage } from "./pages/AuthPage.tsx";
+import { OAuthLanding } from "./pages/OAuthLanding.tsx";
 import { ChatPage } from "./pages/ChatPage.tsx";
 import { DevicesPage } from "./pages/DevicesPage.tsx";
 import { InvitePage } from "./pages/InvitePage.tsx";
@@ -73,6 +74,8 @@ function Guard({ children }: { children: ReactNode }) {
 export function App() {
   return (
     <Routes>
+      {/* Google OAuth 복귀: 로그인/가입/연결을 티켓으로 마무리한다. */}
+      <Route path="/oauth/callback" element={<OAuthLanding />} />
       <Route
         path="/"
         element={

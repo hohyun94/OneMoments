@@ -7,12 +7,14 @@ import {
 } from "@tanstack/react-query";
 import {
   AlertCircle,
+  ArrowDown,
   ArrowLeft,
   Bell,
   BellOff,
   Clock,
   Pencil,
   Paperclip,
+  Pin,
   Reply,
   Send,
   Settings,
@@ -22,6 +24,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -30,6 +33,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { ApiError, api } from "../lib/api.ts";
 import {
@@ -137,6 +141,60 @@ export function ChatView({
     refetchInterval: 5_000,
   });
 
+  const pinnedQuery = useQuery({
+    queryKey: ["pinned", conversation.id],
+    queryFn: () =>
+      api<MessagePage>(
+        `/api/conversations/${conversation.id}/messages?limit=20&pinned=1`,
+      ),
+    refetchInterval: 30_000,
+  });
+  const pinnedMessages = useMemo(
+    () => pinnedQuery.data?.messages ?? [],
+    [pinnedQuery.data],
+  );
+  const [pinnedTexts, setPinnedTexts] = useState<Record<string, string>>({});
+
+  // 고정 메시지는 배너에 미리보기로 보여준다(복호화 실패 시 자리표시).
+  useEffect(() => {
+    if (pinnedMessages.length === 0) {
+      setPinnedTexts({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      pinnedMessages.slice(0, 5).map(async (message) => {
+        try {
+          return { id: message.id, text: await decryptMessageText(identity, message) };
+        } catch {
+          return { id: message.id, text: "" };
+        }
+      }),
+    ).then((rows) => {
+      if (cancelled) return;
+      const next: Record<string, string> = {};
+      for (const row of rows) {
+        if (row.text) next[row.id] = row.text;
+      }
+      setPinnedTexts(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity, pinnedMessages]);
+
+  const pinMutation = useMutation({
+    mutationFn: (input: { messageId: string; pinned: boolean }) =>
+      api(`/api/conversations/${conversation.id}/messages/${input.messageId}/pin`, {
+        method: "PUT",
+        body: { pinned: input.pinned },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["pinned", conversation.id] });
+      void queryClient.invalidateQueries({ queryKey: ["messages", conversation.id] });
+    },
+  });
+
   const devicesQuery = useQuery({
     queryKey: ["conversation-devices", conversation.id],
     queryFn: () =>
@@ -234,6 +292,76 @@ export function ChatView({
   );
   const chronological = useMemo(() => [...textMessages].reverse(), [textMessages]);
   const latestId = textMessages[0]?.id;
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const anchorId = searchParams.get("anchor");
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const anchorAttemptsRef = useRef(0);
+
+  // 검색 결과(?anchor=)로 넘어온 메시지로 스크롤한다. 아직 로드되지 않았으면 이전 메시지를 더 불러온다.
+  useEffect(() => {
+    if (!anchorId) {
+      anchorAttemptsRef.current = 0;
+      return;
+    }
+    const found = chronological.some((message) => message.id === anchorId);
+    if (!found) {
+      const canLoadMore =
+        messagesQuery.hasNextPage &&
+        !messagesQuery.isFetchingNextPage &&
+        anchorAttemptsRef.current < 20;
+      if (canLoadMore) {
+        anchorAttemptsRef.current += 1;
+        void messagesQuery.fetchNextPage();
+      } else if (!messagesQuery.hasNextPage) {
+        // 더 불러올 이력이 없으면 이동을 포기하고 파라미터를 정리한다.
+        setSearchParams({}, { replace: true });
+      }
+      return;
+    }
+    document
+      .getElementById(`message-${anchorId}`)
+      ?.scrollIntoView({ block: "center" });
+    setHighlightId(anchorId);
+    setSearchParams({}, { replace: true });
+  }, [
+    anchorId,
+    chronological,
+    messagesQuery.hasNextPage,
+    messagesQuery.isFetchingNextPage,
+    messagesQuery.fetchNextPage,
+    setSearchParams,
+  ]);
+
+  // 이동한 메시지는 잠시 강조한다.
+  useEffect(() => {
+    if (!highlightId) return;
+    const timer = window.setTimeout(() => setHighlightId(null), 2_500);
+    return () => window.clearTimeout(timer);
+  }, [highlightId]);
+
+  const firstUnreadId = useMemo(() => {
+    if (conversation.unreadCount <= 0) return null;
+    const mine = (readsQuery.data ?? []).find((read) => read.userId === currentUserId);
+    if (!mine) return chronological[0]?.id ?? null;
+    const index = chronological.findIndex(
+      (message) => message.id === mine.lastReadMessageId,
+    );
+    if (index === -1) return null;
+    return chronological[index + 1]?.id ?? null;
+  }, [conversation.unreadCount, readsQuery.data, currentUserId, chronological]);
+
+  function jumpToMessage(messageId: string): void {
+    const node = document.getElementById(`message-${messageId}`);
+    if (node) {
+      node.scrollIntoView({ block: "center" });
+      setHighlightId(messageId);
+      return;
+    }
+    // 아직 로드되지 않은 이전 메시지면 앵커로 이동해 이어 불러온다.
+    setSearchParams({ anchor: messageId }, { replace: true });
+  }
+
   const editsByTarget = useMemo(() => {
     const edits = new Map<string, MessageView>();
     for (const message of messages) {
@@ -346,14 +474,17 @@ export function ChatView({
     );
     if (isGroup) {
       if (readers.length === 0) return "안 읽음";
+      // 3명 이하이면 이름으로, 그 이상이면 인원수로 표시한다.
+      const label =
+        readers.length <= 3
+          ? `${readers.map((read) => senderLabel(read.userId)).join(", ")} 읽음`
+          : `${readers.length}명 읽음`;
       // 커서가 이 메시지에 걸린 참여자가 있으면 그 시각을 함께 보여준다.
       const cursorTimes = readers
         .filter((read) => read.lastReadMessageId === message.id)
         .map((read) => Date.parse(read.updatedAt));
       const latest = cursorTimes.length > 0 ? Math.max(...cursorTimes) : null;
-      return latest
-        ? `${readers.length}명 읽음 · ${formatClock(new Date(latest).toISOString())}`
-        : `${readers.length}명 읽음`;
+      return latest ? `${label} · ${formatClock(new Date(latest).toISOString())}` : label;
     }
     const [peerRead] = readers;
     if (!peerRead) return "안 읽음";
@@ -930,6 +1061,28 @@ export function ChatView({
           </div>
         ) : null}
 
+        {pinnedMessages.length > 0 ? (
+          <div className="mb-3 rounded-lg border border-accent-200 bg-accent-50/60 px-3 py-2">
+            <p className="flex items-center gap-1.5 text-[11px] font-medium text-accent-700">
+              <Pin className="h-3.5 w-3.5" aria-hidden />
+              고정된 메시지 {pinnedMessages.length}
+            </p>
+            <ul className="mt-1 space-y-0.5">
+              {pinnedMessages.slice(0, 3).map((message) => (
+                <li key={message.id}>
+                  <button
+                    type="button"
+                    onClick={() => jumpToMessage(message.id)}
+                    className="w-full truncate text-left text-xs text-zinc-700 hover:underline"
+                  >
+                    {pinnedTexts[message.id] ?? "고정된 메시지"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {recoveredAt ? (
           <div className="pb-3">
             <Alert>
@@ -977,39 +1130,63 @@ export function ChatView({
                   <span className="h-px flex-1 bg-zinc-200" />
                 </div>
                 {group.items.map((message) => (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    identity={identity}
-                    own={message.senderUserId === currentUserId}
-                    senderName={senderLabel(message.senderUserId)}
-                    readLabel={
-                      message.senderUserId === currentUserId
-                        ? readLabelFor(message)
-                        : undefined
-                    }
-                    renderMessage={editsByTarget.get(message.id)}
-                    edited={editsByTarget.has(message.id)}
-                    replyTarget={replyTargetFor(message)}
-                    replyTargetName={
-                      replyTargetFor(message)
-                        ? senderLabel(replyTargetFor(message)?.senderUserId ?? "")
-                        : undefined
-                    }
-                    reactions={reactionsFor(message.id)}
-                    onReact={(target, emoji) => void reactTo(target, emoji)}
-                    onReply={(target, text) => {
-                      setEditing(null);
-                      setReplyTarget({ message: target, text });
-                    }}
-                    onEdit={(target, text) => {
-                      setEditing({ messageId: target.id, text });
-                      setDraft(text);
-                      setReplyTarget(null);
-                      clearAttachment();
-                    }}
-                    onDelete={(target) => setDeleteTarget(target)}
-                  />
+                  <Fragment key={message.id}>
+                    {message.id === firstUnreadId ? (
+                      <div className="flex items-center gap-3 py-1 text-[11px] font-medium text-accent-600">
+                        <span className="h-px flex-1 bg-accent-200" />
+                        여기부터 새 메시지
+                        <span className="h-px flex-1 bg-accent-200" />
+                      </div>
+                    ) : null}
+                    <div
+                      id={`message-${message.id}`}
+                      className={cn(
+                        "scroll-mt-24 rounded-2xl transition-shadow",
+                        highlightId === message.id &&
+                          "ring-2 ring-accent-400 ring-offset-2",
+                      )}
+                    >
+                      <MessageBubble
+                        message={message}
+                        identity={identity}
+                        own={message.senderUserId === currentUserId}
+                        senderName={senderLabel(message.senderUserId)}
+                        readLabel={
+                          message.senderUserId === currentUserId
+                            ? readLabelFor(message)
+                            : undefined
+                        }
+                        renderMessage={editsByTarget.get(message.id)}
+                        edited={editsByTarget.has(message.id)}
+                        replyTarget={replyTargetFor(message)}
+                        replyTargetName={
+                          replyTargetFor(message)
+                            ? senderLabel(replyTargetFor(message)?.senderUserId ?? "")
+                            : undefined
+                        }
+                        reactions={reactionsFor(message.id)}
+                        onReact={(target, emoji) => void reactTo(target, emoji)}
+                        pinned={message.pinned}
+                        onTogglePin={(target) =>
+                          pinMutation.mutate({
+                            messageId: target.id,
+                            pinned: !target.pinned,
+                          })
+                        }
+                        onReply={(target, text) => {
+                          setEditing(null);
+                          setReplyTarget({ message: target, text });
+                        }}
+                        onEdit={(target, text) => {
+                          setEditing({ messageId: target.id, text });
+                          setDraft(text);
+                          setReplyTarget(null);
+                          clearAttachment();
+                        }}
+                        onDelete={(target) => setDeleteTarget(target)}
+                      />
+                    </div>
+                  </Fragment>
                 ))}
               </div>
             ))}
@@ -1017,6 +1194,15 @@ export function ChatView({
           </div>
         )}
       </div>
+
+      {firstUnreadId ? (
+        <div className="flex justify-center bg-white pb-1">
+          <Button variant="outline" size="sm" onClick={() => jumpToMessage(firstUnreadId)}>
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+            새 메시지부터 보기
+          </Button>
+        </div>
+      ) : null}
 
       <form
         onSubmit={handleSubmit}

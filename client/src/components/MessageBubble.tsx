@@ -1,4 +1,4 @@
-import { Download, FileText, Pencil, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
+import { Download, FileText, Pencil, Pin, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -273,6 +273,8 @@ export function MessageBubble({
   onReply,
   onEdit,
   onDelete,
+  pinned = false,
+  onTogglePin,
 }: {
   message: MessageView;
   identity: StoredIdentity;
@@ -289,6 +291,8 @@ export function MessageBubble({
   onReply?: (message: MessageView, text: string) => void;
   onEdit?: (message: MessageView, text: string) => void;
   onDelete?: (message: MessageView) => void;
+  pinned?: boolean;
+  onTogglePin?: (message: MessageView) => void;
 }) {
   const [result, setResult] = useState<Result | null>(() => cache.get(message.id) ?? null);
   const [reactionOpen, setReactionOpen] = useState(false);
@@ -460,6 +464,18 @@ export function MessageBubble({
               <Pencil className="h-3.5 w-3.5" />
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => onTogglePin?.(message)}
+            aria-label={pinned ? "고정 해제" : "고정"}
+            title={pinned ? "고정 해제" : "고정"}
+            className={cn(
+              "rounded-md p-1 hover:bg-zinc-100",
+              pinned ? "text-accent-600" : "text-zinc-400 hover:text-zinc-700",
+            )}
+          >
+            <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} />
+          </button>
           <button
             type="button"
             onClick={() => onDelete?.(message)}

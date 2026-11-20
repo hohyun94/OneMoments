@@ -14,6 +14,7 @@ import {
   deleteMessageQuerySchema,
   listMessagesQuerySchema,
   markReadBodySchema,
+  pinMessageBodySchema,
   messageIdParamsSchema,
   sendMessageBodySchema,
   updateAutoDeleteBodySchema,
@@ -39,7 +40,7 @@ import {
   setConversationMuted,
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
-import { hideMessageForUser, listMessages } from "../services/messages.js";
+import { hideMessageForUser, listMessages, setMessagePinned } from "../services/messages.js";
 import {
   createAttachment,
   createAttachmentStorage,
@@ -390,6 +391,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         viewerUserId: auth.userId,
         before: query.before,
         limit: query.limit,
+        pinnedOnly: query.pinned === "1",
       });
       res.json(page);
     }),
@@ -453,6 +455,26 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         });
       }
       res.json({ deletedMessageIds: result.deletedMessageIds, scope: "all" });
+    }),
+  );
+
+  /** 메시지 고정 토글(메타데이터만). 1:1 은 참여자, 그룹은 owner 또는 발신자만. */
+  router.put(
+    "/:conversationId/messages/:messageId/pin",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId, messageId } = messageIdParamsSchema.parse(req.params);
+      const body = pinMessageBodySchema.parse(req.body);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      const message = await setMessagePinned(db, {
+        conversationId,
+        messageId,
+        userId: auth.userId,
+        pinned: body.pinned,
+      });
+      res.json({ id: message.id, pinned: message.pinnedAt !== null });
     }),
   );
 

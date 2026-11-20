@@ -228,6 +228,12 @@ export const markReadBodySchema = z.object({
 export const listMessagesQuerySchema = z.object({
   before: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** `1` 이면 고정된 메시지만 최신순으로 조회한다. */
+  pinned: z.literal("1").optional(),
+});
+
+export const pinMessageBodySchema = z.object({
+  pinned: z.boolean(),
 });
 
 export const searchUsersQuerySchema = z.object({

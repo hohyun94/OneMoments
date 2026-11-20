@@ -474,14 +474,17 @@ export function ChatView({
     );
     if (isGroup) {
       if (readers.length === 0) return "안 읽음";
+      // 3명 이하이면 이름으로, 그 이상이면 인원수로 표시한다.
+      const label =
+        readers.length <= 3
+          ? `${readers.map((read) => senderLabel(read.userId)).join(", ")} 읽음`
+          : `${readers.length}명 읽음`;
       // 커서가 이 메시지에 걸린 참여자가 있으면 그 시각을 함께 보여준다.
       const cursorTimes = readers
         .filter((read) => read.lastReadMessageId === message.id)
         .map((read) => Date.parse(read.updatedAt));
       const latest = cursorTimes.length > 0 ? Math.max(...cursorTimes) : null;
-      return latest
-        ? `${readers.length}명 읽음 · ${formatClock(new Date(latest).toISOString())}`
-        : `${readers.length}명 읽음`;
+      return latest ? `${label} · ${formatClock(new Date(latest).toISOString())}` : label;
     }
     const [peerRead] = readers;
     if (!peerRead) return "안 읽음";

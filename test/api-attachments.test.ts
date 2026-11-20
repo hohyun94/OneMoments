@@ -115,6 +115,44 @@ describe("encrypted attachments", () => {
     expect((await download(alice.client, randomUUID())).status).toBe(404);
   });
 
+  it("supports HTTP range requests for the ciphertext", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+    const data = randomBytes(64);
+
+    const uploaded = await upload(alice, conversationId, data);
+    expect(uploaded.status).toBe(201);
+    const attachmentId = uploaded.body.attachment.id as string;
+
+    const full = await download(bob.client, attachmentId);
+    expect(full.status).toBe(200);
+    expect(full.headers.get("accept-ranges")).toBe("bytes");
+    expect(full.bytes.equals(data)).toBe(true);
+
+    const request = (range: string) =>
+      fetch(`${ctx.baseUrl}/api/attachments/${attachmentId}`, {
+        headers: { cookie: bob.client.cookieHeader(), range },
+      });
+
+    const partial = await request("bytes=0-9");
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get("content-range")).toBe(`bytes 0-9/${data.byteLength}`);
+    expect(Buffer.from(await partial.arrayBuffer()).equals(data.subarray(0, 10))).toBe(true);
+
+    const suffix = await request("bytes=-8");
+    expect(suffix.status).toBe(206);
+    expect(Buffer.from(await suffix.arrayBuffer()).equals(data.subarray(-8))).toBe(true);
+
+    const open = await request("bytes=60-");
+    expect(open.status).toBe(206);
+    expect(Buffer.from(await open.arrayBuffer()).equals(data.subarray(60))).toBe(true);
+
+    const invalid = await request(`bytes=${data.byteLength}-`);
+    expect(invalid.status).toBe(416);
+    expect(invalid.headers.get("content-range")).toBe(`bytes */${data.byteLength}`);
+  });
+
   it("enforces size, content type, and upload participation", async () => {
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

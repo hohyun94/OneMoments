@@ -1,5 +1,5 @@
 import { Download, FileText, Pencil, Pin, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type MouseEvent } from "react";
 
 import {
   DecryptionError,
@@ -55,6 +55,24 @@ function AttachmentCard({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(needsPreview);
   const [error, setError] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [progress, setProgress] = useState(0);
+
+  function handleTimeUpdate(): void {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    setProgress(Math.min(1, audio.currentTime / audio.duration));
+  }
+
+  function seekFromWaveform(event: MouseEvent<HTMLDivElement>): void {
+    const audio = audioRef.current;
+    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    audio.currentTime = ratio * audio.duration;
+    setProgress(ratio);
+  }
 
   useEffect(() => {
     if (!needsPreview) return;
@@ -134,9 +152,47 @@ function AttachmentCard({
         </div>
       ) : null}
       {isAudio ? (
-        <div className="mb-2">
+        <div className="mb-2 space-y-1.5">
           {previewUrl ? (
-            <audio controls src={previewUrl} className="w-full min-w-56" />
+            <>
+              {attachment.waveform && attachment.waveform.length > 0 ? (
+                <div
+                  data-testid="waveform"
+                  role="presentation"
+                  onClick={seekFromWaveform}
+                  className="flex h-10 cursor-pointer items-end gap-0.5"
+                >
+                  {attachment.waveform.map((peak, index) => {
+                    const bars = attachment.waveform?.length ?? 1;
+                    const ratio = bars <= 1 ? 0 : index / (bars - 1);
+                    const played = ratio <= progress;
+                    return (
+                      <span
+                        key={index}
+                        style={{ height: `${peak}%` }}
+                        className={cn(
+                          "w-full rounded-sm",
+                          played
+                            ? own
+                              ? "bg-white/80"
+                              : "bg-accent-600"
+                            : own
+                              ? "bg-white/30"
+                              : "bg-zinc-300",
+                        )}
+                      />
+                    );
+                  })}
+                </div>
+              ) : null}
+              <audio
+                ref={audioRef}
+                controls
+                src={previewUrl}
+                onTimeUpdate={handleTimeUpdate}
+                className="w-full min-w-56"
+              />
+            </>
           ) : previewLoading ? (
             <div className="flex h-10 items-center text-xs text-zinc-500">음성 복호화 중…</div>
           ) : null}

@@ -636,6 +636,39 @@ test("음성 첨부를 보내면 오디오 플레이어로 표시된다", async 
   }
 });
 
+test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("record");
+  const bobName = uniqueName("recordpeer");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice.getByRole("button", { name: "음성 녹음" }).click();
+    await expect(alice.getByText(/녹음 중/)).toBeVisible();
+    await alice.waitForTimeout(1_500);
+    await alice.getByRole("button", { name: "완료" }).click();
+    await expect(alice.getByLabel("파일 이름")).toHaveValue(/^음성-\d{8}-\d{4}\.webm$/);
+
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
+    await expect(alice.getByTestId("waveform")).toBeVisible();
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByTestId("waveform")).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -19,6 +20,10 @@ const S3_KEY_PREFIX = "attachments";
 export interface AttachmentStorage {
   put(attachmentId: string, data: Buffer): Promise<void>;
   get(attachmentId: string): Promise<Buffer>;
+  /** 저장된 암호문 크기(바이트). 없으면 null. */
+  size(attachmentId: string): Promise<number | null>;
+  /** [start, end] 구간(양끝 포함)을 읽는다. HTTP Range 응답에 쓴다. */
+  getRange(attachmentId: string, start: number, end: number): Promise<Buffer>;
   delete(attachmentId: string): Promise<void>;
 }
 
@@ -54,6 +59,25 @@ function localAttachmentStorage(directory: string): AttachmentStorage {
   return {
     put: (id, data) => saveAttachmentBlob(directory, id, data),
     get: (id) => readAttachmentBlob(directory, id),
+    async size(id) {
+      try {
+        const info = await stat(attachmentFilePath(directory, id));
+        return info.size;
+      } catch {
+        return null;
+      }
+    },
+    async getRange(id, start, end) {
+      const handle = await open(attachmentFilePath(directory, id), "r");
+      try {
+        const length = end - start + 1;
+        const buffer = Buffer.alloc(length);
+        await handle.read(buffer, 0, length, start);
+        return buffer;
+      } finally {
+        await handle.close();
+      }
+    },
     delete: (id) => removeAttachmentBlob(directory, id),
   };
 }
@@ -91,6 +115,27 @@ function s3AttachmentStorage(config: Config): AttachmentStorage {
     async get(attachmentId) {
       const response = await client.send(
         new GetObjectCommand({ Bucket: bucket, Key: key(attachmentId) }),
+      );
+      if (!response.Body) throw new Error("S3 object has no body");
+      return Buffer.from(await response.Body.transformToByteArray());
+    },
+    async size(attachmentId) {
+      try {
+        const head = await client.send(
+          new HeadObjectCommand({ Bucket: bucket, Key: key(attachmentId) }),
+        );
+        return typeof head.ContentLength === "number" ? head.ContentLength : null;
+      } catch {
+        return null;
+      }
+    },
+    async getRange(attachmentId, start, end) {
+      const response = await client.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key(attachmentId),
+          Range: `bytes=${start}-${end}`,
+        }),
       );
       if (!response.Body) throw new Error("S3 object has no body");
       return Buffer.from(await response.Body.transformToByteArray());

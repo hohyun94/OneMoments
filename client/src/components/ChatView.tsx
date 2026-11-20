@@ -60,6 +60,7 @@ import {
   pickVoiceMimeType,
   voiceFileName,
 } from "../lib/voice.ts";
+import { computeWaveform } from "../lib/waveform.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { useRealtime } from "../realtime.tsx";
@@ -101,6 +102,8 @@ interface PendingAttachment {
   name: string;
   /** 음성 메시지 길이(초). */
   durationSeconds?: number;
+  /** 음성 파형(0~100). 송신자가 녹음 직후 한 번 계산한다. */
+  waveform?: number[];
 }
 
 /** 한 번에 첨부할 수 있는 파일 수(파일마다 별도 메시지로 전송). */
@@ -860,7 +863,7 @@ export function ChatView({
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) recorderChunksRef.current.push(event.data);
       };
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         const blob = new Blob(recorderChunksRef.current, { type: mime });
         recorderChunksRef.current = [];
         stream.getTracks().forEach((track) => track.stop());
@@ -879,9 +882,17 @@ export function ChatView({
         }
         const name = voiceFileName(mime);
         const file = new File([blob], name, { type: mime, lastModified: Date.now() });
+        // 파형은 송신자가 한 번만 계산해 암호문에 담는다(수신자는 그리기만 한다).
+        const waveform = await computeWaveform(await blob.arrayBuffer());
         setAttachments((current) => [
           ...current,
-          { id: crypto.randomUUID(), file, name, durationSeconds: seconds },
+          {
+            id: crypto.randomUUID(),
+            file,
+            name,
+            durationSeconds: seconds,
+            ...(waveform ? { waveform } : {}),
+          },
         ]);
       };
       recorderRef.current = recorder;
@@ -986,6 +997,7 @@ export function ChatView({
             ...(item.durationSeconds !== undefined
               ? { durationSeconds: item.durationSeconds }
               : {}),
+            ...(item.waveform ? { waveform: item.waveform } : {}),
           }),
           kind: "text",
           targetMessageId: index === 0 ? targetMessageId : undefined,

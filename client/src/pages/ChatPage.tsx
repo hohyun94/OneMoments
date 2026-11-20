@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessagesSquare, Plus } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ChatView } from "../components/ChatView.tsx";
@@ -8,6 +8,7 @@ import { ConversationSidebar } from "../components/ConversationSidebar.tsx";
 import { NewConversationDialog } from "../components/NewConversationDialog.tsx";
 import { Button, Spinner, cn } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
+import { loadPinnedConversations, togglePinnedConversation } from "../lib/conversationPins.ts";
 import { RealtimeProvider, useRealtime } from "../realtime.tsx";
 import { useSession } from "../session.tsx";
 import type { ConversationSummary } from "../types.ts";
@@ -18,6 +19,20 @@ export function ChatPage() {
   const { conversationId } = useParams();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!session) {
+      setPinnedIds([]);
+      return;
+    }
+    setPinnedIds(loadPinnedConversations(session.user.id));
+  }, [session]);
+
+  function togglePin(id: string) {
+    if (!session) return;
+    setPinnedIds(togglePinnedConversation(session.user.id, id));
+  }
 
   const conversationsQuery = useQuery({
     queryKey: ["conversations"],
@@ -47,6 +62,8 @@ export function ChatPage() {
         isAdmin={session.user.isAdmin === true}
         onSelect={(id) => navigate(`/c/${id}`)}
         onSelectMessage={(id, messageId) => navigate(`/c/${id}?anchor=${messageId}`)}
+        pinnedIds={pinnedIds}
+        onTogglePinConversation={togglePin}
         onBack={() => navigate("/")}
         onNewConversation={() => setDialogOpen(true)}
         onOpenMoments={() => navigate("/moments")}
@@ -79,6 +96,8 @@ function ChatShell({
   isAdmin,
   onSelect,
   onSelectMessage,
+  pinnedIds,
+  onTogglePinConversation,
   onBack,
   onNewConversation,
   onOpenMoments,
@@ -96,6 +115,8 @@ function ChatShell({
   isAdmin: boolean;
   onSelect: (id: string) => void;
   onSelectMessage: (id: string, messageId: string) => void;
+  pinnedIds: string[];
+  onTogglePinConversation: (id: string) => void;
   onBack: () => void;
   onNewConversation: () => void;
   onOpenMoments: () => void;
@@ -123,6 +144,8 @@ function ChatShell({
           isAdmin={isAdmin}
           onSelect={onSelect}
           onSelectMessage={onSelectMessage}
+          pinnedIds={pinnedIds}
+          onTogglePinConversation={onTogglePinConversation}
           onNewConversation={onNewConversation}
           onOpenMoments={onOpenMoments}
           onOpenContacts={onOpenContacts}

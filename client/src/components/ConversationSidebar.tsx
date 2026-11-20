@@ -3,6 +3,7 @@ import {
   Contact,
   LogOut,
   MessageSquarePlus,
+  Pin,
   Search,
   ShieldAlert,
   ShieldCheck,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { sortPinnedFirst } from "../lib/conversationPins.ts";
 import { formatListTime } from "../lib/format.ts";
 import { searchMessages, type SearchableMessage } from "../lib/search.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
@@ -28,6 +30,8 @@ export function ConversationSidebar({
   isAdmin,
   onSelect,
   onSelectMessage,
+  pinnedIds,
+  onTogglePinConversation,
   onNewConversation,
   onOpenMoments,
   onOpenContacts,
@@ -42,6 +46,8 @@ export function ConversationSidebar({
   isAdmin: boolean;
   onSelect: (conversationId: string) => void;
   onSelectMessage: (conversationId: string, messageId: string) => void;
+  pinnedIds: string[];
+  onTogglePinConversation: (conversationId: string) => void;
   onNewConversation: () => void;
   onOpenMoments: () => void;
   onOpenContacts: () => void;
@@ -164,7 +170,7 @@ export function ConversationSidebar({
           </div>
         ) : (
           <ul className="space-y-1">
-            {conversations.map((conversation) => {
+            {sortPinnedFirst(conversations, pinnedIds).map((conversation) => {
               const isGroup = conversation.kind === "group";
               const name = isGroup
                 ? (conversation.name ?? "그룹")
@@ -172,14 +178,15 @@ export function ConversationSidebar({
               const deleted = !isGroup && Boolean(conversation.peer?.deleted);
               const active = conversation.id === selectedId;
               const unread = conversation.unreadCount;
+              const pinned = pinnedIds.includes(conversation.id);
               return (
-                <li key={conversation.id}>
+                <li key={conversation.id} className="flex items-center gap-1">
                   <button
                     type="button"
                     onClick={() => onSelect(conversation.id)}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+                      "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
                       active ? "bg-accent-50" : "hover:bg-zinc-50",
                     )}
                   >
@@ -194,6 +201,12 @@ export function ConversationSidebar({
                         >
                           {name}
                         </span>
+                        {pinned ? (
+                          <Pin
+                            className="h-3 w-3 shrink-0 fill-current text-accent-600"
+                            aria-label="고정된 대화"
+                          />
+                        ) : null}
                         {conversation.favorite ? (
                           <Star
                             className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500"
@@ -231,6 +244,18 @@ export function ConversationSidebar({
                           : ""}
                       </span>
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onTogglePinConversation(conversation.id)}
+                    aria-label={pinned ? "대화 고정 해제" : "대화 고정"}
+                    title={pinned ? "고정 해제" : "고정"}
+                    className={cn(
+                      "mr-1 shrink-0 rounded-md p-1 hover:bg-zinc-100",
+                      pinned ? "text-accent-600" : "text-zinc-300 hover:text-zinc-600",
+                    )}
+                  >
+                    <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} />
                   </button>
                 </li>
               );

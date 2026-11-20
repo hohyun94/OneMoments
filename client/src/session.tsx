@@ -33,6 +33,7 @@ import {
   effectiveIdleTimeoutSeconds,
 } from "./lib/idleTimeout.ts";
 import { disablePush } from "./lib/push.ts";
+import { markDeviceRecovered } from "./lib/recovery.ts";
 import { clearSearchIndex } from "./lib/search.ts";
 import {
   THEME_STORAGE_KEY,
@@ -445,6 +446,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
     if (state) await importLocalCryptoState(state);
     await saveIdentity(stored);
+    // 복구 스냅샷 이후 메시지는 이 기기에서 읽을 수 없다는 안내에 쓴다.
+    markDeviceRecovered(response.device.id);
     localStorage.removeItem(FORCE_LOGIN_KEY);
     localStorage.setItem(LAST_USERNAME_KEY, normalized);
     setLastUsername(normalized);

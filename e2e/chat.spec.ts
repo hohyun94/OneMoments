@@ -33,7 +33,8 @@ async function startConversation(page: Page, peerUsername: string): Promise<void
 
 async function sendMessage(page: Page, text: string): Promise<void> {
   await page.getByLabel("메시지 입력").fill(text);
-  await page.getByRole("button", { name: "전송" }).click();
+  // "전송 취소 또는 삭제" 버튼과 이름이 겹치지 않도록 정확히 일치시킨다.
+  await page.getByRole("button", { name: "전송", exact: true }).click();
 }
 
 async function startGroup(page: Page, name: string, members: string[]): Promise<void> {
@@ -406,9 +407,10 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
       mimeType: "image/png",
       buffer: pngBytes,
     });
-    await expect(alice.getByText(fileName)).toBeVisible();
+    // 원본 파일명이 있으면 편집 필드에 그대로 채워진다.
+    await expect(alice.getByLabel("파일 이름")).toHaveValue(fileName);
     await alice.getByLabel("메시지 입력").fill("첨부합니다");
-    await alice.getByRole("button", { name: "전송" }).click();
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
     await expect(alice.getByText("첨부합니다")).toBeVisible();
     const aliceImage = alice.getByRole("img", { name: fileName });
     await expect(aliceImage).toBeVisible();
@@ -456,6 +458,58 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
     } finally {
       await client.end();
     }
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
+test("브라우저 임시 파일명은 기본 이름으로 바꾸고 사용자가 수정할 수 있다", async ({
+  browser,
+}) => {
+  const aliceContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const aliceName = uniqueName("tmpname");
+  const bobName = uniqueName("tmppeer");
+  const tempName = "tmp_f870a5a7-aca3-4996-8270-4a1fde29c829.png";
+  const editedName = "정리한-사진.png";
+  const pngBytes = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const bobContext = await browser.newContext();
+  const bob = await bobContext.newPage();
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice.getByLabel("파일 선택").setInputFiles({
+      name: tempName,
+      mimeType: "image/png",
+      buffer: pngBytes,
+    });
+    const nameInput = alice.getByLabel("파일 이름");
+    await expect(nameInput).toHaveValue(/^첨부-\d{8}-\d{4}\.png$/);
+    await expect(
+      alice.getByText("브라우저가 원본 파일명을 제공하지 않았습니다. 보낼 이름을 입력해 주세요."),
+    ).toBeVisible();
+
+    await nameInput.fill(editedName);
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
+    await expect(alice.getByText(editedName)).toBeVisible();
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByText(editedName)).toBeVisible();
+
+    const downloadPromise = bob.waitForEvent("download");
+    await bob.getByRole("button", { name: "다운로드" }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe(editedName);
   } finally {
     await aliceContext.close();
     await bobContext.close();

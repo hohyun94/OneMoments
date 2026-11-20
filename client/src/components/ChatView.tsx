@@ -44,7 +44,7 @@ import {
   type PreparedSenderKeyMessage,
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
-import { formatBytes, formatDayLabel } from "../lib/format.ts";
+import { formatBytes, formatClock, formatDayLabel } from "../lib/format.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { useRealtime } from "../realtime.tsx";
@@ -66,6 +66,12 @@ import { GroupMembersDialog } from "./GroupMembersDialog.tsx";
 import { GroupSettingsDialog } from "./GroupSettingsDialog.tsx";
 import { AutoDeleteDialog } from "./AutoDeleteDialog.tsx";
 import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
+import {
+  ATTACHMENT_NAME_MAX,
+  isTemporaryFileName,
+  suggestedAttachmentName,
+} from "../lib/attachmentName.ts";
+import { recoveredAtFor } from "../lib/recovery.ts";
 
 interface PendingMessage {
   clientMessageId: string;
@@ -191,6 +197,8 @@ export function ChatView({
 
   const [draft, setDraft] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [attachmentName, setAttachmentName] = useState("");
+  const recoveredAt = recoveredAtFor(identity.deviceId);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -333,16 +341,25 @@ export function ChatView({
   function readLabelFor(message: MessageView): string | undefined {
     if (!readsQuery.isSuccess) return undefined;
     const createdAt = Date.parse(message.createdAt);
+    const readers = otherReads.filter(
+      (read) => Date.parse(read.readAt) >= createdAt,
+    );
     if (isGroup) {
-      const count = otherReads.filter(
-        (read) => Date.parse(read.readAt) >= createdAt,
-      ).length;
-      return count > 0 ? `${count}명 읽음` : "안 읽음";
+      if (readers.length === 0) return "안 읽음";
+      // 커서가 이 메시지에 걸린 참여자가 있으면 그 시각을 함께 보여준다.
+      const cursorTimes = readers
+        .filter((read) => read.lastReadMessageId === message.id)
+        .map((read) => Date.parse(read.updatedAt));
+      const latest = cursorTimes.length > 0 ? Math.max(...cursorTimes) : null;
+      return latest
+        ? `${readers.length}명 읽음 · ${formatClock(new Date(latest).toISOString())}`
+        : `${readers.length}명 읽음`;
     }
-    const peerRead = otherReads[0];
-    return peerRead && Date.parse(peerRead.readAt) >= createdAt
-      ? "읽음"
-      : "안 읽음";
+    const [peerRead] = readers;
+    if (!peerRead) return "안 읽음";
+    return peerRead.lastReadMessageId === message.id
+      ? `읽음 · ${formatClock(peerRead.updatedAt)}`
+      : "읽음";
   }
   const peer = conversation.peer;
   const peerName = isGroup
@@ -563,25 +580,31 @@ export function ChatView({
     setAttachmentError(null);
     if (!selected) {
       setAttachment(null);
+      setAttachmentName("");
       return;
     }
     if (selected.size === 0) {
       setAttachment(null);
+      setAttachmentName("");
       setAttachmentError("빈 파일은 첨부할 수 없습니다.");
       event.target.value = "";
       return;
     }
     if (selected.size > MAX_ATTACHMENT_BYTES) {
       setAttachment(null);
+      setAttachmentName("");
       setAttachmentError("파일은 5MB 이하만 첨부할 수 있습니다.");
       event.target.value = "";
       return;
     }
     setAttachment(selected);
+    // 브라우저가 원본 이름을 주지 못하면 날짜 기반 이름으로 채우고, 사용자가 수정할 수 있다.
+    setAttachmentName(suggestedAttachmentName(selected));
   }
 
   function clearAttachment(): void {
     setAttachment(null);
+    setAttachmentName("");
     setAttachmentError(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -637,7 +660,7 @@ export function ChatView({
         );
         plaintext = encodeAttachmentPayload({
           id: uploaded.attachment.id,
-          name: attachment.name,
+          name: (attachmentName.trim() || attachment.name).slice(0, ATTACHMENT_NAME_MAX),
           mime: attachment.type || "application/octet-stream",
           size: attachment.size,
           key: encrypted.key,
@@ -907,6 +930,22 @@ export function ChatView({
           </div>
         ) : null}
 
+        {recoveredAt ? (
+          <div className="pb-3">
+            <Alert>
+              <span className="flex items-start gap-2">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                <span>
+                  키 백업으로 복구된 기기입니다. 백업 시점(
+                  {new Date(recoveredAt).toLocaleString("ko-KR")}) 이후 받은 메시지는 이
+                  기기에서 읽을 수 없으므로, 다른 기기에서 확인하거나 상대에게 새 메시지를
+                  받아야 합니다.
+                </span>
+              </span>
+            </Alert>
+          </div>
+        ) : null}
+
         {messagesQuery.isLoading ? (
           <p className="py-10 text-center text-sm text-zinc-500">메시지를 불러오는 중…</p>
         ) : messagesQuery.isError ? (
@@ -1055,22 +1094,33 @@ export function ChatView({
         {attachment || attachmentError ? (
           <div className="mb-2">
             {attachment ? (
-              <div className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-                <Paperclip className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
-                <span className="min-w-0 flex-1 truncate text-sm text-zinc-800">
-                  {attachment.name}
-                </span>
-                <span className="shrink-0 text-xs text-zinc-500">
-                  {formatBytes(attachment.size)}
-                </span>
-                <button
-                  type="button"
-                  onClick={clearAttachment}
-                  aria-label="첨부 제거"
-                  className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+              <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <input
+                    value={attachmentName}
+                    onChange={(event) => setAttachmentName(event.target.value)}
+                    aria-label="파일 이름"
+                    maxLength={ATTACHMENT_NAME_MAX}
+                    className="min-w-0 flex-1 truncate bg-transparent text-sm text-zinc-800 focus:outline-none"
+                  />
+                  <span className="shrink-0 text-xs text-zinc-500">
+                    {formatBytes(attachment.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={clearAttachment}
+                    aria-label="첨부 제거"
+                    className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                {isTemporaryFileName(attachment.name) ? (
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    브라우저가 원본 파일명을 제공하지 않았습니다. 보낼 이름을 입력해 주세요.
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {attachmentError ? (

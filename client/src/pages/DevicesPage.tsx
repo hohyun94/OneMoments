@@ -27,7 +27,8 @@ import {
   idleTimeoutLabel,
 } from "../lib/idleTimeout.ts";
 import { BackupError, exportKeyBackup, exportLocalCryptoState } from "../lib/crypto/index.ts";
-import { deleteIdentity, deleteIdentityByUser } from "../lib/keystore.ts";
+import { clearDeviceState, deleteIdentity, deleteIdentityByUser } from "../lib/keystore.ts";
+import { clearDeviceRecovered } from "../lib/recovery.ts";
 import {
   currentPushSubscription,
   disablePush,
@@ -256,6 +257,8 @@ export function DevicesPage() {
       );
       setBackupPassphrase("");
       setBackupConfirm("");
+      // 최신 백업에는 현재 세션 상태가 포함되므로 복구 안내를 해제한다.
+      if (session) clearDeviceRecovered(session.deviceId);
       await queryClient.invalidateQueries({ queryKey: ["key-backup"] });
     } catch (error) {
       setBackupError(
@@ -301,6 +304,8 @@ export function DevicesPage() {
       );
       await deleteIdentityByUser(session.user.id);
       await deleteIdentity(session.user.username);
+      clearDeviceRecovered(session.deviceId);
+      await clearDeviceState(session.deviceId);
     } finally {
       await logout();
     }

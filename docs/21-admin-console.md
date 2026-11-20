@@ -60,6 +60,25 @@ ADMIN_USERNAMES=alice,bob   # 쉼표 구분, 소문자 username
 
 감사 로그에는 비밀번호·토큰·키를 절대 넣지 않는다.
 
+## 4-1. 로그인 기록(auth_events)
+
+세션 행은 로그아웃·회전 시 삭제되므로 **별도 append-only 테이블**에 인증 이벤트를 남긴다.
+**관리자 콘솔에서만** 조회하며, 일반 사용자 API/화면에는 노출하지 않는다.
+
+| 필드 | 내용 |
+|---|---|
+| `user_id` | 대상 계정 |
+| `device_id` | 대상 기기(일괄 세션 종료는 null) |
+| `event` | `register`, `login`, `logout`, `device_revoked`, `recover`, `admin_sessions_revoked` |
+| `ip` | 요청 IP(`TRUST_PROXY` 설정 시 `X-Forwarded-For`) |
+| `user_agent` | 요청 User-Agent |
+| `created_at` | 이벤트 시각 |
+
+- API: `GET /api/admin/users/:userId/auth-events?before=&limit=` (최신순 커서 페이지네이션)
+- **보존: 무기한**(자동 삭제 없음). 계정이 익명화 삭제되어도 행은 유지된다(사용자 행이 삭제되면 cascade).
+- IP·User-Agent는 **DB에만** 저장하고 stdout 로그·에러 메시지에 남기지 않는다.
+- 기록 실패가 로그인·로그아웃 자체를 막지 않도록 예외를 삼키되, 이벤트 이름만 서버 로그에 남긴다.
+
 ## 5. 제한
 
 - 관리자도 참여하지 않은 대화의 참여자·메시지·첨부를 조회할 수 없다.

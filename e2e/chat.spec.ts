@@ -636,6 +636,47 @@ test("음성 첨부를 보내면 오디오 플레이어로 표시된다", async 
   }
 });
 
+test("이모지 반응 개수가 읽기 좋은 크기로 표시된다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("react");
+  const bobName = uniqueName("reactpeer");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+
+    await alice.getByLabel("메시지 입력").fill("반응 확인");
+    await alice.getByRole("button", { name: "전송", exact: true }).click();
+    await expect(alice.getByText("반응 확인")).toBeVisible();
+
+    await alice.getByRole("button", { name: "반응", exact: true }).click();
+    await alice.getByRole("button", { name: "👍 반응" }).click();
+
+    const chip = alice.getByRole("button", { name: "👍 1", exact: true });
+    await expect(chip).toBeVisible();
+
+    // 개수 글자는 12px 이상이어야 한다(이전 11px, 2026-11 조정).
+    const countSize = await chip
+      .locator("span")
+      .nth(1)
+      .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+    expect(countSize).toBeGreaterThanOrEqual(12);
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 25_000 });
+    await bobConversation.click();
+    await expect(bob.getByRole("button", { name: "👍 1", exact: true })).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();

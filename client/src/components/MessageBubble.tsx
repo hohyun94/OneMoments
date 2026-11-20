@@ -560,14 +560,16 @@ export function MessageBubble({
               onClick={() => onReact?.(message, reaction.emoji)}
               aria-pressed={reaction.mine}
               className={cn(
-                "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]",
+                "flex items-center gap-1 rounded-full border px-2 py-1",
                 reaction.mine
                   ? "border-accent-400 bg-accent-50 text-accent-700"
                   : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
               )}
             >
-              <span>{reaction.emoji}</span>
-              <span>{reaction.count}</span>
+              <span className="text-sm leading-none">{reaction.emoji}</span>
+              <span className="text-xs font-semibold leading-none tabular-nums">
+                {reaction.count}
+              </span>
             </button>
           ))}
         </div>
@@ -637,7 +639,7 @@ export function MessageBubble({
                     setReactionOpen(false);
                     onReact?.(message, emoji);
                   }}
-                  className="rounded-full px-1 text-sm hover:bg-zinc-100"
+                  className="rounded-full px-1.5 py-1 text-base leading-none hover:bg-zinc-100"
                 >
                   {emoji}
                 </button>

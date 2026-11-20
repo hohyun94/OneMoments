@@ -302,6 +302,11 @@ export const adminUserIdParamsSchema = z.object({
   userId: z.string().uuid(),
 });
 
+export const adminAuthEventsQuerySchema = z.object({
+  before: z.string().datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
 export const adminDeviceListQuerySchema = z.object({
   query: z.string().trim().max(32).optional(),
   status: z.enum(["active", "revoked", "all"]).default("active"),

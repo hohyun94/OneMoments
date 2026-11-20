@@ -15,6 +15,7 @@ import { normalizeDeviceKeys } from "../crypto/envelope.js";
 import type { Database } from "../db/client.js";
 import type { UserRow } from "../db/schema.js";
 import { AppError, asyncHandler } from "../http/errors.js";
+import { recordAuthEvent } from "../services/authEvents.js";
 import { removePushSubscriptionsForDevice } from "../services/push.js";
 import {
   createRateLimiter,
@@ -114,6 +115,13 @@ export function createAuthRouter(db: Database, config: Config): Router {
         deviceId: device.id,
         userAgent: userAgent(req),
       });
+      await recordAuthEvent(db, {
+        userId: user.id,
+        deviceId: device.id,
+        event: "register",
+        ip: req.ip ?? null,
+        userAgent: userAgent(req),
+      });
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
       res.status(201).json({
         user: authUser(user),
@@ -162,6 +170,13 @@ export function createAuthRouter(db: Database, config: Config): Router {
       const issued = await issueSession(db, config, {
         userId: user.id,
         deviceId: device.id,
+        userAgent: userAgent(req),
+      });
+      await recordAuthEvent(db, {
+        userId: user.id,
+        deviceId: device.id,
+        event: "login",
+        ip: req.ip ?? null,
         userAgent: userAgent(req),
       });
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
@@ -373,6 +388,13 @@ export function createAuthRouter(db: Database, config: Config): Router {
         deviceId: device.id,
         userAgent: userAgent(req),
       });
+      await recordAuthEvent(db, {
+        userId: user.id,
+        deviceId: device.id,
+        event: "recover",
+        ip: req.ip ?? null,
+        userAgent: userAgent(req),
+      });
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
       res.json({
         user: authUser(user),
@@ -391,6 +413,13 @@ export function createAuthRouter(db: Database, config: Config): Router {
     csrf,
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
+      await recordAuthEvent(db, {
+        userId: auth.userId,
+        deviceId: auth.deviceId,
+        event: "logout",
+        ip: req.ip ?? null,
+        userAgent: userAgent(req),
+      });
       await deleteSession(db, auth.sessionId);
       await removePushSubscriptionsForDevice(db, auth.deviceId);
       res.clearCookie(SESSION_COOKIE, clearSessionCookieOptions(config));

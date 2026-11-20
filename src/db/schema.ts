@@ -630,6 +630,29 @@ export const adminAuditLogs = pgTable(
   (table) => [index("admin_audit_logs_created_idx").on(table.createdAt)],
 );
 
+/**
+ * 인증 이벤트 로그(로그인·로그아웃·복구·기기 폐기). 관리자 전용 조회.
+ * 세션 행은 삭제되지만 이 기록은 **append-only**로 남긴다.
+ * IP·user-agent 는 관리자 감사 목적이며 stdout 로그에는 남기지 않는다.
+ */
+export const authEvents = pgTable(
+  "auth_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 대상 기기. 기기 식별이 없는 조치(관리자 일괄 세션 종료)는 null */
+    deviceId: uuid("device_id"),
+    event: text("event").notNull(),
+    /** 요청 IP. 신뢰 프록시 설정(TRUST_PROXY)에 따라 X-Forwarded-For 를 쓴다. */
+    ip: text("ip"),
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("auth_events_user_created_idx").on(table.userId, table.createdAt)],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
@@ -646,3 +669,4 @@ export type MomentAudienceRow = typeof momentAudience.$inferSelect;
 export type MomentViewRow = typeof momentViews.$inferSelect;
 export type MomentAttachmentRow = typeof momentAttachments.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
+export type AuthEventRow = typeof authEvents.$inferSelect;

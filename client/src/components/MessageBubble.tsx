@@ -566,7 +566,7 @@ export function MessageBubble({
                   : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50",
               )}
             >
-              <span className="text-sm leading-none">{reaction.emoji}</span>
+              <span className="text-lg leading-none">{reaction.emoji}</span>
               <span className="text-xs font-semibold leading-none tabular-nums">
                 {reaction.count}
               </span>

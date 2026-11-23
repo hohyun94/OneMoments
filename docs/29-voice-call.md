@@ -104,9 +104,20 @@
 
 ### coturn 예시
 
+같은 저장소의 **`docker-compose.turn.yml`** 을 그대로 쓸 수 있다(공인 IP 서버에서 단독 실행).
+
+```bash
+# TURN 서버(공인 IP 가 있는 VPS)
+CALL_TURN_SECRET=<앱과 동일한 값> docker compose -f docker-compose.turn.yml up -d
+
+# 앱 서버 환경변수
+CALL_TURN_URLS=turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349
+CALL_TURN_SECRET=<동일한 값>
+```
+
 ```yaml
   turn:
-    image: coturn/coturn:4.6
+    image: coturn/coturn:4.6.2
     restart: unless-stopped
     network_mode: host          # UDP 릴레이 포트를 그대로 쓴다
     command:
@@ -117,14 +128,22 @@
       - --use-auth-secret
       - --fingerprint
       - --no-multicast-peers
+      # 사설/링크로컬 대역 릴레이 차단(SSRF·내부망 접근 방지)
+      - --denied-peer-ip=10.0.0.0-10.255.255.255
+      - --denied-peer-ip=172.16.0.0-172.31.255.255
+      - --denied-peer-ip=192.168.0.0-192.168.255.255
       - --min-port=49160
       - --max-port=49200
-      - --cert=/etc/letsencrypt/live/example.com/fullchain.pem
-      - --pkey=/etc/letsencrypt/live/example.com/privkey.pem
+      # NAT 뒤 서버: --external-ip=<공인IP>/<사설IP>
+      # turns(TLS): --cert / --pkey 경로 필요
 ```
 
 - 방화벽: `3478/udp`, `5349/tcp(및 udp)`, 릴레이 범위 `49160-49200/udp` 개방.
-- 제한망(사내·모바일)은 UDP 가 막히므로 **`turns:`(TLS 443)** 를 함께 제공하는 것을 권장한다.
+- 제한망(사내·모바일)은 UDP 가 막히므로 **`turns:`(TLS)** 를 함께 제공하는 것을 권장한다.
+- **443/tcp 는 앱 프록시가 쓰는 경우가 많다.** coturn TLS 는 5349 를 쓰고, `turns:443` 이 꼭 필요하면
+  coturn 전용 공인 IP 를 따로 두고 그 IP 의 443 에 바인딩한다.
+- 앱 서버와 coturn 의 **시계가 어긋나면**(만료 검증 실패) 자격증명이 거부된다. NTP 를 켠다.
+
 
 ## 6. 보안·프라이버시
 
@@ -177,4 +196,42 @@ idle ──invite(발신)──▶ outgoing ──accepted──▶ connecting �
 - 영상: 대역폭·CPU 가 10배 이상. 오디오 안정화 후 별도 단계.
 - 통화 기록/부재중 알림: 저장 정책(암호화·보존·삭제)을 먼저 정한 뒤 추가한다.
 - 다중 기기 동시 수락 경합, ICE restart 기반 재연결은 v1.1 에서 다듬는다.
+
+## 11. 인터넷망 배포 체크리스트
+
+LAN/테일넷은 TURN 없이도 P2P 로 동작한다. **인터넷(모바일 LTE·타사 망)** 에서 안정적으로 쓰려면 아래가 필요하다.
+
+### 앱(서버) 쪽
+
+- [ ] **HTTPS 공개 도메인** — 마이크(`getUserMedia`)는 secure context 에서만 동작한다(Coolify Domains + TLS).
+- [ ] `CORS_ORIGINS=https://<도메인>`, `COOKIE_SECURE=true`, `TRUST_PROXY=1` (compose 기본값 확인).
+- [ ] `CALL_ENABLED=true`(기본)
+- [ ] `CALL_TURN_URLS` + `CALL_TURN_SECRET` 설정 후 재기동. (URLS 만 넣으면 기동 실패)
+- [ ] `GET /api/call/config` 응답에 `iceServers` 두 번째 항목(turn)과 `username`/`credential` 이 보이는지 확인.
+
+### TURN(coturn) 쪽
+
+- [ ] 공인 IP 가 있는 서버(VPS 권장)에서 `docker-compose.turn.yml` 실행(또는 동등 설정).
+- [ ] `CALL_TURN_SECRET` 이 앱과 **완전히 동일**.
+- [ ] 방화벽/보안그룹: `3478/udp`, `5349/tcp+udp`, `49160-49200/udp` 개방.
+- [ ] 호스트가 NAT 뒤면 `--external-ip=<공인>/<사설>` 지정.
+- [ ] 제한망 대비 `turns:`(TLS, 5349) 인증서 설정. (`443` 은 앱 프록시와 충돌하지 않게 별도 IP 사용)
+- [ ] 서버 시계 동기화(NTP) — 만료 검증 실패 방지.
+
+### 검증
+
+1. 서로 다른 망(예: Wi-Fi ↔ LTE)에서 두 계정으로 통화한다.
+2. Chrome `chrome://webrtc-internals` → 해당 PeerConnection 의 **selected candidate pair** 가
+   `relay` 이거나, P2P 성공 시 `srflx/host` 쌍인지 확인(둘 다 정상).
+3. TURN 경유가 전혀 안 되면 `/api/call/config` 응답, coturn 로그(`-v`), 보안그룹을 순서대로 확인한다.
+
+### 흔한 실패 원인
+
+| 증상 | 원인 |
+|---|---|
+| 통화 버튼은 뜨는데 연결 실패 | TURN 미설정 + 양쪽 NAT/모바일망 → `relay` 후보 없음 |
+| `/api/call/config` 500 | `CALL_TURN_URLS` 만 설정(시크릿 누락) → 기동 실패 로그 확인 |
+| TURN 자격증명 401 | `CALL_TURN_SECRET` 불일치, 서버 시계 오차, coturn `--use-auth-secret` 누락 |
+| 한쪽만 소리 안 들림 | 마이크 권한 거부 또는 음소거 상태, 오디오 출력 기기 설정 |
+| 마이크 권한 팝업이 안 뜸 | HTTP 접속(비 secure context) 또는 브라우저 정책 |
 

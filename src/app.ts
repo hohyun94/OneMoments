@@ -16,6 +16,7 @@ import { createAuthRouter } from "./routes/auth.js";
 import { createGoogleOAuthRouter } from "./routes/googleOAuth.js";
 import { createAdminRouter } from "./routes/admin.js";
 import { createAttachmentsRouter } from "./routes/attachments.js";
+import { createCallsRouter } from "./routes/calls.js";
 import { createConversationsRouter } from "./routes/conversations.js";
 import { createContactsRouter } from "./routes/contacts.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
@@ -125,6 +126,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/push", createPushRouter(db, config));
   app.use("/api/invites", createInvitesRouter({ db, config }));
   app.use("/api/attachments", createAttachmentsRouter(db, config));
+  app.use("/api/call", createCallsRouter(db, config));
   app.use("/api/moments", createMomentsRouter(db, config));
   app.use("/api/contacts", createContactsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));

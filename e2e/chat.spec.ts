@@ -828,6 +828,56 @@ test("Google 가입·로그인으로 계정을 만들고 다시 로그인한다"
   }
 });
 
+test("1:1 음성 통화: 발신 → 수락 → 음소거 → 종료", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("caller");
+  const bobName = uniqueName("callee");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    // 양쪽 실시간 연결이 맺어진 뒤에 발신한다(벨은 대화를 열지 않아도 도착해야 한다).
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+    await expect(bob.getByTitle("실시간 연결됨")).toBeVisible();
+    await startConversation(alice, bobName);
+    await expect(alice.getByLabel("메시지 입력")).toBeVisible();
+
+    await alice.getByRole("button", { name: "음성 통화" }).click();
+    await expect(alice.getByTestId("call-status")).toHaveText(/발신 중/);
+
+    // 수신 벨 → 수락
+    await expect(bob.getByRole("dialog", { name: "수신 전화" })).toBeVisible({
+      timeout: 25_000,
+    });
+    await bob.getByRole("button", { name: "수락", exact: true }).click();
+
+    // WebRTC 연결이 완료되어야만 "통화 중" 으로 바뀐다.
+    await expect(alice.getByTestId("call-status")).toHaveText(/통화 중/, { timeout: 25_000 });
+    await expect(bob.getByTestId("call-status")).toHaveText(/통화 중/, { timeout: 25_000 });
+
+    // 음소거 토글
+    await alice.getByRole("button", { name: "음소거", exact: true }).click();
+    await expect(alice.getByRole("button", { name: "음소거 해제" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(alice.getByTestId("call-status")).toHaveText(/통화 중 · 0:0/);
+
+    // 종료하면 상대에게 안내가 남고, 잠시 뒤 오버레이가 사라진다.
+    await alice.getByRole("button", { name: "통화 종료" }).click();
+    await expect(bob.getByTestId("call-status")).toHaveText(/상대가 통화를 종료했습니다/, {
+      timeout: 15_000,
+    });
+    await expect(alice.getByTestId("call-overlay")).toBeHidden({ timeout: 15_000 });
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

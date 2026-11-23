@@ -8,6 +8,7 @@ import { ConversationSidebar } from "../components/ConversationSidebar.tsx";
 import { NewConversationDialog } from "../components/NewConversationDialog.tsx";
 import { Button, Spinner, cn } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
+import { CallProvider } from "../calls.tsx";
 import { loadPinnedConversations, togglePinnedConversation } from "../lib/conversationPins.ts";
 import { RealtimeProvider, useRealtime } from "../realtime.tsx";
 import { useSession } from "../session.tsx";
@@ -52,36 +53,38 @@ export function ChatPage() {
 
   return (
     <RealtimeProvider enabled conversationIds={conversationIds}>
-      <ChatShell
-        username={session.user.username}
-        currentUserId={session.user.id}
-        identity={identity}
-        conversations={conversations}
-        selected={selected}
-        loading={conversationsQuery.isLoading}
-        isAdmin={session.user.isAdmin === true}
-        onSelect={(id) => navigate(`/c/${id}`)}
-        onSelectMessage={(id, messageId) => navigate(`/c/${id}?anchor=${messageId}`)}
-        pinnedIds={pinnedIds}
-        onTogglePinConversation={togglePin}
-        onBack={() => navigate("/")}
-        onNewConversation={() => setDialogOpen(true)}
-        onOpenMoments={() => navigate("/moments")}
-        onOpenContacts={() => navigate("/contacts")}
-        onOpenDevices={() => navigate("/devices")}
-        onOpenAdmin={() => navigate("/admin")}
-        onLogout={() => {
-          void logout().then(() => navigate("/"));
-        }}
-      />
-      <NewConversationDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onCreated={(id) => {
-          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-          navigate(`/c/${id}`);
-        }}
-      />
+      <CallProvider>
+        <ChatShell
+          username={session.user.username}
+          currentUserId={session.user.id}
+          identity={identity}
+          conversations={conversations}
+          selected={selected}
+          loading={conversationsQuery.isLoading}
+          isAdmin={session.user.isAdmin === true}
+          onSelect={(id) => navigate(`/c/${id}`)}
+          onSelectMessage={(id, messageId) => navigate(`/c/${id}?anchor=${messageId}`)}
+          pinnedIds={pinnedIds}
+          onTogglePinConversation={togglePin}
+          onBack={() => navigate("/")}
+          onNewConversation={() => setDialogOpen(true)}
+          onOpenMoments={() => navigate("/moments")}
+          onOpenContacts={() => navigate("/contacts")}
+          onOpenDevices={() => navigate("/devices")}
+          onOpenAdmin={() => navigate("/admin")}
+          onLogout={() => {
+            void logout().then(() => navigate("/"));
+          }}
+        />
+        <NewConversationDialog
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          onCreated={(id) => {
+            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+            navigate(`/c/${id}`);
+          }}
+        />
+      </CallProvider>
     </RealtimeProvider>
   );
 }

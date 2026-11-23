@@ -235,4 +235,11 @@ describe("encrypted attachments", () => {
     expect((await download(alice.client, legacyId)).status).toBe(200);
   });
 
+  it("serves a CSP that allows blob media for decrypted voice playback", async () => {
+    // 음성은 복호화한 Blob 을 objectURL 로 재생하므로 media-src 가 필요하다.
+    const response = await fetch(`${ctx.baseUrl}/healthz`);
+    const csp = response.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("media-src 'self' blob:");
+    expect(csp).toContain("img-src 'self' data: blob:");
+  });
 });

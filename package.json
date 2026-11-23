@@ -16,6 +16,7 @@
     "build:server": "tsc -p tsconfig.json",
     "build:client": "pnpm --filter @onemoments/client build",
     "start": "node --env-file-if-exists=.env dist/server.js",
+    "start:web": "node --env-file-if-exists=.env scripts/start.mjs",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "vitest run",

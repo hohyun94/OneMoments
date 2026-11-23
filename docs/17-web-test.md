@@ -20,18 +20,34 @@
 ```powershell
 cd C:\H_PROJECT\OneMoments
 
-# 실행 (dist + .env 사용)
-pnpm start
+# 실행 (dist + .env 사용, DB 마이그레이션 자동 적용: scripts/start.mjs)
+pnpm start:web
 
 # 코드 변경 후
 pnpm build
-pnpm start
+pnpm start:web
 
 # 중지
 Stop-Process -Id (Get-NetTCPConnection -LocalPort 3900 -State Listen).OwningProcess -Force
 ```
 
-로그: `.web.out`
+로그: `.web.out` / `.web.err`
+
+### DB 마이그레이션 (중요)
+
+`pnpm start` 는 마이그레이션을 **실행하지 않는다**(`dist/server.js` 직접 실행). 새 마이그레이션이 있는 커밋을 받은 뒤
+`pnpm start` 로만 재기동하면 **스키마가 뒤처져** 로그인/가입 후 화면이 비어 보이거나 API 가 500 을 낸다.
+그래서 로컬 웹 테스트는 **`pnpm start:web`(=`scripts/start.mjs`, `MIGRATE_ON_START` 기본 true)** 을 쓴다.
+
+이미 뒤처진 DB 라면 수동으로 한 번 적용한다.
+
+```powershell
+pnpm db:migrate   # .env 의 DATABASE_URL(onemoments_web)에 적용
+pnpm start:web
+```
+
+증상 예: 가입은 되는데 대화 목록이 안 뜸, `users.oauth_provider does not exist` / `/api/auth/me` 500,
+브라우저 창이 빈 화면 → 위 마이그레이션 후 새로고침(필요 시 `Ctrl+Shift+R`).
 
 ## 3. 테스트 시나리오
 

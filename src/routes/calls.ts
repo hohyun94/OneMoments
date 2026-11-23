@@ -25,10 +25,12 @@ export function createCallsRouter(db: Database, config: Config): Router {
       res.setHeader("Cache-Control", "private, no-store");
       res.json({
         enabled: config.calls.enabled,
+        videoEnabled: config.calls.enabled && config.calls.videoEnabled,
         iceServers: config.calls.enabled ? buildIceServers(config, auth.userId) : [],
         ringTimeoutSeconds: config.calls.ringTimeoutSeconds,
-        /** 1:1 음성만 지원한다(v1). */
-        media: "audio",
+        /** 1:1 통화만 지원한다. 영상은 CALL_VIDEO_ENABLED 로 끌 수 있다. */
+        media:
+          config.calls.enabled && config.calls.videoEnabled ? ["audio", "video"] : ["audio"],
       });
     }),
   );

@@ -15,6 +15,7 @@ export interface CallLogView {
   id: string;
   callId: string;
   status: CallLogStatus;
+  media: "audio" | "video";
   /** 조회하는 사용자 기준 방향 */
   direction: "outgoing" | "incoming";
   startedAt: string;
@@ -31,6 +32,7 @@ export async function startCallLog(
     conversationId: string;
     callerUserId: string;
     calleeUserId: string;
+    media?: "audio" | "video";
   },
 ): Promise<void> {
   await db
@@ -41,6 +43,7 @@ export async function startCallLog(
       callerUserId: input.callerUserId,
       calleeUserId: input.calleeUserId,
       status: "ringing",
+      media: input.media ?? "audio",
     })
     .onConflictDoNothing({ target: callLogs.callId });
 }
@@ -105,6 +108,7 @@ export async function listCallLogs(
     id: row.id,
     callId: row.callId,
     status: row.status as CallLogStatus,
+    media: row.media === "video" ? "video" : "audio",
     direction: row.callerUserId === input.userId ? "outgoing" : "incoming",
     startedAt: row.startedAt.toISOString(),
     answeredAt: row.answeredAt?.toISOString() ?? null,

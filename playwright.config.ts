@@ -27,8 +27,8 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         channel: "chrome",
-        // 음성 녹음 E2E: 가짜 마이크 입력과 권한 자동 허용.
-        permissions: ["microphone"],
+        // 음성/영상 통화 E2E: 가짜 마이크·카메라 입력과 권한 자동 허용.
+        permissions: ["microphone", "camera"],
         launchOptions: {
           args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
         },

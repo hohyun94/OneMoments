@@ -23,6 +23,7 @@ interface Account {
 interface CallLogEntry {
   callId: string;
   status: string;
+  media: "audio" | "video";
   direction: "outgoing" | "incoming";
   durationSeconds: number | null;
 }
@@ -101,13 +102,13 @@ describe("voice call logs", () => {
     const aliceSocket = await openSocket(alice);
     const bobSocket = await openSocket(bob);
     try {
-      // 1) 응답 없이 취소 → 부재중
+      // 1) 응답 없이 취소 → 부재중(영상 통화로 기록되는지 함께 확인)
       const missedId = randomUUID();
       sendFrame(aliceSocket.socket, {
         type: "call.invite",
         conversationId,
         callId: missedId,
-        media: "audio",
+        media: "video",
       });
       await bobSocket.frames.next((frame) => frame.type === "call.invite");
       sendFrame(aliceSocket.socket, { type: "call.cancel", conversationId, callId: missedId });
@@ -119,6 +120,7 @@ describe("voice call logs", () => {
         (call) => call.callId === missedId,
       );
       expect(missed.status).toBe("missed");
+      expect(missed.media).toBe("video");
       expect(missed.direction).toBe("incoming");
       expect(missed.durationSeconds).toBeNull();
 

@@ -667,6 +667,8 @@ export const callLogs = pgTable(
       .references(() => users.id),
     /** ringing | completed | missed | declined | cancelled | failed */
     status: text("status").notNull(),
+    /** audio | video */
+    media: text("media").notNull().default("audio"),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
     answeredAt: timestamp("answered_at", { withTimezone: true }),
     endedAt: timestamp("ended_at", { withTimezone: true }),
@@ -682,6 +684,7 @@ export const callLogs = pgTable(
       "call_logs_status_chk",
       sql`${table.status} in ('ringing', 'completed', 'missed', 'declined', 'cancelled', 'failed')`,
     ),
+    check("call_logs_media_chk", sql`${table.media} in ('audio', 'video')`),
     index("call_logs_conversation_idx").on(table.conversationId, table.startedAt),
   ],
 );

@@ -24,6 +24,7 @@ import {
   ShieldCheck,
   Trash2,
   UserPlus,
+  Video,
   X,
 } from "lucide-react";
 import {
@@ -1285,6 +1286,24 @@ export function ChatView({
             title="음성 통화"
           >
             <Phone className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : null}
+        {canCall && call.videoEnabled ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              void call.startCall({
+                conversationId: conversation.id,
+                peerUserId: peer?.id ?? "",
+                peerLabel: peer?.username ? `@${peer.username}` : "상대",
+                media: "video",
+              })
+            }
+            aria-label="영상 통화"
+            title="영상 통화"
+          >
+            <Video className="h-4 w-4" aria-hidden />
           </Button>
         ) : null}
         {!isGroup ? (

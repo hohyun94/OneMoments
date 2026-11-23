@@ -1,14 +1,39 @@
-import { Mic, MicOff, PhoneCall, PhoneOff } from "lucide-react";
+import { Mic, MicOff, PhoneCall, PhoneOff, Video, VideoOff } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useCall } from "../calls.tsx";
 import { formatDuration } from "../lib/voice.ts";
 import { Button, cn } from "./ui.tsx";
 
-/** 통화 상태를 화면 하단 카드로 보여준다(수신 벨/발신/통화 중/종료). */
+/** 통화 상태를 화면 하단 카드(영상은 전체 화면 패널)로 보여준다. */
 export function CallOverlay() {
-  const { session, accept, decline, hangup, toggleMute } = useCall();
+  const {
+    session,
+    accept,
+    decline,
+    hangup,
+    toggleMute,
+    toggleCamera,
+    remoteVideoRef,
+    localVideoRef,
+    remoteVideoStream,
+    localVideoStream,
+  } = useCall();
   const [elapsed, setElapsed] = useState(0);
+
+  // 영상 엘리먼트는 통화 단계에 따라 늦게 마운트되므로, 마운트/스트림 변경 시 붙여준다.
+  useEffect(() => {
+    const remote = remoteVideoRef.current;
+    if (remote && remote.srcObject !== remoteVideoStream) {
+      remote.srcObject = remoteVideoStream;
+      if (remoteVideoStream) void remote.play().catch(() => undefined);
+    }
+    const local = localVideoRef.current;
+    if (local && local.srcObject !== localVideoStream) {
+      local.srcObject = localVideoStream;
+      if (localVideoStream) void local.play().catch(() => undefined);
+    }
+  }, [remoteVideoStream, localVideoStream, remoteVideoRef, localVideoRef, session?.phase]);
 
   useEffect(() => {
     const connectedAt = session?.connectedAt ?? null;
@@ -24,16 +49,100 @@ export function CallOverlay() {
 
   if (!session) return null;
 
+  const isVideo = session.media === "video";
   const status =
     session.phase === "incoming"
-      ? "수신 전화"
+      ? isVideo
+        ? "영상 통화"
+        : "수신 전화"
       : session.phase === "outgoing"
-        ? "발신 중…"
+        ? isVideo
+          ? "영상 통화 발신 중…"
+          : "발신 중…"
         : session.phase === "connecting"
           ? "연결 중…"
           : session.phase === "active"
             ? `통화 중 · ${formatDuration(elapsed)}`
             : session.note ?? "통화 종료";
+
+  // 영상 통화: 원격 영상 + 내 미리보기 + 컨트롤을 전체 화면으로 보여준다.
+  if (isVideo && (session.phase === "connecting" || session.phase === "active")) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 p-3">
+        <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
+          <video
+            ref={remoteVideoRef}
+            data-testid="remote-video"
+            autoPlay
+            playsInline
+            className="h-full w-full object-contain"
+          />
+          {session.phase === "connecting" ? (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+              연결 중…
+            </div>
+          ) : null}
+          <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
+            <span className="truncate">{session.peerLabel}</span>
+            <span aria-hidden>·</span>
+            <span data-testid="call-status">{status}</span>
+          </div>
+          <div className="absolute bottom-3 right-3 h-32 w-24 overflow-hidden rounded-xl border border-white/30 bg-black/60">
+            <video
+              ref={localVideoRef}
+              data-testid="local-video"
+              autoPlay
+              playsInline
+              muted
+              className="h-full w-full object-cover"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-center gap-3">
+          <Button
+            type="button"
+            size="icon"
+            onClick={toggleMute}
+            aria-label={session.muted ? "음소거 해제" : "음소거"}
+            aria-pressed={session.muted}
+            title={session.muted ? "음소거 해제" : "음소거"}
+            className="bg-white/10 text-white hover:bg-white/20"
+          >
+            {session.muted ? (
+              <MicOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Mic className="h-4 w-4" aria-hidden />
+            )}
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            onClick={toggleCamera}
+            aria-label={session.cameraOff ? "카메라 켜기" : "카메라 끄기"}
+            aria-pressed={session.cameraOff}
+            title={session.cameraOff ? "카메라 켜기" : "카메라 끄기"}
+            className="bg-white/10 text-white hover:bg-white/20"
+          >
+            {session.cameraOff ? (
+              <VideoOff className="h-4 w-4" aria-hidden />
+            ) : (
+              <Video className="h-4 w-4" aria-hidden />
+            )}
+          </Button>
+          <Button
+            type="button"
+            size="icon"
+            variant="destructive"
+            onClick={hangup}
+            aria-label="통화 종료"
+            title="통화 종료"
+          >
+            <PhoneOff className="h-4 w-4" aria-hidden />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-3">

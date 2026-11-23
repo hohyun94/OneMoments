@@ -226,8 +226,8 @@ export type ClientFrame =
     }
   | { type: "ping" };
 
-/** 1:1 음성 통화(v1) 는 오디오만 지원한다. */
-export type CallMedia = "audio";
+/** 1:1 통화 미디어. 오디오와 영상(카메라 포함)을 지원한다. */
+export type CallMedia = "audio" | "video";
 
 export type CallDeclineReason = "declined" | "busy" | "unsupported";
 export type CallEndReason = "hangup" | "failed" | "timeout";

@@ -25,5 +25,6 @@ backups/
 .env
 .env.local
 .web*.out
+.web*.err
 .DS_Store
 package-lock.json

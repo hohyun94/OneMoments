@@ -225,6 +225,29 @@ LAN/테일넷은 TURN 없이도 P2P 로 동작한다. **인터넷(모바일 LTE�
    `relay` 이거나, P2P 성공 시 `srflx/host` 쌍인지 확인(둘 다 정상).
 3. TURN 경유가 전혀 안 되면 `/api/call/config` 응답, coturn 로그(`-v`), 보안그룹을 순서대로 확인한다.
 
+### 원격 검증 (SSH 없이)
+
+공인망에서 TURN이 실제로 동작하는지 서버 접속 없이 확인하는 방법:
+
+1. `TCP 3478` 연결 테스트(열려 있으면 호스트 방화벽·보안그룹 통과).
+2. **STUN Binding**(UDP 3478) 요청 → `0x0101` 응답이면 UDP 도달.
+3. 브라우저(Playwright/Chrome)에서 `RTCPeerConnection` 에 TURN 자격증명을 넣고
+   `iceGatheringState=complete` 까지 기다린 뒤 SDP에 **`typ relay` 후보**가 있는지 확인.
+   예: `a=candidate … 168.138.33.231 49170 typ relay raddr <내IP>` → 외부 IP/릴레이 포트까지 정상.
+
+### Coolify로 coturn 올리기 (SSH 없이)
+
+Coolify v4 API에는 “Git compose **애플리케이션** 생성”이 없으므로(`/applications/dockercompose` 404),
+**서비스(`POST /api/v1/services`, `docker_compose_raw`) + `network_mode: host`** 로 coturn을 올린다.
+
+- 서비스 env: `CALL_TURN_SECRET`, `TURN_EXTERNAL_IP`(예: `168.138.33.231`)
+- compose 명령에 `--external-ip=${TURN_EXTERNAL_IP}` (Oracle Cloud처럼 1:1 NAT인 경우 필수)
+- `--listening-port=3478`, `--min-port=49160 --max-port=49200`, 사설대역 `--denied-peer-ip`
+- 방화벽: **호스트(ufw/nftables)** 와 **Oracle Security List/NSG** 양쪽에서
+  `3478/udp`, `3478/tcp`(검증용), `49160-49200/udp` 를 열어야 한다.
+  443/8000은 열리는데 3478만 막히면 **호스트 방화벽**일 가능성이 크다.
+
+
 ### 흔한 실패 원인
 
 | 증상 | 원인 |

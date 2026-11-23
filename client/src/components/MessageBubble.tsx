@@ -243,47 +243,50 @@ function AttachmentCard({
                   data-testid="waveform"
                   onClick={seekFromWaveform}
                   aria-label="재생 위치로 이동"
-                  className="flex h-8 w-full cursor-pointer items-end gap-0.5"
+                  className="relative flex h-9 w-full cursor-pointer items-center"
                 >
-                  {attachment.waveform && attachment.waveform.length > 0 ? (
-                    attachment.waveform.map((peak, index) => {
-                      const bars = attachment.waveform?.length ?? 1;
-                      const ratio = bars <= 1 ? 0 : index / (bars - 1);
-                      const played = ratio <= progress;
-                      return (
-                        <span
-                          key={index}
-                          // 조용한 구간(3% 피크)도 보이도록 최소 높이를 준다.
-                          style={{ height: `${peak}%`, minHeight: 5 }}
-                          className={cn(
-                            "w-full rounded-sm",
-                            played
-                              ? own
-                                ? "bg-white/80"
-                                : "bg-accent-600"
-                              : own
-                                ? "bg-white/30"
-                                : "bg-zinc-300",
-                          )}
-                        />
-                      );
-                    })
-                  ) : (
+                  {/* 진행 트랙: 조용한 음성(점선처럼 보이는 파형)에서도 진행률이 또렷하게 보인다. */}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 overflow-hidden rounded-full",
+                      own ? "bg-white/25" : "bg-zinc-200",
+                    )}
+                  >
                     <span
+                      style={{ width: `${progress * 100}%` }}
                       className={cn(
-                        "block h-1.5 w-full overflow-hidden rounded-full",
-                        own ? "bg-white/25" : "bg-zinc-200",
+                        "block h-full rounded-full transition-[width] duration-150",
+                        own ? "bg-white/90" : "bg-accent-600",
                       )}
-                    >
-                      <span
-                        style={{ width: `${progress * 100}%` }}
-                        className={cn(
-                          "block h-full rounded-full",
-                          own ? "bg-white/80" : "bg-accent-600",
-                        )}
-                      />
+                    />
+                  </span>
+                  {attachment.waveform && attachment.waveform.length > 0 ? (
+                    <span aria-hidden className="relative flex h-9 w-full items-center gap-[3px]">
+                      {attachment.waveform.map((peak, index) => {
+                        const bars = attachment.waveform?.length ?? 1;
+                        const ratio = bars <= 1 ? 0 : index / (bars - 1);
+                        const played = ratio <= progress;
+                        return (
+                          <span
+                            key={index}
+                            // 조용한 구간(3% 피크)도 트랙 위에서 보이도록 최소 높이를 준다.
+                            style={{ height: `${Math.max(peak, 18)}%` }}
+                            className={cn(
+                              "w-full rounded-full",
+                              played
+                                ? own
+                                  ? "bg-white/90"
+                                  : "bg-accent-600"
+                                : own
+                                  ? "bg-white/45"
+                                  : "bg-zinc-400/70",
+                            )}
+                          />
+                        );
+                      })}
                     </span>
-                  )}
+                  ) : null}
                 </button>
                 <span
                   className={cn(

@@ -98,6 +98,33 @@ onemoments:attachment:v1:<base64(JSON)>
 - 클라이언트는 아직 **전체를 받아 한 번에 복호화**한다(청크 암호화 + MSE 스트리밍 재생은 후속 설계).
 - Range 는 재시도·부분 다운로드·향후 스트리밍 파이프라인의 토대이며, 참여자 검증은 모든 요청에 동일하게 적용된다.
 
+## 4-3. 삭제 정책 (메시지 ↔ 첨부 블롭)
+
+첨부는 **메시지에 연결된 뒤에만** 삭제 정책의 영향을 받는다. 서버는 파일 이름·MIME·길이를 모르므로,
+"음성 삭제"도 다른 첨부와 완전히 같은 경로로 처리된다.
+
+| 동작 | API | 저장소 블롭 | `attachments` 행 | 메시지 행 | 비고 |
+|---|---|---|---|---|---|
+| 모두에게서 전송 취소 | `DELETE …/messages/:id?scope=all` | **삭제** | **삭제** | **삭제** | **발신자만** 가능(받은 메시지는 `403`) |
+| 나에게서만 삭제 | `DELETE …/messages/:id?scope=me` | 유지 | 유지 | 유지 | 내 계정에 숨김 기록(`message_deletions`)만 추가 |
+| 대화 자동 삭제(N일) | 스케줄러 | **삭제** | **삭제** | **삭제** | `deleteMessagesAndArtifacts()` 공용 |
+| 업로드만 되고 전송 실패(고아) | `pnpm attachments:cleanup` | **삭제** | **삭제** | — | `messageId` 없음 + `ATTACHMENT_TTL_DAYS`(기본 30일) 경과분만 |
+| 계정 삭제(일반 대화) | `DELETE /api/auth/account` | 유지 | 유지 | 유지 | 메시지 보존 정책(상대 이력 유지) |
+| 계정 삭제(Moments) | `DELETE /api/auth/account` | **삭제** | — | — | Moments 첨부만 정리 |
+
+구현 위치
+
+- 라우트: `src/routes/conversations.ts` (`scope=me` → `hideMessageForUser`, `scope=all` → `deleteMessagesAndArtifacts`)
+- 삭제: `src/services/autoDelete.ts` `deleteMessagesAndArtifacts()` — **저장소 블롭 삭제 후** 트랜잭션에서 첨부 행·메시지 행 삭제
+- 저장소: `src/services/attachments.ts` — 로컬 파일 `removeAttachmentBlob()` 또는 S3 `DeleteObject`
+
+주의
+
+- **이미 내려받은 사본은 회수할 수 없다.** 서버에서 지우면 이후 다운로드만 `404` 가 된다.
+- DB+첨부 저장소를 함께 백업하므로 **백업을 복원하면 삭제한 첨부가 되살아날 수 있다**(`docs/06-operations.md` 6절).
+- `storage.delete()` 실패는 무시되고 DB 행은 지워진다 → 드물게 **고아 블롭**이 남을 수 있다(고아 정리 잡은 행 기준이라 대상 아님).
+- 삭제는 즉시·비가역이다(휴지통 없음).
+
 ## 5. 한계·운영
 
 - **첨부는 DB 밖에 있다.** PostgreSQL 백업과 첨부 저장소(로컬 `ATTACHMENT_DIR` 또는 S3 버킷)를 함께 백업해야 한다.
@@ -107,10 +134,11 @@ onemoments:attachment:v1:<base64(JSON)>
 - 사진은 복호화 후 인라인 미리보기(최대 8MB, 전체 메모리 로드)만 지원한다. 서버는 `Range` 를 지원하지만(4-2절) 클라이언트는 여전히 전체를 받아 한 번에 복호화하며, 미디어 스트리밍 재생은 범위에서 제외한다.
 - 악성코드 검사는 하지 않는다(E2E라 서버가 내용을 볼 수 없음). 다운로드 후 사용자 책임.
 - 파일 크기·업로드 횟수 제한은 있지만 사용자별 저장 용량 쿼터는 없다.
-- 첨부를 참조하는 메시지를 숨겨도 블롭은 남는다.
+- 첨부를 참조하는 메시지를 숨겨도 블롭은 남는다(4-3절 참고 — "나에게서만 삭제").
 
 ## 6. 검증
 
 - 서버: 참여자 다운로드/비참여자·비인증 차단, 크기·Content-Type·빈 파일 검증, 그룹 참여자 다운로드
+- 서버: `scope=all` 삭제 시 **저장소 블롭 + DB 행** 동시 삭제, `scope=me` 삭제 시 블롭 유지, CSP `media-src blob:` 허용
 - 클라이언트: 암복호화 왕복, 다른 키 거부, 메타데이터 인코딩/파싱, 빈/대용량 거부
 - E2E: 이미지 파일 첨부 전송 → 상대 미리보기(`naturalWidth > 0`)·다운로드 → 복호화 내용 일치, DB에 파일명 없음, 디스크 블롭에 평문 없음

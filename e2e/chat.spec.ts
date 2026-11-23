@@ -578,6 +578,9 @@ test("굵게·코드·링크 서식을 렌더링한다", async ({ browser }) => 
     await alice
       .getByLabel("메시지 입력")
       .fill("**중요** `npm test` https://example.com");
+    // 서식 버튼(B/코드)은 메신저 사용성 검토로 제거하고 마크다운 직접 입력만 지원한다.
+    await expect(alice.getByRole("button", { name: "굵게" })).toHaveCount(0);
+    await expect(alice.getByRole("button", { name: "코드" })).toHaveCount(0);
     await alice.getByRole("button", { name: "전송", exact: true }).click();
 
     await expect(alice.locator("strong", { hasText: "중요" })).toBeVisible();

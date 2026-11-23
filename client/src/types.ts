@@ -48,6 +48,8 @@ export interface ConversationSummary {
   /** 1:1 차단 상태. null 이면 차단 없음 */
   blocked: "me" | "peer" | null;
   unreadCount: number;
+  /** 아직 확인하지 않은 부재중 통화 수(수신자 기준) */
+  missedCallCount: number;
   lastMessageAt: string | null;
 }
 

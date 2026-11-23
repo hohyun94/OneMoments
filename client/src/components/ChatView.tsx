@@ -542,6 +542,20 @@ export function ChatView({
   const blocked = isGroup ? null : conversation.blocked;
   const call = useCall();
   const canCall = !isGroup && call.enabled && Boolean(peer) && !peerDeleted && blocked === null;
+
+  // 부재중 통화 배지: 대화를 열면 확인 처리하고 목록 배지를 지운다.
+  useEffect(() => {
+    if (conversation.missedCallCount <= 0) return;
+    let cancelled = false;
+    void api(`/api/conversations/${conversation.id}/calls/seen`, { method: "POST" })
+      .then(() => {
+        if (!cancelled) void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.id, conversation.missedCallCount, queryClient]);
   const memberNames = useMemo(
     () =>
       new Map(

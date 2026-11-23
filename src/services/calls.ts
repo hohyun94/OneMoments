@@ -1,4 +1,4 @@
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import { callLogs } from "../db/schema.js";
@@ -111,4 +111,51 @@ export async function listCallLogs(
     endedAt: row.endedAt?.toISOString() ?? null,
     durationSeconds: row.durationSeconds,
   }));
+}
+
+/**
+ * 수신자가 부재중 기록을 확인했음을 표시한다(대화 목록 배지 해제).
+ * 부재중 상태이면서 아직 확인하지 않은 행만 갱신하고, 갱신 건수를 돌려준다.
+ */
+export async function markMissedCallsSeen(
+  db: Database,
+  input: { conversationId: string; userId: string },
+): Promise<number> {
+  const updated = await db
+    .update(callLogs)
+    .set({ calleeSeenAt: sql`now()` })
+    .where(
+      and(
+        eq(callLogs.conversationId, input.conversationId),
+        eq(callLogs.calleeUserId, input.userId),
+        eq(callLogs.status, "missed"),
+        isNull(callLogs.calleeSeenAt),
+      ),
+    )
+    .returning({ id: callLogs.id });
+  return updated.length;
+}
+
+/** 대화 목록 배지용: 사용자가 아직 확인하지 않은 부재중 통화 수(대화별). */
+export async function countMissedCallsByConversation(
+  db: Database,
+  input: { conversationIds: string[]; userId: string },
+): Promise<Map<string, number>> {
+  if (input.conversationIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      conversationId: callLogs.conversationId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(callLogs)
+    .where(
+      and(
+        inArray(callLogs.conversationId, input.conversationIds),
+        eq(callLogs.calleeUserId, input.userId),
+        eq(callLogs.status, "missed"),
+        isNull(callLogs.calleeSeenAt),
+      ),
+    )
+    .groupBy(callLogs.conversationId);
+  return new Map(rows.map((row) => [row.conversationId, row.count]));
 }

@@ -135,6 +135,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
     (note: string) => {
       clearTimers();
       releaseMedia();
+      // 부재중/통화 종료가 대화 목록 배지에 즉시 반영되게 한다.
+      void queryClient.invalidateQueries({ queryKey: ["conversations"] });
       setSession((current) => {
         if (!current) return current;
         const callId = current.callId;
@@ -144,7 +146,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         return { ...current, phase: "ended", note };
       });
     },
-    [clearTimers, releaseMedia],
+    [clearTimers, queryClient, releaseMedia],
   );
 
   const sendSignal = useCallback(

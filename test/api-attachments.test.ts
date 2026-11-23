@@ -8,8 +8,9 @@ import {
   cleanupOrphanAttachments,
   createAttachmentStorage,
 } from "../src/services/attachments.js";
+import { attachments } from "../src/db/schema.js";
 import { createTestContext, resetDatabase, type TestContext } from "./support/context.js";
-import { createIdentity, type Identity } from "./support/crypto.js";
+import { createIdentity, encryptMessage, type Identity } from "./support/crypto.js";
 import { TestClient } from "./support/http.js";
 
 interface Account {
@@ -72,6 +73,52 @@ async function download(
     bytes: Buffer.from(await response.arrayBuffer()),
     headers: response.headers,
   };
+}
+
+/**
+ * 첨부를 업로드한 뒤 같은 clientMessageId 로 메시지를 보내 첨부를 메시지에 연결한다.
+ * (서버는 첨부와 메시지를 clientMessageId 로 연결한다 — 음성 녹음도 같은 경로를 쓴다.)
+ */
+async function sendAttachmentMessage(
+  sender: Account,
+  conversationId: string,
+  clientMessageId: string,
+  data: Uint8Array,
+): Promise<{ attachmentId: string; messageId: string }> {
+  const uploaded = await upload(
+    sender,
+    conversationId,
+    data,
+    "application/octet-stream",
+    clientMessageId,
+  );
+  expect(uploaded.status).toBe(201);
+  const attachmentId = uploaded.body.attachment.id as string;
+
+  const devicesResponse = await sender.client.request(
+    "GET",
+    `/api/conversations/${conversationId}/devices`,
+  );
+  expect(devicesResponse.status).toBe(200);
+  const payload = encryptMessage({
+    conversationId,
+    clientMessageId,
+    plaintext: JSON.stringify({ attachmentId }),
+    sender: sender.identity,
+    recipients: devicesResponse.body.devices.map(
+      (device: { id: string; identityPublicKey: string }) => ({
+        deviceId: device.id,
+        identityPublicKey: device.identityPublicKey,
+      }),
+    ),
+  });
+  const sent = await sender.client.request(
+    "POST",
+    `/api/conversations/${conversationId}/messages`,
+    { body: { ...payload, kind: "text" } },
+  );
+  expect(sent.status).toBe(201);
+  return { attachmentId, messageId: sent.body.message.id as string };
 }
 
 beforeAll(async () => {
@@ -233,6 +280,42 @@ describe("encrypted attachments", () => {
     expect(removed).toBe(1);
     expect((await download(alice.client, orphanId)).status).toBe(404);
     expect((await download(alice.client, legacyId)).status).toBe(200);
+  });
+
+  it("deletes the attachment blob only when the message is deleted for everyone", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+    const storage = createAttachmentStorage(ctx.config);
+
+    // "모두에게서 전송 취소": 저장소 블롭과 DB 행이 함께 사라져야 한다.
+    const data = randomBytes(512);
+    const first = await sendAttachmentMessage(alice, conversationId, randomUUID(), data);
+    expect((await storage.get(first.attachmentId)).equals(data)).toBe(true);
+    expect((await download(bob.client, first.attachmentId)).status).toBe(200);
+
+    const deleted = await alice.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${first.messageId}?scope=all`,
+    );
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.scope).toBe("all");
+    expect(deleted.body.deletedMessageIds).toContain(first.messageId);
+
+    await expect(storage.get(first.attachmentId)).rejects.toBeTruthy();
+    expect(await ctx.db.select({ id: attachments.id }).from(attachments)).toHaveLength(0);
+    expect((await download(bob.client, first.attachmentId)).status).toBe(404);
+
+    // "나에게서만 삭제": 상대가 계속 볼 수 있어야 하므로 서버 첨부는 남는다.
+    const kept = randomBytes(256);
+    const second = await sendAttachmentMessage(alice, conversationId, randomUUID(), kept);
+    const hidden = await bob.client.request(
+      "DELETE",
+      `/api/conversations/${conversationId}/messages/${second.messageId}?scope=me`,
+    );
+    expect(hidden.status).toBe(200);
+    expect((await storage.get(second.attachmentId)).equals(kept)).toBe(true);
+    expect((await download(alice.client, second.attachmentId)).status).toBe(200);
   });
 
   it("serves a CSP that allows blob media for decrypted voice playback", async () => {

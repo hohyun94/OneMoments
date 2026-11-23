@@ -1,4 +1,4 @@
-import { Download, FileText, Pencil, Pin, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
+import { Download, FileText, Pause, Pencil, Pin, Play, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type MouseEvent } from "react";
 
 import {
@@ -41,6 +41,39 @@ export async function decryptAttachmentBlob(
   });
 }
 
+/** 아이콘만 있는 다운로드 버튼(툴팁·스크린리더 이름은 "다운로드"). */
+function DownloadIconButton({
+  own,
+  downloading,
+  onClick,
+}: {
+  own: boolean;
+  downloading: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={downloading}
+      aria-label="다운로드"
+      title="다운로드"
+      className={cn(
+        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50",
+        own
+          ? "bg-white/20 text-accent-contrast hover:bg-white/30"
+          : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
+      )}
+    >
+      {downloading ? (
+        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      ) : (
+        <Download className="h-4 w-4" aria-hidden />
+      )}
+    </button>
+  );
+}
+
 function AttachmentCard({
   attachment,
   own,
@@ -56,22 +89,52 @@ function AttachmentCard({
   const [previewLoading, setPreviewLoading] = useState(needsPreview);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [progress, setProgress] = useState(0);
+  const [elapsed, setElapsed] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [loadedDuration, setLoadedDuration] = useState<number | null>(null);
+  // WebM 은 메타데이터에 길이가 없어 duration 이 Infinity 인 브라우저가 있다.
+  // 그때는 송신자가 암호문에 담아 보낸 길이로 진행 표시·이동을 계산한다.
+  const totalSeconds =
+    loadedDuration ?? (attachment.durationSeconds ? attachment.durationSeconds : 0);
+  const progress = totalSeconds > 0 ? Math.min(1, elapsed / totalSeconds) : 0;
+
+  function syncDuration(): void {
+    const audio = audioRef.current;
+    if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
+      setLoadedDuration(audio.duration);
+    }
+  }
 
   function handleTimeUpdate(): void {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-    setProgress(Math.min(1, audio.currentTime / audio.duration));
+    if (!audio) return;
+    syncDuration();
+    setElapsed(audio.currentTime);
   }
 
-  function seekFromWaveform(event: MouseEvent<HTMLDivElement>): void {
+  async function togglePlay(): Promise<void> {
     const audio = audioRef.current;
-    if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+    if (!audio) return;
+    if (audio.paused) {
+      try {
+        await audio.play();
+      } catch {
+        // 자동재생 정책 등으로 막히면 버튼 상태만 되돌린다.
+        setPlaying(false);
+      }
+    } else {
+      audio.pause();
+    }
+  }
+
+  function seekFromWaveform(event: MouseEvent<HTMLButtonElement>): void {
+    const audio = audioRef.current;
+    if (!audio || totalSeconds <= 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
-    audio.currentTime = ratio * audio.duration;
-    setProgress(ratio);
+    audio.currentTime = ratio * totalSeconds;
+    setElapsed(ratio * totalSeconds);
   }
 
   useEffect(() => {
@@ -127,6 +190,7 @@ function AttachmentCard({
         "rounded-xl border p-2.5",
         own ? "border-accent-400/40 bg-accent-500/20" : "border-zinc-200 bg-zinc-50",
       )}
+      data-testid={isAudio ? "voice-card" : undefined}
     >
       {isImage ? (
         <div className="mb-2 overflow-hidden rounded-lg bg-black/5">
@@ -152,97 +216,147 @@ function AttachmentCard({
         </div>
       ) : null}
       {isAudio ? (
-        <div className="mb-2 space-y-1.5">
+        <div className="flex items-center gap-2">
           {previewUrl ? (
             <>
-              {attachment.waveform && attachment.waveform.length > 0 ? (
-                <div
+              <button
+                type="button"
+                onClick={() => void togglePlay()}
+                aria-label={playing ? "일시정지" : "재생"}
+                title={playing ? "일시정지" : "재생"}
+                className={cn(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
+                  own
+                    ? "bg-white/25 text-accent-contrast hover:bg-white/35"
+                    : "bg-accent-600 text-white hover:bg-accent-700",
+                )}
+              >
+                {playing ? (
+                  <Pause className="h-4 w-4" aria-hidden />
+                ) : (
+                  <Play className="ml-0.5 h-4 w-4" aria-hidden />
+                )}
+              </button>
+              <div className="min-w-0 flex-1">
+                <button
+                  type="button"
                   data-testid="waveform"
-                  role="presentation"
                   onClick={seekFromWaveform}
-                  className="flex h-10 cursor-pointer items-end gap-0.5"
+                  aria-label="재생 위치로 이동"
+                  className="flex h-8 w-full cursor-pointer items-end gap-0.5"
                 >
-                  {attachment.waveform.map((peak, index) => {
-                    const bars = attachment.waveform?.length ?? 1;
-                    const ratio = bars <= 1 ? 0 : index / (bars - 1);
-                    const played = ratio <= progress;
-                    return (
+                  {attachment.waveform && attachment.waveform.length > 0 ? (
+                    attachment.waveform.map((peak, index) => {
+                      const bars = attachment.waveform?.length ?? 1;
+                      const ratio = bars <= 1 ? 0 : index / (bars - 1);
+                      const played = ratio <= progress;
+                      return (
+                        <span
+                          key={index}
+                          style={{ height: `${peak}%` }}
+                          className={cn(
+                            "w-full rounded-sm",
+                            played
+                              ? own
+                                ? "bg-white/80"
+                                : "bg-accent-600"
+                              : own
+                                ? "bg-white/30"
+                                : "bg-zinc-300",
+                          )}
+                        />
+                      );
+                    })
+                  ) : (
+                    <span
+                      className={cn(
+                        "block h-1.5 w-full overflow-hidden rounded-full",
+                        own ? "bg-white/25" : "bg-zinc-200",
+                      )}
+                    >
                       <span
-                        key={index}
-                        style={{ height: `${peak}%` }}
+                        style={{ width: `${progress * 100}%` }}
                         className={cn(
-                          "w-full rounded-sm",
-                          played
-                            ? own
-                              ? "bg-white/80"
-                              : "bg-accent-600"
-                            : own
-                              ? "bg-white/30"
-                              : "bg-zinc-300",
+                          "block h-full rounded-full",
+                          own ? "bg-white/80" : "bg-accent-600",
                         )}
                       />
-                    );
-                  })}
-                </div>
-              ) : null}
+                    </span>
+                  )}
+                </button>
+                <span
+                  className={cn(
+                    "mt-0.5 flex items-center gap-1 text-[11px] leading-4",
+                    own ? "text-accent-contrast/80" : "text-zinc-500",
+                  )}
+                >
+                  <span className="shrink-0 tabular-nums">
+                    {formatDuration(elapsed)} / {formatDuration(totalSeconds)}
+                  </span>
+                  <span aria-hidden>·</span>
+                  <span className="truncate">{attachment.name}</span>
+                  <span className="ml-auto shrink-0">{formatBytes(attachment.size)}</span>
+                </span>
+              </div>
+              {/* 네이티브 <audio controls> 는 위아래 여백이 커서 숨기고 위 버튼으로 제어한다. */}
               <audio
                 ref={audioRef}
-                controls
                 src={previewUrl}
+                preload="metadata"
+                className="hidden"
+                onLoadedMetadata={syncDuration}
                 onTimeUpdate={handleTimeUpdate}
-                className="w-full min-w-56"
+                onPlay={() => setPlaying(true)}
+                onPause={() => setPlaying(false)}
+                onEnded={() => {
+                  setPlaying(false);
+                  setElapsed(0);
+                }}
+              />
+              <DownloadIconButton
+                own={own}
+                downloading={downloading}
+                onClick={() => void download()}
               />
             </>
           ) : previewLoading ? (
-            <div className="flex h-10 items-center text-xs text-zinc-500">음성 복호화 중…</div>
+            <div className="flex h-9 items-center text-xs text-zinc-500">음성 복호화 중…</div>
           ) : null}
         </div>
       ) : null}
-      <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-            own ? "bg-accent-500/30 text-accent-contrast" : "bg-accent-100 text-accent-700",
-          )}
-        >
-          <FileText className="h-4 w-4" aria-hidden />
-        </span>
-        <span className="min-w-0 flex-1">
+      {!isAudio ? (
+        <div className="flex items-center gap-2">
           <span
             className={cn(
-              "block truncate text-sm font-medium",
-              own ? "text-accent-contrast" : "text-zinc-900",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+              own ? "bg-accent-500/30 text-accent-contrast" : "bg-accent-100 text-accent-700",
             )}
           >
-            {attachment.name}
+            <FileText className="h-4 w-4" aria-hidden />
           </span>
-          <span className={cn("text-[11px]", own ? "text-accent-contrast/80" : "text-zinc-500")}>
-            {attachment.durationSeconds !== undefined
-              ? `${formatDuration(attachment.durationSeconds)} · `
-              : ""}
-            {formatBytes(attachment.size)}
+          <span className="min-w-0 flex-1">
+            <span
+              className={cn(
+                "block truncate text-sm font-medium",
+                own ? "text-accent-contrast" : "text-zinc-900",
+              )}
+            >
+              {attachment.name}
+            </span>
+            <span className={cn("text-[11px]", own ? "text-accent-contrast/80" : "text-zinc-500")}>
+              {attachment.durationSeconds !== undefined
+                ? `${formatDuration(attachment.durationSeconds)} · `
+                : ""}
+              {formatBytes(attachment.size)}
+            </span>
           </span>
-        </span>
-        <button
-          type="button"
-          onClick={() => void download()}
-          disabled={downloading}
-          aria-label="다운로드"
-          className={cn(
-            "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs font-medium transition-colors disabled:opacity-50",
-            own
-              ? "bg-white/20 text-accent-contrast hover:bg-white/30"
-              : "border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100",
-          )}
-        >
-          {downloading ? (
-            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            <Download className="h-3.5 w-3.5" aria-hidden />
-          )}
-          다운로드
-        </button>
-      </div>
+          <DownloadIconButton
+            own={own}
+            downloading={downloading}
+            onClick={() => void download()}
+          />
+        </div>
+      ) : null}
       {error ? (
         <p className={cn("mt-1.5 text-[11px]", own ? "text-accent-contrast/80" : "text-red-600")}>
           {error}

@@ -944,6 +944,19 @@ test("1:1 영상 통화: 발신 → 수락 → 카메라 끄기 → 종료", asy
     await alice.getByRole("button", { name: "영상 통화" }).click();
     await expect(alice.getByTestId("call-status")).toHaveText(/영상 통화 발신 중/);
 
+    // 상대가 받기 전부터 내 카메라 미리보기 + 상대 영역(연결 대기)이 보인다.
+    await expect(alice.getByTestId("peer-video-placeholder")).toContainText("연결 대기");
+    await expect
+      .poll(
+        async () =>
+          await alice
+            .getByTestId("local-video")
+            .evaluate((node) => (node as HTMLVideoElement).videoWidth),
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0);
+    await expect(alice.getByRole("button", { name: "통화 취소" })).toBeVisible();
+
     await expect(bob.getByRole("dialog", { name: "수신 전화" })).toBeVisible({
       timeout: 25_000,
     });

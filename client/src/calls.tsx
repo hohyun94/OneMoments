@@ -91,6 +91,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  /** 발신 영상 통화에서 수락 전에 먼저 켜 두는 카메라 전용 스트림(마이크 없음). */
+  const previewStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -136,6 +138,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const releaseMedia = useCallback(() => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    previewStreamRef.current?.getTracks().forEach((track) => track.stop());
+    previewStreamRef.current = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
@@ -247,22 +251,43 @@ export function CallProvider({ children }: { children: ReactNode }) {
         finish("이 브라우저는 통화를 지원하지 않습니다.");
         return null;
       }
+      // 발신 미리보기로 이미 켠 카메라는 그대로 쓰고, 마이크만 추가로 얻는다.
+      const previewTrack =
+        media === "video"
+          ? (previewStreamRef.current
+              ?.getVideoTracks()
+              .find((track) => track.readyState === "live") ?? null)
+          : null;
       let stream: MediaStream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-          ...(media === "video"
-            ? {
-                video: {
-                  width: { ideal: 1280 },
-                  height: { ideal: 720 },
-                  facingMode: "user",
-                },
-              }
-            : {}),
-        });
+        if (previewTrack) {
+          const audio = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          });
+          stream = new MediaStream([...audio.getAudioTracks(), previewTrack]);
+          previewStreamRef.current = null;
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            ...(media === "video"
+              ? {
+                  video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: "user",
+                  },
+                }
+              : {}),
+          });
+        }
       } catch {
-        finish(media === "video" ? "카메라·마이크 권한이 필요합니다." : "마이크 권한이 필요합니다.");
+        finish(
+          previewTrack
+            ? "마이크 권한이 필요합니다."
+            : media === "video"
+              ? "카메라·마이크 권한이 필요합니다."
+              : "마이크 권한이 필요합니다.",
+        );
         return null;
       }
       localStreamRef.current = stream;
@@ -394,6 +419,28 @@ export function CallProvider({ children }: { children: ReactNode }) {
     [sendFrame],
   );
 
+  /**
+   * 발신 영상 통화는 **상대가 받기 전에** 내 카메라를 먼저 켜서 미리보기를 보여준다.
+   * 마이크는 수락 후 연결을 만들 때 얻는다(발신 중 불필요한 녹음 방지).
+   */
+  const startVideoPreview = useCallback(async (): Promise<boolean> => {
+    if (!navigator.mediaDevices?.getUserMedia) return false;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+      });
+      previewStreamRef.current = stream;
+      setLocalVideoStream(stream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+        void localVideoRef.current.play().catch(() => undefined);
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
   // 발신 시작
   const startCall = useCallback(
     async (input: {
@@ -437,6 +484,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
         connectedAt: null,
         note: null,
       });
+      // 영상은 카메라를 먼저 켜서 내 모습을 보여준 뒤 초대를 보낸다(권한 거부 시 벨이 울리지 않게).
+      if (media === "video") {
+        const ready = await startVideoPreview();
+        const latest = sessionRef.current;
+        if (!latest || latest.callId !== callId || latest.phase !== "outgoing") {
+          releaseMedia();
+          return;
+        }
+        if (!ready) {
+          finish("카메라 권한이 필요합니다.");
+          return;
+        }
+      }
       sendFrame({
         type: "call.invite",
         conversationId: input.conversationId,
@@ -450,9 +510,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         finish("응답이 없어 통화를 종료했습니다.");
       }, cfg.ringTimeoutSeconds * 1000);
     },
-    [clearTimers, ensureConfig, finish, sendFrame],
+    [clearTimers, ensureConfig, finish, releaseMedia, sendFrame, startVideoPreview],
   );
-
   // 수락
   const accept = useCallback(async () => {
     const current = sessionRef.current;
@@ -541,7 +600,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const toggleCamera = useCallback(() => {
-    const stream = localStreamRef.current;
+    // 발신 미리보기(수락 전)에는 localStream 이 없으므로 preview 스트림을 사용한다.
+    const stream = localStreamRef.current ?? previewStreamRef.current;
     if (!stream) return;
     const tracks = stream.getVideoTracks();
     if (tracks.length === 0) return;
@@ -593,7 +653,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
           if (!cfg || current.phase !== "outgoing") return;
           void (async () => {
             const pc = await prepareConnection(cfg, call.callId, current.media);
-            if (!pc) return;
+            if (!pc) {
+              // 권한 거부 등으로 미디어를 못 얻으면 상대 벨을 즉시 정리한다.
+              sendFrame({
+                type: "call.end",
+                conversationId: call.conversationId,
+                callId: call.callId,
+                reason: "failed",
+              });
+              return;
+            }
             clearTimers();
             setSession((value) =>
               value?.callId === call.callId ? { ...value, phase: "connecting" } : value,

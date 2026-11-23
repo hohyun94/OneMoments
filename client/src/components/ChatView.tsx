@@ -12,7 +12,6 @@ import {
   Bell,
   BellOff,
   Clock,
-  Code2,
   Mic,
   Pencil,
   Paperclip,
@@ -1087,21 +1086,7 @@ export function ChatView({
     });
   }
 
-  /** 선택 영역을 서식 기호로 감싼다(선택이 없으면 자리표시자를 넣는다). */
-  function wrapSelection(prefix: string, suffix = prefix, placeholder = "텍스트"): void {
-    const textarea = draftRef.current;
-    const start = textarea?.selectionStart ?? draft.length;
-    const end = textarea?.selectionEnd ?? start;
-    const selected = draft.slice(start, end) || placeholder;
-    setDraft(`${draft.slice(0, start)}${prefix}${selected}${suffix}${draft.slice(end)}`);
-    window.requestAnimationFrame(() => {
-      textarea?.focus();
-      textarea?.setSelectionRange(
-        start + prefix.length,
-        start + prefix.length + selected.length,
-      );
-    });
-  }
+  // 서식 버튼(B/코드)은 메신저 사용 빈도가 낮아 툴바에서 제거했다. 마크다운 직접 입력은 그대로 지원한다.
 
   const dayGroups: Array<{ day: string; items: MessageView[] }> = [];
   for (const message of chronological) {
@@ -1641,28 +1626,6 @@ export function ChatView({
                   <Mic className="h-4 w-4" />
                 </Button>
               ) : null}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => wrapSelection("**", "**", "굵게")}
-                disabled={sending || editing !== null}
-                aria-label="굵게"
-                title="굵게"
-              >
-                <span className="text-xs font-bold">B</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => wrapSelection("`", "`", "코드")}
-                disabled={sending || editing !== null}
-                aria-label="코드"
-                title="인라인 코드"
-              >
-                <Code2 className="h-4 w-4" />
-              </Button>
               <Button
                 type="button"
                 variant="ghost"

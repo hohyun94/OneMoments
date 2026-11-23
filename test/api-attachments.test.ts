@@ -324,5 +324,9 @@ describe("encrypted attachments", () => {
     const csp = response.headers.get("content-security-policy") ?? "";
     expect(csp).toContain("media-src 'self' blob:");
     expect(csp).toContain("img-src 'self' data: blob:");
+    // 위치 공유는 Permissions-Policy 로 같은 출처에만 허용한다(CSP 지시자가 아니다).
+    expect(csp).not.toContain("geolocation=");
+    const permissions = response.headers.get("permissions-policy") ?? "";
+    expect(permissions).toContain("geolocation=(self)");
   });
 });

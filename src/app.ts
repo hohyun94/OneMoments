@@ -84,6 +84,8 @@ export function createApp(options: AppOptions): Express {
         "form-action 'self'",
       ].join("; "),
     );
+    // 위치·마이크·카메라는 같은 출처에서만 허용한다(지도 임베드는 쓰지 않는다).
+    res.setHeader("Permissions-Policy", "geolocation=(self), microphone=(self), camera=(self)");
     next();
   });
 

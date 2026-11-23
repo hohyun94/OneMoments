@@ -828,6 +828,43 @@ test("Google 가입·로그인으로 계정을 만들고 다시 로그인한다"
   }
 });
 
+test("현재 위치를 보내면 상대에게 위치 카드가 표시된다", async ({ browser }) => {
+  const aliceContext = await browser.newContext({
+    permissions: ["geolocation"],
+    geolocation: { latitude: 37.5665, longitude: 126.978, accuracy: 20 },
+  });
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("locshare");
+  const bobName = uniqueName("locpeer");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await startConversation(alice, bobName);
+    // 상대도 같은 대화를 열어 두어야 실시간으로 메시지가 표시된다.
+    await startConversation(bob, aliceName);
+
+    await alice.getByRole("button", { name: "위치 공유" }).click();
+    const dialog = alice.getByRole("dialog", { name: "현재 위치 보내기" });
+    await expect(dialog.getByTestId("location-preview")).toHaveText("37.56650, 126.97800");
+    await expect(dialog.getByText("정확도 ±20m")).toBeVisible();
+    await dialog.getByLabel("장소 이름 (선택)").fill("집");
+    await dialog.getByTestId("location-send").click();
+
+    // 양쪽 모두 좌표 카드가 보이고, base64 본문은 화면에 노출되지 않는다.
+    await expect(alice.getByTestId("location-card")).toHaveCount(1);
+    await expect(bob.getByTestId("location-card")).toHaveCount(1);
+    await expect(bob.getByTestId("location-coordinates")).toHaveText("37.56650, 126.97800");
+    await expect(bob.getByTestId("location-card")).toContainText("집");
+    await expect(bob.getByText("onemoments:location:v1:")).toHaveCount(0);
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("1:1 음성 통화: 발신 → 수락 → 음소거 → 종료", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();

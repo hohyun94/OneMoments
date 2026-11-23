@@ -729,11 +729,38 @@ test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser
     await alice.getByRole("button", { name: "전송", exact: true }).click();
     await expect(alice.getByTestId("waveform")).toBeVisible();
 
+    // 복호화한 Blob 오디오가 실제로 재생되는지 확인한다(CSP media-src 회귀 방지).
+    async function expectPlayable(page: Page): Promise<void> {
+      const audio = page.locator("audio").first();
+      const duration = await audio.evaluate(async (node: HTMLAudioElement) => {
+        if (node.readyState < 1) {
+          await new Promise<void>((resolve) => {
+            node.addEventListener("loadedmetadata", () => resolve(), { once: true });
+            window.setTimeout(() => resolve(), 5_000);
+          });
+        }
+        return node.duration;
+      });
+      expect(Number.isFinite(duration)).toBe(true);
+      expect(duration).toBeGreaterThan(0);
+      await audio.evaluate(async (node: HTMLAudioElement) => {
+        await node.play();
+      });
+      await expect
+        .poll(() => audio.evaluate((node: HTMLAudioElement) => node.currentTime), {
+          timeout: 10_000,
+        })
+        .toBeGreaterThan(0);
+    }
+
+    await expectPlayable(alice);
+
     const bobList = bob.getByRole("navigation", { name: "대화 목록" });
     const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
     await expect(bobConversation).toBeVisible({ timeout: 25_000 });
     await bobConversation.click();
     await expect(bob.getByTestId("waveform")).toBeVisible();
+    await expectPlayable(bob);
   } finally {
     await aliceContext.close();
     await bobContext.close();

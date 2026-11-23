@@ -74,6 +74,8 @@ export function createApp(options: AppOptions): Express {
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
         "img-src 'self' data: blob:",
+        // 음성 메시지는 복호화한 Blob 을 objectURL 로 재생하므로 media-src 가 필요하다.
+        "media-src 'self' blob:",
         "font-src 'self' data:",
         "connect-src 'self' ws: wss:",
         "base-uri 'none'",

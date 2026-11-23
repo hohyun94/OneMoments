@@ -84,6 +84,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const ringTimerRef = useRef<number | undefined>(undefined);
   const endedTimerRef = useRef<number | undefined>(undefined);
   const connectTimerRef = useRef<number | undefined>(undefined);
+  const disconnectTimerRef = useRef<number | undefined>(undefined);
+  const restartTimerRef = useRef<number | undefined>(undefined);
+  const restartAttemptsRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -106,6 +109,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
     endedTimerRef.current = undefined;
     if (connectTimerRef.current) window.clearTimeout(connectTimerRef.current);
     connectTimerRef.current = undefined;
+    if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
+    disconnectTimerRef.current = undefined;
+    if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current);
+    restartTimerRef.current = undefined;
+    restartAttemptsRef.current = 0;
   }, []);
 
   const releaseMedia = useCallback(() => {
@@ -183,6 +191,28 @@ export function CallProvider({ children }: { children: ReactNode }) {
     [finish, sendFrame],
   );
 
+  /** 통화 중 연결이 끊겼을 때 ICE restart 로 재협상한다(발신자만 시작해 glare 를 피한다). */
+  const attemptIceRestart = useCallback(
+    (pc: RTCPeerConnection, callId: string) => {
+      const current = sessionRef.current;
+      if (!current || current.callId !== callId) return;
+      if (pcRef.current !== pc) return;
+      if (pc.connectionState === "connected") return;
+      if (restartAttemptsRef.current >= 2) return;
+      restartAttemptsRef.current += 1;
+      void (async () => {
+        try {
+          const offer = await pc.createOffer({ iceRestart: true });
+          await pc.setLocalDescription(offer);
+          sendSignal({ description: { type: "offer", sdp: offer.sdp ?? "" } });
+        } catch {
+          // 재협상 실패는 아래 유예 타이머가 종료로 정리한다.
+        }
+      })();
+    },
+    [sendSignal],
+  );
+
   const prepareConnection = useCallback(
     async (cfg: CallConfig, callId: string): Promise<RTCPeerConnection | null> => {
       if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
@@ -227,6 +257,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
         if (pc.connectionState === "connected") {
           if (connectTimerRef.current) window.clearTimeout(connectTimerRef.current);
           connectTimerRef.current = undefined;
+          if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current);
+          disconnectTimerRef.current = undefined;
+          if (restartTimerRef.current) window.clearTimeout(restartTimerRef.current);
+          restartTimerRef.current = undefined;
+          restartAttemptsRef.current = 0;
           setSession((value) =>
             value?.callId === callId
               ? {
@@ -237,6 +272,23 @@ export function CallProvider({ children }: { children: ReactNode }) {
                 }
               : value,
           );
+        } else if (pc.connectionState === "disconnected") {
+          // 일시적 끊김은 ICE restart 로 복구를 시도하고, 20초 내 복구되지 않으면 종료한다.
+          if (!disconnectTimerRef.current) {
+            disconnectTimerRef.current = window.setTimeout(() => {
+              disconnectTimerRef.current = undefined;
+              const latest = sessionRef.current;
+              if (!latest || latest.callId !== callId) return;
+              if (pcRef.current?.connectionState === "connected") return;
+              finish("연결이 끊어졌습니다. 다시 시도해 주세요.");
+            }, 20_000);
+          }
+          if (current.direction === "outgoing" && !restartTimerRef.current) {
+            restartTimerRef.current = window.setTimeout(() => {
+              restartTimerRef.current = undefined;
+              attemptIceRestart(pc, callId);
+            }, 4_000);
+          }
         } else if (pc.connectionState === "failed") {
           sendFrame({
             type: "call.end",
@@ -249,7 +301,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       };
       return pc;
     },
-    [finish, sendFrame, sendSignal],
+    [attemptIceRestart, finish, sendFrame, sendSignal],
   );
 
   const ensureConfig = useCallback(async (): Promise<CallConfig | null> => {

@@ -12,6 +12,7 @@ import {
   Bell,
   BellOff,
   Clock,
+  History,
   Mic,
   Pencil,
   Paperclip,
@@ -80,6 +81,7 @@ import {
   deleteDecryptedMessageCache,
 } from "./MessageBubble.tsx";
 import { GroupMembersDialog } from "./GroupMembersDialog.tsx";
+import { CallHistoryDialog } from "./CallHistoryDialog.tsx";
 import { GroupSettingsDialog } from "./GroupSettingsDialog.tsx";
 import { AutoDeleteDialog } from "./AutoDeleteDialog.tsx";
 import { computeSafetyNumber, type SafetyNumber } from "../lib/safety.ts";
@@ -311,6 +313,7 @@ export function ChatView({
   } | null>(null);
   const [editing, setEditing] = useState<{ messageId: string; text: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MessageView | null>(null);
+  const [callHistoryOpen, setCallHistoryOpen] = useState(false);
   const [reactionState, setReactionState] = useState<
     Map<string, { counts: Map<string, number>; mine: string | null }>
   >(new Map());
@@ -1270,6 +1273,17 @@ export function ChatView({
             <Phone className="h-4 w-4" aria-hidden />
           </Button>
         ) : null}
+        {!isGroup ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setCallHistoryOpen(true)}
+            aria-label="통화 기록"
+            title="통화 기록"
+          >
+            <History className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : null}
         {connection !== "open" ? (
           <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
             연결 중…
@@ -1769,6 +1783,14 @@ export function ChatView({
           void queryClient.invalidateQueries({ queryKey: ["conversations"] });
         }}
       />
+
+      {!isGroup ? (
+        <CallHistoryDialog
+          open={callHistoryOpen}
+          onClose={() => setCallHistoryOpen(false)}
+          conversationId={conversation.id}
+        />
+      ) : null}
 
       {isGroup ? (
         <GroupSettingsDialog

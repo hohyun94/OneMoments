@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -8,6 +9,7 @@ import type { ConversationSummary } from "../types.ts";
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,7 +21,10 @@ export function InvitePage() {
     api<{ conversation: ConversationSummary }>(`/api/invites/${token}/accept`, {
       method: "POST",
     })
-      .then((response) => {
+      .then(async (response) => {
+        if (cancelled) return;
+        // 전역 레이아웃이 이미 대화 목록을 캐시하고 있으므로, 합류 후 즉시 새로고침한다.
+        await queryClient.invalidateQueries({ queryKey: ["conversations"] });
         if (!cancelled) {
           navigate(`/c/${response.conversation.id}`, { replace: true });
         }
@@ -36,7 +41,7 @@ export function InvitePage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, token]);
+  }, [navigate, queryClient, token]);
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-zinc-50 px-4">

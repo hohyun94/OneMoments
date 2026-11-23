@@ -753,8 +753,12 @@ test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser
       expect(duration).toBeGreaterThan(0);
 
       // 카드가 컴팩트한지(이전 네이티브 플레이어 대비 절반 수준) 확인한다.
-      const box = await page.getByTestId("voice-card").first().boundingBox();
+      const card = page.getByTestId("voice-card").first();
+      const box = await card.boundingBox();
       expect(box?.height ?? 0).toBeLessThan(90);
+      // 음성 카드에는 파일명을 표시하지 않는다(다운로드 파일명으로만 사용).
+      await expect(card).not.toContainText(/음성-\d{8}-\d{4}\.webm/);
+      await expect(card.getByText(/\d+:\d{2} \/ \d+:\d{2}/)).toBeVisible();
 
       await page.getByRole("button", { name: "재생" }).first().click();
       await expect(page.getByRole("button", { name: "일시정지" }).first()).toBeVisible();

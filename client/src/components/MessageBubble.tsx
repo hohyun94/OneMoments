@@ -253,7 +253,8 @@ function AttachmentCard({
                       return (
                         <span
                           key={index}
-                          style={{ height: `${peak}%` }}
+                          // 조용한 구간(3% 피크)도 보이도록 최소 높이를 준다.
+                          style={{ height: `${peak}%`, minHeight: 5 }}
                           className={cn(
                             "w-full rounded-sm",
                             played
@@ -293,8 +294,6 @@ function AttachmentCard({
                   <span className="shrink-0 tabular-nums">
                     {formatDuration(elapsed)} / {formatDuration(totalSeconds)}
                   </span>
-                  <span aria-hidden>·</span>
-                  <span className="truncate">{attachment.name}</span>
                   <span className="ml-auto shrink-0">{formatBytes(attachment.size)}</span>
                 </span>
               </div>

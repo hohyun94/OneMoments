@@ -132,7 +132,8 @@ pnpm moments:cleanup   # 만료된 Moments·고아 이미지 정리(크론 권�
 - [그룹 대화](docs/09-groups.md) — 기기별 봉투, 참여자 추가, 인원 제한과 한계
 - [파일 첨부](docs/10-attachments.md) — 파일별 암호화, 저장·접근 제어, 백업과 한계
 - [Google OAuth](docs/27-google-oauth.md) — `state`+PKCE, 1회용 티켓, 계정 연결/해제, 운영 설정
-- [1:1 음성 통화](docs/29-voice-call.md) — WebRTC P2P/TURN, WS 시그널링, 상태 머신, coturn 설정
+- [1:1 음성 통화](docs/29-voice-call.md) — WebRTC P2P/TURN, WS 시그널링, 상태 머신, coturn 설정, **인터넷망 배포 체크리스트**
+- [TURN(coturn) compose](docker-compose.turn.yml) — 인터넷/제한망 통화용 릴레이 서버(공인 IP)
 - [Double Ratchet](docs/11-double-ratchet.md) — v2 세션·DH 래칫, 이력 키, 백업과 한계
 - [Sender Keys](docs/14-sender-keys.md) — 그룹 체인 배포, 회전, 백업과 보안 한계
 - [X3DH](docs/15-x3dh.md) — signed prekey, 최초 세션, 백업과 OPK 후속

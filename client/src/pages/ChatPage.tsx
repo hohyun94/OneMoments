@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessagesSquare, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { ChatView } from "../components/ChatView.tsx";
@@ -8,9 +8,8 @@ import { ConversationSidebar } from "../components/ConversationSidebar.tsx";
 import { NewConversationDialog } from "../components/NewConversationDialog.tsx";
 import { Button, Spinner, cn } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
-import { CallProvider } from "../calls.tsx";
 import { loadPinnedConversations, togglePinnedConversation } from "../lib/conversationPins.ts";
-import { RealtimeProvider, useRealtime } from "../realtime.tsx";
+import { useRealtime } from "../realtime.tsx";
 import { useSession } from "../session.tsx";
 import type { ConversationSummary } from "../types.ts";
 
@@ -47,45 +46,52 @@ export function ChatPage() {
 
   const conversations = conversationsQuery.data ?? [];
   const selected = conversations.find((item) => item.id === conversationId) ?? null;
-  const conversationIds = conversations.map((item) => item.id);
+
+  // 딥링크(/c/:id)로 바로 들어왔는데 캐시가 비어 있으면 한 번 새로고침한다.
+  const deepLinkRetryRef = useRef(0);
+  useEffect(() => {
+    if (!conversationId || !conversationsQuery.data) return;
+    if (conversationsQuery.data.some((item) => item.id === conversationId)) return;
+    if (conversationsQuery.isFetching || deepLinkRetryRef.current >= 2) return;
+    deepLinkRetryRef.current += 1;
+    void conversationsQuery.refetch();
+  }, [conversationId, conversationsQuery]);
 
   if (!session || !identity) return null;
 
   return (
-    <RealtimeProvider enabled conversationIds={conversationIds}>
-      <CallProvider>
-        <ChatShell
-          username={session.user.username}
-          currentUserId={session.user.id}
-          identity={identity}
-          conversations={conversations}
-          selected={selected}
-          loading={conversationsQuery.isLoading}
-          isAdmin={session.user.isAdmin === true}
-          onSelect={(id) => navigate(`/c/${id}`)}
-          onSelectMessage={(id, messageId) => navigate(`/c/${id}?anchor=${messageId}`)}
-          pinnedIds={pinnedIds}
-          onTogglePinConversation={togglePin}
-          onBack={() => navigate("/")}
-          onNewConversation={() => setDialogOpen(true)}
-          onOpenMoments={() => navigate("/moments")}
-          onOpenContacts={() => navigate("/contacts")}
-          onOpenDevices={() => navigate("/devices")}
-          onOpenAdmin={() => navigate("/admin")}
-          onLogout={() => {
-            void logout().then(() => navigate("/"));
-          }}
-        />
-        <NewConversationDialog
-          open={dialogOpen}
-          onClose={() => setDialogOpen(false)}
-          onCreated={(id) => {
-            void queryClient.invalidateQueries({ queryKey: ["conversations"] });
-            navigate(`/c/${id}`);
-          }}
-        />
-      </CallProvider>
-    </RealtimeProvider>
+    <>
+      <ChatShell
+        username={session.user.username}
+        currentUserId={session.user.id}
+        identity={identity}
+        conversations={conversations}
+        selected={selected}
+        loading={conversationsQuery.isLoading}
+        isAdmin={session.user.isAdmin === true}
+        onSelect={(id) => navigate(`/c/${id}`)}
+        onSelectMessage={(id, messageId) => navigate(`/c/${id}?anchor=${messageId}`)}
+        pinnedIds={pinnedIds}
+        onTogglePinConversation={togglePin}
+        onBack={() => navigate("/")}
+        onNewConversation={() => setDialogOpen(true)}
+        onOpenMoments={() => navigate("/moments")}
+        onOpenContacts={() => navigate("/contacts")}
+        onOpenDevices={() => navigate("/devices")}
+        onOpenAdmin={() => navigate("/admin")}
+        onLogout={() => {
+          void logout().then(() => navigate("/"));
+        }}
+      />
+      <NewConversationDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreated={(id) => {
+          void queryClient.invalidateQueries({ queryKey: ["conversations"] });
+          navigate(`/c/${id}`);
+        }}
+      />
+    </>
   );
 }
 

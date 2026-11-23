@@ -842,6 +842,11 @@ test("1:1 음성 통화: 발신 → 수락 → 음소거 → 종료", async ({ b
     // 양쪽 실시간 연결이 맺어진 뒤에 발신한다(벨은 대화를 열지 않아도 도착해야 한다).
     await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
     await expect(bob.getByTitle("실시간 연결됨")).toBeVisible();
+
+    // 채팅 화면이 아닌 곳(기기 관리)에서도 수신 벨이 떠야 한다.
+    await bob.goto("/devices");
+    await expect(bob.getByRole("heading", { name: "기기 관리" })).toBeVisible();
+
     await startConversation(alice, bobName);
     await expect(alice.getByLabel("메시지 입력")).toBeVisible();
 
@@ -872,6 +877,12 @@ test("1:1 음성 통화: 발신 → 수락 → 음소거 → 종료", async ({ b
       timeout: 15_000,
     });
     await expect(alice.getByTestId("call-overlay")).toBeHidden({ timeout: 15_000 });
+
+    // 통화 기록(메타데이터만)이 남는다.
+    await alice.waitForTimeout(800);
+    await alice.getByRole("button", { name: "통화 기록" }).click();
+    const history = alice.getByRole("dialog", { name: "통화 기록" });
+    await expect(history.getByText("발신 통화")).toBeVisible();
   } finally {
     await aliceContext.close();
     await bobContext.close();

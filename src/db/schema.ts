@@ -650,6 +650,40 @@ export const oauthTickets = pgTable(
   ],
 );
 
+export const callLogs = pgTable(
+  "call_logs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** 통화 세션 ID(클라이언트가 만든 UUID). 재전송되어도 한 건만 남긴다. */
+    callId: uuid("call_id").notNull().unique(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => conversations.id, { onDelete: "cascade" }),
+    callerUserId: uuid("caller_user_id")
+      .notNull()
+      .references(() => users.id),
+    calleeUserId: uuid("callee_user_id")
+      .notNull()
+      .references(() => users.id),
+    /** ringing | completed | missed | declined | cancelled | failed */
+    status: text("status").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    answeredAt: timestamp("answered_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    durationSeconds: integer("duration_seconds"),
+    endedByUserId: uuid("ended_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [
+    check(
+      "call_logs_status_chk",
+      sql`${table.status} in ('ringing', 'completed', 'missed', 'declined', 'cancelled', 'failed')`,
+    ),
+    index("call_logs_conversation_idx").on(table.conversationId, table.startedAt),
+  ],
+);
+
 export const conversationInvites = pgTable(
   "conversation_invites",
   {
@@ -759,3 +793,4 @@ export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
 export type AuthEventRow = typeof authEvents.$inferSelect;
 export type OAuthStateRow = typeof oauthStates.$inferSelect;
 export type OAuthTicketRow = typeof oauthTickets.$inferSelect;
+export type CallLogRow = typeof callLogs.$inferSelect;

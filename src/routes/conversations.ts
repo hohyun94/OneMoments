@@ -40,6 +40,7 @@ import {
   setConversationMuted,
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
+import { listCallLogs } from "../services/calls.js";
 import { hideMessageForUser, listMessages, setMessagePinned } from "../services/messages.js";
 import {
   createAttachment,
@@ -394,6 +395,19 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         pinnedOnly: query.pinned === "1",
       });
       res.json(page);
+    }),
+  );
+
+  /** 통화 기록(메타데이터만). 대화 참여자만 조회할 수 있다. */
+  router.get(
+    "/:conversationId/calls",
+    session,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      const calls = await listCallLogs(db, { conversationId, userId: auth.userId });
+      res.json({ calls });
     }),
   );
 

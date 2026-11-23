@@ -13,6 +13,7 @@ import { resolveSession, type AuthContext } from "../http/middleware.js";
 import { toMessageView } from "../http/serializers.js";
 import { touchDevice } from "../services/accounts.js";
 import { isParticipant, requireDirectCallPeer } from "../services/conversations.js";
+import { finishCallLog, markCallAnswered, startCallLog } from "../services/calls.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
 import {
   WS_PATH,
@@ -443,7 +444,7 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
           if (!config.calls.enabled) {
             throw AppError.forbidden("Voice calls are disabled");
           }
-          const { participantUserIds } = await requireDirectCallPeer(db, {
+          const { participantUserIds, peerUserId } = await requireDirectCallPeer(db, {
             conversationId: frame.conversationId,
             userId: connection.userId,
           });
@@ -486,6 +487,29 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
             fromDeviceId: connection.deviceId,
             frame: relayed,
           });
+          // 통화 기록(메타데이터만). 실패해도 시그널링은 계속 진행한다.
+          if (frame.type === "call.invite") {
+            void startCallLog(db, {
+              callId: frame.callId,
+              conversationId: frame.conversationId,
+              callerUserId: connection.userId,
+              calleeUserId: peerUserId,
+            }).catch(() => undefined);
+          } else if (frame.type === "call.accept") {
+            void markCallAnswered(db, { callId: frame.callId }).catch(() => undefined);
+          } else if (frame.type === "call.decline" || frame.type === "call.cancel" || frame.type === "call.end") {
+            void finishCallLog(db, {
+              callId: frame.callId,
+              event:
+                frame.type === "call.decline"
+                  ? "decline"
+                  : frame.type === "call.cancel"
+                    ? "cancel"
+                    : "end",
+              userId: connection.userId,
+              reason: "reason" in frame ? frame.reason : undefined,
+            }).catch(() => undefined);
+          }
           return;
         }
       }

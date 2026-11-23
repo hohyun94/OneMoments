@@ -396,6 +396,18 @@ export interface CallSignal {
   };
 }
 
+/** `GET /api/conversations/:id/calls` 응답 항목. */
+export interface CallLogEntry {
+  id: string;
+  callId: string;
+  status: "ringing" | "completed" | "missed" | "declined" | "cancelled" | "failed";
+  direction: "outgoing" | "incoming";
+  startedAt: string;
+  answeredAt: string | null;
+  endedAt: string | null;
+  durationSeconds: number | null;
+}
+
 /** `GET /api/call/config` 응답. */
 export interface CallConfig {
   enabled: boolean;

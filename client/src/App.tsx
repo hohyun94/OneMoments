@@ -8,6 +8,7 @@ import { OAuthLanding } from "./pages/OAuthLanding.tsx";
 import { ChatPage } from "./pages/ChatPage.tsx";
 import { DevicesPage } from "./pages/DevicesPage.tsx";
 import { InvitePage } from "./pages/InvitePage.tsx";
+import { RealtimeLayout } from "./pages/RealtimeLayout.tsx";
 import { useSession } from "./session.tsx";
 
 // 관리자 화면은 allowlist 사용자만 진입하므로 일반 사용자 번들에 포함하지 않는다.
@@ -76,68 +77,43 @@ export function App() {
     <Routes>
       {/* Google OAuth 복귀: 로그인/가입/연결을 티켓으로 마무리한다. */}
       <Route path="/oauth/callback" element={<OAuthLanding />} />
+      {/* 로그인 후 모든 화면에 실시간(WS)과 통화 상태를 유지한다. */}
       <Route
-        path="/"
         element={
           <Guard>
-            <ChatPage />
+            <RealtimeLayout />
           </Guard>
         }
-      />
-      <Route
-        path="/c/:conversationId"
-        element={
-          <Guard>
-            <ChatPage />
-          </Guard>
-        }
-      />
-      <Route
-        path="/join/:token"
-        element={
-          <Guard>
-            <InvitePage />
-          </Guard>
-        }
-      />
-      <Route
-        path="/devices"
-        element={
-          <Guard>
-            <DevicesPage />
-          </Guard>
-        }
-      />
-      <Route
-        path="/moments"
-        element={
-          <Guard>
+      >
+        <Route path="/" element={<ChatPage />} />
+        <Route path="/c/:conversationId" element={<ChatPage />} />
+        <Route path="/join/:token" element={<InvitePage />} />
+        <Route path="/devices" element={<DevicesPage />} />
+        <Route
+          path="/moments"
+          element={
             <Suspense fallback={<Splash />}>
               <MomentsPage />
             </Suspense>
-          </Guard>
-        }
-      />
-      <Route
-        path="/contacts"
-        element={
-          <Guard>
+          }
+        />
+        <Route
+          path="/contacts"
+          element={
             <Suspense fallback={<Splash />}>
               <ContactsPage />
             </Suspense>
-          </Guard>
-        }
-      />
-      <Route
-        path="/admin"
-        element={
-          <Guard>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
             <Suspense fallback={<Splash />}>
               <AdminPage />
             </Suspense>
-          </Guard>
-        }
-      />
+          }
+        />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

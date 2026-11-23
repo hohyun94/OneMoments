@@ -65,55 +65,93 @@ export function CallOverlay() {
             ? `통화 중 · ${formatDuration(elapsed)}`
             : session.note ?? "통화 종료";
 
-  // 영상 통화: 원격 영상 + 내 미리보기 + 컨트롤을 전체 화면으로 보여준다.
-  if (isVideo && (session.phase === "connecting" || session.phase === "active")) {
+  // 영상 통화: 발신(수락 전)에는 내 카메라를 크게, 이후에는 원격 영상 + 내 미리보기.
+  if (
+    isVideo &&
+    (session.phase === "outgoing" ||
+      session.phase === "connecting" ||
+      session.phase === "active")
+  ) {
+    const ringing = session.phase === "outgoing";
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 p-3">
         <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black">
-          <video
-            ref={remoteVideoRef}
-            data-testid="remote-video"
-            autoPlay
-            playsInline
-            className="h-full w-full object-contain"
-          />
-          {session.phase === "connecting" ? (
-            <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
-              연결 중…
-            </div>
-          ) : null}
+          {ringing ? (
+            <>
+              <video
+                ref={localVideoRef}
+                data-testid="local-video"
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full scale-x-[-1] object-cover"
+              />
+              {!localVideoStream ? (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+                  카메라 준비 중…
+                </div>
+              ) : null}
+              <div
+                data-testid="peer-video-placeholder"
+                className="absolute bottom-3 right-3 flex h-32 w-24 flex-col items-center justify-center gap-1 rounded-xl border border-white/30 bg-black/60 px-1 text-center"
+              >
+                <Video className="h-5 w-5 text-white/60" aria-hidden />
+                <span className="max-w-full truncate text-[10px] text-white/80">
+                  {session.peerLabel}
+                </span>
+                <span className="text-[10px] text-white/50">연결 대기</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <video
+                ref={remoteVideoRef}
+                data-testid="remote-video"
+                autoPlay
+                playsInline
+                className="h-full w-full object-contain"
+              />
+              {session.phase === "connecting" ? (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
+                  연결 중…
+                </div>
+              ) : null}
+              <div className="absolute bottom-3 right-3 h-32 w-24 overflow-hidden rounded-xl border border-white/30 bg-black/60">
+                <video
+                  ref={localVideoRef}
+                  data-testid="local-video"
+                  autoPlay
+                  playsInline
+                  muted
+                  className="h-full w-full scale-x-[-1] object-cover"
+                />
+              </div>
+            </>
+          )}
           <div className="absolute left-3 top-3 flex items-center gap-2 rounded-full bg-black/50 px-3 py-1 text-xs text-white">
             <span className="truncate">{session.peerLabel}</span>
             <span aria-hidden>·</span>
             <span data-testid="call-status">{status}</span>
           </div>
-          <div className="absolute bottom-3 right-3 h-32 w-24 overflow-hidden rounded-xl border border-white/30 bg-black/60">
-            <video
-              ref={localVideoRef}
-              data-testid="local-video"
-              autoPlay
-              playsInline
-              muted
-              className="h-full w-full object-cover"
-            />
-          </div>
         </div>
         <div className="mt-3 flex items-center justify-center gap-3">
-          <Button
-            type="button"
-            size="icon"
-            onClick={toggleMute}
-            aria-label={session.muted ? "음소거 해제" : "음소거"}
-            aria-pressed={session.muted}
-            title={session.muted ? "음소거 해제" : "음소거"}
-            className="bg-white/10 text-white hover:bg-white/20"
-          >
-            {session.muted ? (
-              <MicOff className="h-4 w-4" aria-hidden />
-            ) : (
-              <Mic className="h-4 w-4" aria-hidden />
-            )}
-          </Button>
+          {ringing ? null : (
+            <Button
+              type="button"
+              size="icon"
+              onClick={toggleMute}
+              aria-label={session.muted ? "음소거 해제" : "음소거"}
+              aria-pressed={session.muted}
+              title={session.muted ? "음소거 해제" : "음소거"}
+              className="bg-white/10 text-white hover:bg-white/20"
+            >
+              {session.muted ? (
+                <MicOff className="h-4 w-4" aria-hidden />
+              ) : (
+                <Mic className="h-4 w-4" aria-hidden />
+              )}
+            </Button>
+          )}
           <Button
             type="button"
             size="icon"
@@ -134,8 +172,8 @@ export function CallOverlay() {
             size="icon"
             variant="destructive"
             onClick={hangup}
-            aria-label="통화 종료"
-            title="통화 종료"
+            aria-label={ringing ? "통화 취소" : "통화 종료"}
+            title={ringing ? "통화 취소" : "통화 종료"}
           >
             <PhoneOff className="h-4 w-4" aria-hidden />
           </Button>

@@ -377,6 +377,19 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
             }
           }
           const joined = hub.subscribe(connection, allowed);
+          // 새로 구독한 연결에는 이미 온라인인 참여자의 presence 를 스냅샷으로 보낸다.
+          // (이벤트만 보내면 늦게 접속한 쪽은 상대를 계속 오프라인으로 본다.)
+          for (const id of joined) {
+            for (const userId of hub.onlineUserIds(id)) {
+              if (userId === connection.userId) continue;
+              hub.send(socket, {
+                type: "presence",
+                conversationId: id,
+                userId,
+                state: "online",
+              });
+            }
+          }
           hub.send(socket, { type: "subscribed", conversationIds: joined });
           return;
         }

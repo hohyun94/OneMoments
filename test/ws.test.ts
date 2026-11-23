@@ -410,4 +410,100 @@ describe("websocket realtime", () => {
       connect(ctx.wsUrl, alice.client.cookieHeader()),
     ).rejects.toThrow(/401/);
   });
+
+  it("relays 1:1 call signaling to the peer but not back to the caller", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+
+    const aliceSocket = await openSocket(alice);
+    const bobSocket = await openSocket(bob);
+    try {
+      const callId = randomUUID();
+      sendFrame(aliceSocket.socket, {
+        type: "call.invite",
+        conversationId,
+        callId,
+        media: "audio",
+      });
+      const invite = await bobSocket.frames.next((frame) => frame.type === "call.invite");
+      expect(invite.callId).toBe(callId);
+      expect(invite.conversationId).toBe(conversationId);
+      expect(invite.fromUserId).toBe(alice.userId);
+      expect(invite.media).toBe("audio");
+
+      // 발신 기기로는 같은 프레임이 되돌아오지 않는다.
+      await expect(
+        aliceSocket.frames.next((frame) => frame.type === "call.invite", 300),
+      ).rejects.toThrow(/Timed out/);
+
+      sendFrame(aliceSocket.socket, {
+        type: "call.signal",
+        conversationId,
+        callId,
+        signal: { description: { type: "offer", sdp: "v=0\r\n" } },
+      });
+      const signal = await bobSocket.frames.next((frame) => frame.type === "call.signal");
+      expect(signal.signal.description.type).toBe("offer");
+      expect(signal.fromDeviceId).toBe(alice.deviceId);
+
+      sendFrame(bobSocket.socket, {
+        type: "call.accept",
+        conversationId,
+        callId,
+        media: "audio",
+      });
+      const accepted = await aliceSocket.frames.next(
+        (frame) => frame.type === "call.accepted",
+      );
+      expect(accepted.fromUserId).toBe(bob.userId);
+
+      sendFrame(aliceSocket.socket, { type: "call.end", conversationId, callId });
+      const ended = await bobSocket.frames.next((frame) => frame.type === "call.ended");
+      expect(ended.callId).toBe(callId);
+      expect(ended.reason).toBe("hangup");
+    } finally {
+      await closeSocket(aliceSocket.socket);
+      await closeSocket(bobSocket.socket);
+    }
+  });
+
+  it("rejects calls in group conversations and from non-participants", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const carol = await registerAccount("carol");
+
+    const directId = await createConversation(alice, bob);
+    const group = await alice.client.request("POST", "/api/conversations", {
+      body: { kind: "group", name: "통화 불가", memberUserIds: [bob.userId] },
+    });
+    expect(group.status).toBe(201);
+    const groupId = group.body.conversation.id as string;
+
+    const aliceSocket = await openSocket(alice);
+    const carolSocket = await openSocket(carol);
+    try {
+      sendFrame(aliceSocket.socket, {
+        type: "call.invite",
+        conversationId: groupId,
+        callId: randomUUID(),
+        media: "audio",
+      });
+      const groupError = await aliceSocket.frames.next((frame) => frame.type === "error");
+      expect(groupError.code).toBe("CALL_REQUIRES_DIRECT");
+
+      // 참여자가 아닌 사용자는 대화 존재 여부도 알 수 없다.
+      sendFrame(carolSocket.socket, {
+        type: "call.invite",
+        conversationId: directId,
+        callId: randomUUID(),
+        media: "audio",
+      });
+      const strangerError = await carolSocket.frames.next((frame) => frame.type === "error");
+      expect(strangerError.code).toBe("CONVERSATION_NOT_FOUND");
+    } finally {
+      await closeSocket(aliceSocket.socket);
+      await closeSocket(carolSocket.socket);
+    }
+  });
 });

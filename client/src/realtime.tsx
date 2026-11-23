@@ -1,6 +1,7 @@
 import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -22,6 +23,10 @@ interface RealtimeContextValue {
   sendTyping: (conversationId: string, state: "start" | "stop") => void;
   typingUsers: (conversationId: string) => string[];
   onlineUsers: (conversationId: string) => string[];
+  /** 서버로 임의 프레임을 보낸다(통화 시그널링용). 연결이 없으면 조용히 무시한다. */
+  sendFrame: (frame: Record<string, unknown>) => boolean;
+  /** 서버에서 온 모든 프레임을 구독한다(통화 시그널링용). 해제 함수를 돌려준다. */
+  subscribeFrames: (listener: (frame: ServerFrame) => void) => () => void;
 }
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
@@ -46,6 +51,7 @@ export function RealtimeProvider({
   const typingRef = useRef(new Map<string, Set<string>>());
   const typingTimersRef = useRef(new Map<string, number>());
   const onlineRef = useRef(new Map<string, Set<string>>());
+  const frameListenersRef = useRef(new Set<(frame: ServerFrame) => void>());
 
   const subscriptionKey = useMemo(
     () => [...conversationIds].sort().join(","),
@@ -85,6 +91,14 @@ export function RealtimeProvider({
     };
 
     const handleFrame = (frame: ServerFrame) => {
+      // 통화 등 다른 기능이 같은 프레임 스트림을 구독할 수 있게 먼저 전달한다.
+      for (const listener of frameListenersRef.current) {
+        try {
+          listener(frame);
+        } catch {
+          // 구독자 오류가 소켓 처리를 막지 않게 한다.
+        }
+      }
       switch (frame.type) {
         case "ready": {
           if (socket?.readyState === WebSocket.OPEN) {
@@ -232,10 +246,26 @@ export function RealtimeProvider({
     }
   };
 
+  const sendFrame = useCallback((frame: Record<string, unknown>): boolean => {
+    const socket = socketRef.current;
+    if (socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(frame));
+    return true;
+  }, []);
+
+  const subscribeFrames = useCallback((listener: (frame: ServerFrame) => void) => {
+    frameListenersRef.current.add(listener);
+    return () => {
+      frameListenersRef.current.delete(listener);
+    };
+  }, []);
+
   const value = useMemo<RealtimeContextValue>(
     () => ({
       status,
       sendTyping,
+      sendFrame,
+      subscribeFrames,
       typingUsers: (conversationId) => [
         ...(typingRef.current.get(conversationId) ?? []),
       ],
@@ -244,7 +274,7 @@ export function RealtimeProvider({
       ],
     }),
     // revision 은 타이핑/접속 상태 변경 시 재계산을 트리거한다.
-    [status, revision],
+    [status, revision, sendFrame, subscribeFrames],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

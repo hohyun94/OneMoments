@@ -201,7 +201,99 @@ export type ClientFrame =
       }>;
     }
   | { type: "typing"; conversationId: string; state: "start" | "stop" }
+  | { type: "call.invite"; conversationId: string; callId: string; media: CallMedia }
+  | { type: "call.accept"; conversationId: string; callId: string; media: CallMedia }
+  | {
+      type: "call.decline";
+      conversationId: string;
+      callId: string;
+      reason?: CallDeclineReason;
+    }
+  | { type: "call.cancel"; conversationId: string; callId: string }
+  | {
+      type: "call.end";
+      conversationId: string;
+      callId: string;
+      reason?: CallEndReason;
+    }
+  | {
+      type: "call.signal";
+      conversationId: string;
+      callId: string;
+      signal: CallSignal;
+    }
   | { type: "ping" };
+
+/** 1:1 음성 통화(v1) 는 오디오만 지원한다. */
+export type CallMedia = "audio";
+
+export type CallDeclineReason = "declined" | "busy" | "unsupported";
+export type CallEndReason = "hangup" | "failed" | "timeout";
+
+/** SDP/ICE 는 서버가 해석하지 않고 그대로 중계한다. */
+export interface CallSignal {
+  description?: {
+    type: "offer" | "answer" | "pranswer" | "rollback";
+    sdp: string;
+  };
+  candidate?: {
+    candidate: string;
+    sdpMid?: string | null;
+    sdpMLineIndex?: number | null;
+    usernameFragment?: string | null;
+  };
+}
+
+/** 서버가 참여자에게 중계하는 통화 이벤트(발신자·발신 기기 포함). */
+export type CallServerFrame =
+  | {
+      type: "call.invite";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      media: CallMedia;
+      createdAt: string;
+    }
+  | {
+      type: "call.accepted";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      media: CallMedia;
+    }
+  | {
+      type: "call.declined";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      reason?: CallDeclineReason;
+    }
+  | {
+      type: "call.cancelled";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+    }
+  | {
+      type: "call.ended";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      reason?: CallEndReason;
+    }
+  | {
+      type: "call.signal";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      signal: CallSignal;
+    };
 
 export type ServerFrame =
   | { type: "ready"; userId: string; deviceId: string }
@@ -218,4 +310,5 @@ export type ServerFrame =
       state: "online" | "offline";
     }
   | { type: "pong"; at: string }
+  | CallServerFrame
   | { type: "error"; code: string; message: string; clientMessageId?: string };

@@ -15,6 +15,7 @@ import {
   Mic,
   Pencil,
   Paperclip,
+  Phone,
   Pin,
   Reply,
   Send,
@@ -63,6 +64,7 @@ import { computeWaveform } from "../lib/waveform.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { useRealtime } from "../realtime.tsx";
+import { useCall } from "../calls.tsx";
 import type {
   ActiveDevice,
   ConversationSummary,
@@ -535,6 +537,8 @@ export function ChatView({
     : (peer?.username ?? "삭제된 사용자");
   const peerDeleted = !isGroup && Boolean(peer?.deleted);
   const blocked = isGroup ? null : conversation.blocked;
+  const call = useCall();
+  const canCall = !isGroup && call.enabled && Boolean(peer) && !peerDeleted && blocked === null;
   const memberNames = useMemo(
     () =>
       new Map(
@@ -1249,6 +1253,23 @@ export function ChatView({
           <ShieldCheck className="h-4 w-4" aria-hidden />
           <span className="hidden sm:inline">안전번호</span>
         </Button>
+        {canCall ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              void call.startCall({
+                conversationId: conversation.id,
+                peerUserId: peer?.id ?? "",
+                peerLabel: peer?.username ? `@${peer.username}` : "상대",
+              })
+            }
+            aria-label="음성 통화"
+            title="음성 통화"
+          >
+            <Phone className="h-4 w-4" aria-hidden />
+          </Button>
+        ) : null}
         {connection !== "open" ? (
           <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
             연결 중…

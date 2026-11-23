@@ -106,6 +106,16 @@ const envSchema = z.object({
   GOOGLE_USERINFO_URL: z.string().url().default("https://openidconnect.googleapis.com/v1/userinfo"),
   OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
   OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
+  // 1:1 음성 통화(WebRTC). 시그널링은 기존 WS 로, 미디어는 P2P(불가 시 TURN) 로 흐른다.
+  CALL_ENABLED: z.enum(["true", "false"]).default("true"),
+  CALL_STUN_URLS: z.string().default(""),
+  CALL_TURN_URLS: z.string().default(""),
+  CALL_TURN_SECRET: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(8).optional(),
+  ),
+  CALL_TURN_TTL_SECONDS: z.coerce.number().int().min(60).max(86400).default(600),
+  CALL_RING_TIMEOUT_SECONDS: z.coerce.number().int().min(5).max(120).default(30),
 });
 
 export interface Config {
@@ -151,6 +161,22 @@ export interface Config {
   googleOAuth: GoogleOAuthConfig | null;
   oauthStateTtlSeconds: number;
   oauthTicketTtlSeconds: number;
+  /** 1:1 음성 통화 설정. enabled=false 면 UI·시그널링을 모두 막는다. */
+  calls: CallConfig;
+}
+
+export interface CallConfig {
+  enabled: boolean;
+  /** STUN 서버 URL 목록(stun:). 비어 있으면 호스트 후보만 사용한다. */
+  stunUrls: string[];
+  /** TURN 서버 URL 목록(turn:/turns:). */
+  turnUrls: string[];
+  /** coturn REST API 공유 비밀(시간 제한 자격증명 발급용). */
+  turnSecret: string | null;
+  /** TURN 자격증명 유효 시간(초). */
+  turnTtlSeconds: number;
+  /** 수신 벨이 울리는 시간(초). 클라이언트가 이 시간 뒤 자동 취소한다. */
+  ringTimeoutSeconds: number;
 }
 
 export interface GoogleOAuthConfig {
@@ -166,6 +192,22 @@ export interface GoogleOAuthConfig {
 }
 
 export type Env = Record<string, string | undefined>;
+
+/** 쉼표 구분 URL 목록을 검증해 배열로 만든다(잘못된 스킴은 기동 실패로 알린다). */
+function parseUrlList(raw: string, schemes: string[], name: string): string[] {
+  const urls = raw
+    .split(",")
+    .map((url) => url.trim())
+    .filter((url) => url.length > 0);
+  for (const url of urls) {
+    if (!schemes.some((scheme) => url.startsWith(`${scheme}:`))) {
+      throw new Error(
+        `${name} entries must start with ${schemes.map((scheme) => `${scheme}:`).join(" or ")} (got "${url}")`,
+      );
+    }
+  }
+  return urls;
+}
 
 export function loadConfig(env: Env = process.env): Config {
   const parsed = envSchema.safeParse(env);
@@ -188,6 +230,9 @@ export function loadConfig(env: Env = process.env): Config {
   }
   if (!/^(mailto:|https:\/\/)/.test(value.VAPID_SUBJECT)) {
     throw new Error("VAPID_SUBJECT must start with mailto: or https://");
+  }
+  if (value.CALL_TURN_URLS.trim().length > 0 && !value.CALL_TURN_SECRET) {
+    throw new Error("CALL_TURN_SECRET is required when CALL_TURN_URLS is set");
   }
   let sessionSecret = value.SESSION_SECRET;
   if (!sessionSecret) {
@@ -265,5 +310,13 @@ export function loadConfig(env: Env = process.env): Config {
     googleOAuth,
     oauthStateTtlSeconds: value.OAUTH_STATE_TTL_SECONDS,
     oauthTicketTtlSeconds: value.OAUTH_TICKET_TTL_SECONDS,
+    calls: {
+      enabled: value.CALL_ENABLED === "true",
+      stunUrls: parseUrlList(value.CALL_STUN_URLS, ["stun"], "CALL_STUN_URLS"),
+      turnUrls: parseUrlList(value.CALL_TURN_URLS, ["turn", "turns"], "CALL_TURN_URLS"),
+      turnSecret: value.CALL_TURN_SECRET ?? null,
+      turnTtlSeconds: value.CALL_TURN_TTL_SECONDS,
+      ringTimeoutSeconds: value.CALL_RING_TIMEOUT_SECONDS,
+    },
   };
 }

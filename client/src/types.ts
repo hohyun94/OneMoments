@@ -330,5 +330,76 @@ export type ServerFrame =
       userId: string;
       state: "online" | "offline";
     }
+  | CallServerFrame
   | { type: "pong"; at: string }
   | { type: "error"; code: string; message: string; clientMessageId?: string };
+
+/** 서버가 중계하는 1:1 음성 통화 이벤트. */
+export type CallServerFrame =
+  | {
+      type: "call.invite";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      media: "audio";
+      createdAt: string;
+    }
+  | {
+      type: "call.accepted";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      media: "audio";
+    }
+  | {
+      type: "call.declined";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      reason?: "declined" | "busy" | "unsupported";
+    }
+  | {
+      type: "call.cancelled";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+    }
+  | {
+      type: "call.ended";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      reason?: "hangup" | "failed" | "timeout";
+    }
+  | {
+      type: "call.signal";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      signal: CallSignal;
+    };
+
+/** SDP/ICE 는 서버가 해석하지 않고 그대로 중계된다. */
+export interface CallSignal {
+  description?: { type: "offer" | "answer" | "pranswer" | "rollback"; sdp: string };
+  candidate?: {
+    candidate: string;
+    sdpMid?: string | null;
+    sdpMLineIndex?: number | null;
+    usernameFragment?: string | null;
+  };
+}
+
+/** `GET /api/call/config` 응답. */
+export interface CallConfig {
+  enabled: boolean;
+  iceServers: RTCIceServer[];
+  ringTimeoutSeconds: number;
+  media: "audio";
+}

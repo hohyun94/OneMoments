@@ -12,9 +12,14 @@ import { recordWsConnection } from "../metrics.js";
 import { resolveSession, type AuthContext } from "../http/middleware.js";
 import { toMessageView } from "../http/serializers.js";
 import { touchDevice } from "../services/accounts.js";
-import { isParticipant } from "../services/conversations.js";
+import { isParticipant, requireDirectCallPeer } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
-import { WS_PATH, type ClientFrame, type ServerFrame } from "../types/protocol.js";
+import {
+  WS_PATH,
+  type CallServerFrame,
+  type ClientFrame,
+  type ServerFrame,
+} from "../types/protocol.js";
 import type { MessageBus } from "./bus.js";
 import { ChatHub, type ChatConnection } from "./hub.js";
 
@@ -61,6 +66,61 @@ const clientFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("typing"),
     conversationId,
     state: z.enum(["start", "stop"]),
+  }),
+  // 1:1 음성 통화 시그널링. SDP/ICE 는 서버가 해석하지 않고 그대로 중계한다.
+  z.object({
+    type: z.literal("call.invite"),
+    conversationId,
+    callId: z.string().uuid(),
+    media: z.literal("audio"),
+  }),
+  z.object({
+    type: z.literal("call.accept"),
+    conversationId,
+    callId: z.string().uuid(),
+    media: z.literal("audio"),
+  }),
+  z.object({
+    type: z.literal("call.decline"),
+    conversationId,
+    callId: z.string().uuid(),
+    reason: z.enum(["declined", "busy", "unsupported"]).optional(),
+  }),
+  z.object({
+    type: z.literal("call.cancel"),
+    conversationId,
+    callId: z.string().uuid(),
+  }),
+  z.object({
+    type: z.literal("call.end"),
+    conversationId,
+    callId: z.string().uuid(),
+    reason: z.enum(["hangup", "failed", "timeout"]).optional(),
+  }),
+  z.object({
+    type: z.literal("call.signal"),
+    conversationId,
+    callId: z.string().uuid(),
+    signal: z
+      .object({
+        description: z
+          .object({
+            type: z.enum(["offer", "answer", "pranswer", "rollback"]),
+            sdp: z.string().min(1).max(64_000),
+          })
+          .optional(),
+        candidate: z
+          .object({
+            candidate: z.string().min(1).max(2_000),
+            sdpMid: z.string().max(64).nullish(),
+            sdpMLineIndex: z.number().int().min(0).max(65_535).nullish(),
+            usernameFragment: z.string().max(256).nullish(),
+          })
+          .optional(),
+      })
+      .refine((value) => Boolean(value.description || value.candidate), {
+        message: "signal must include description or candidate",
+      }),
   }),
   z.object({ type: z.literal("ping") }),
 ]);
@@ -125,6 +185,14 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
   const frameLog = new Map<WebSocket, number[]>();
 
   const unsubscribeBus = bus.subscribe((event) => {
+    if (event.type === "call.relay") {
+      // 시그널링은 저장하지 않고 참여자 연결로만 전달한다(발신 기기에는 되돌리지 않는다).
+      for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
+        if (connection.deviceId === event.fromDeviceId) continue;
+        hub.send(connection.socket, event.frame);
+      }
+      return;
+    }
     if (event.type === "message.deleted") {
       for (const connection of hub.connectionsForUsers(event.participantUserIds)) {
         hub.send(connection.socket, {
@@ -351,6 +419,60 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
             message: result.message,
           });
           if (result.created) bus.publish(result.event);
+          return;
+        }
+        case "call.invite":
+        case "call.accept":
+        case "call.decline":
+        case "call.cancel":
+        case "call.end":
+        case "call.signal": {
+          if (!config.calls.enabled) {
+            throw AppError.forbidden("Voice calls are disabled");
+          }
+          const { participantUserIds } = await requireDirectCallPeer(db, {
+            conversationId: frame.conversationId,
+            userId: connection.userId,
+          });
+          const base = {
+            conversationId: frame.conversationId,
+            callId: frame.callId,
+            fromUserId: connection.userId,
+            fromDeviceId: connection.deviceId,
+          };
+          let relayed: CallServerFrame;
+          switch (frame.type) {
+            case "call.invite":
+              relayed = {
+                type: "call.invite",
+                ...base,
+                media: frame.media,
+                createdAt: new Date().toISOString(),
+              };
+              break;
+            case "call.accept":
+              relayed = { type: "call.accepted", ...base, media: frame.media };
+              break;
+            case "call.decline":
+              relayed = { type: "call.declined", ...base, reason: frame.reason ?? "declined" };
+              break;
+            case "call.cancel":
+              relayed = { type: "call.cancelled", ...base };
+              break;
+            case "call.end":
+              relayed = { type: "call.ended", ...base, reason: frame.reason ?? "hangup" };
+              break;
+            default:
+              relayed = { type: "call.signal", ...base, signal: frame.signal };
+              break;
+          }
+          bus.publish({
+            type: "call.relay",
+            conversationId: frame.conversationId,
+            participantUserIds,
+            fromDeviceId: connection.deviceId,
+            frame: relayed,
+          });
           return;
         }
       }

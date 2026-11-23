@@ -794,6 +794,42 @@ export async function isParticipant(
   return Boolean(row);
 }
 
+/**
+ * 1:1 음성 통화 대상 검증.
+ *
+ * - 대화가 존재하고 요청자가 참여자여야 한다(없으면 404 로 존재 여부도 숨긴다).
+ * - 그룹 대화는 v1 통화 범위가 아니므로 400.
+ * - 참여자가 정확히 2명일 때만 통화를 허용하고, 상대 사용자 ID 를 돌려준다.
+ */
+export async function requireDirectCallPeer(
+  db: Database,
+  input: { conversationId: string; userId: string },
+): Promise<{ participantUserIds: string[]; peerUserId: string }> {
+  const [conversation] = await db
+    .select({ kind: conversations.kind })
+    .from(conversations)
+    .where(eq(conversations.id, input.conversationId))
+    .limit(1);
+  if (!conversation) {
+    throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+  }
+  const participantUserIds = await listParticipantUserIds(db, input.conversationId);
+  if (!participantUserIds.includes(input.userId)) {
+    throw AppError.notFound("CONVERSATION_NOT_FOUND", "Conversation not found");
+  }
+  if (conversation.kind !== "direct" || participantUserIds.length !== 2) {
+    throw AppError.badRequest(
+      "CALL_REQUIRES_DIRECT",
+      "Voice calls are only available in 1:1 conversations",
+    );
+  }
+  const peerUserId = participantUserIds.find((userId) => userId !== input.userId);
+  if (!peerUserId) {
+    throw AppError.badRequest("CALL_REQUIRES_DIRECT", "Conversation has no peer to call");
+  }
+  return { participantUserIds, peerUserId };
+}
+
 export async function setConversationMuted(
   db: Database,
   input: { conversationId: string; userId: string; muted: boolean },

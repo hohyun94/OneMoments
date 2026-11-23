@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createClient } from "redis";
 
 import type { MessageKeyRow, MessageRow } from "../db/schema.js";
+import type { CallServerFrame } from "../types/protocol.js";
 
 export interface MessageEvent {
   type: "message.created";
@@ -27,7 +28,23 @@ export interface MessageHiddenEvent {
   userId: string;
 }
 
-export type RealtimeEvent = MessageEvent | MessageDeletedEvent | MessageHiddenEvent;
+/**
+ * 통화 시그널링 중계(서버는 저장하지 않는다).
+ * 대화 참여자 전원의 연결로 보내되 발신 기기(deviceId)에는 되돌리지 않는다.
+ */
+export interface CallEvent {
+  type: "call.relay";
+  conversationId: string;
+  participantUserIds: string[];
+  fromDeviceId: string;
+  frame: CallServerFrame;
+}
+
+export type RealtimeEvent =
+  | MessageEvent
+  | MessageDeletedEvent
+  | MessageHiddenEvent
+  | CallEvent;
 
 export type MessageListener = (event: RealtimeEvent) => void;
 
@@ -86,9 +103,25 @@ export type SerializedRealtimeEvent =
       conversationId: string;
       messageIds: string[];
       userId: string;
+    }
+  | {
+      type: "call.relay";
+      conversationId: string;
+      participantUserIds: string[];
+      fromDeviceId: string;
+      frame: CallServerFrame;
     };
 
 export function serializeMessageEvent(event: RealtimeEvent): SerializedRealtimeEvent {
+  if (event.type === "call.relay") {
+    return {
+      type: "call.relay",
+      conversationId: event.conversationId,
+      participantUserIds: event.participantUserIds,
+      fromDeviceId: event.fromDeviceId,
+      frame: event.frame,
+    };
+  }
   if (event.type === "message.deleted") {
     return {
       type: "message.deleted",
@@ -118,6 +151,15 @@ export function serializeMessageEvent(event: RealtimeEvent): SerializedRealtimeE
 }
 
 export function deserializeMessageEvent(data: SerializedRealtimeEvent): RealtimeEvent {
+  if (data.type === "call.relay") {
+    return {
+      type: "call.relay",
+      conversationId: data.conversationId,
+      participantUserIds: data.participantUserIds,
+      fromDeviceId: data.fromDeviceId,
+      frame: data.frame,
+    };
+  }
   if (data.type === "message.deleted") {
     return {
       type: "message.deleted",

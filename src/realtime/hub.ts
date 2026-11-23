@@ -133,6 +133,15 @@ export class ChatHub {
     return this.#conversationConnections.get(conversationId) ?? [];
   }
 
+  /** 대화를 구독 중인(온라인) 사용자 ID 목록. 새 구독자에게 presence 스냅샷을 보낼 때 쓴다. */
+  onlineUserIds(conversationId: string): string[] {
+    const users = this.#presence.get(conversationId);
+    if (!users) return [];
+    return [...users.entries()]
+      .filter(([, count]) => count > 0)
+      .map(([userId]) => userId);
+  }
+
   broadcast(conversationId: string, frame: ServerFrame, except?: WebSocket): void {
     const members = this.#conversationConnections.get(conversationId);
     if (!members || members.size === 0) return;

@@ -411,6 +411,41 @@ describe("websocket realtime", () => {
     ).rejects.toThrow(/401/);
   });
 
+  it("sends the presence snapshot of already-online peers to a later subscriber", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+
+    const aliceSocket = await openSocket(alice);
+    try {
+      sendFrame(aliceSocket.socket, { type: "subscribe", conversationIds: [conversationId] });
+      await aliceSocket.frames.next((frame) => frame.type === "subscribed");
+
+      const bobSocket = await openSocket(bob);
+      try {
+        sendFrame(bobSocket.socket, { type: "subscribe", conversationIds: [conversationId] });
+        await bobSocket.frames.next((frame) => frame.type === "subscribed");
+
+        // 늦게 구독한 Bob 은 이미 접속해 있던 Alice 를 online 으로 받아야 한다.
+        const snapshot = await bobSocket.frames.next(
+          (frame) => frame.type === "presence" && frame.state === "online",
+        );
+        expect(snapshot.userId).toBe(alice.userId);
+
+        // 먼저 있던 Alice 는 Bob 의 online 이벤트를 받는다.
+        const live = await aliceSocket.frames.next(
+          (frame) =>
+            frame.type === "presence" && frame.state === "online" && frame.userId === bob.userId,
+        );
+        expect(live.userId).toBe(bob.userId);
+      } finally {
+        await closeSocket(bobSocket.socket);
+      }
+    } finally {
+      await closeSocket(aliceSocket.socket);
+    }
+  });
+
   it("relays 1:1 call signaling to the peer but not back to the caller", async () => {
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

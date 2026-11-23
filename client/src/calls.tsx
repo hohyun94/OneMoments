@@ -55,6 +55,8 @@ interface CallContextValue {
 const CallContext = createContext<CallContextValue | null>(null);
 
 const ENDED_VISIBLE_MS = 4_000;
+/** 연결(ICE)이 붙기까지 기다리는 최대 시간. */
+const CONNECT_TIMEOUT_MS = 15_000;
 
 /**
  * 1:1 음성 통화 상태와 WebRTC 연결을 관리한다.
@@ -81,6 +83,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const pendingOfferRef = useRef<CallSignal["description"] | null>(null);
   const ringTimerRef = useRef<number | undefined>(undefined);
   const endedTimerRef = useRef<number | undefined>(undefined);
+  const connectTimerRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +104,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
     ringTimerRef.current = undefined;
     if (endedTimerRef.current) window.clearTimeout(endedTimerRef.current);
     endedTimerRef.current = undefined;
+    if (connectTimerRef.current) window.clearTimeout(connectTimerRef.current);
+    connectTimerRef.current = undefined;
   }, []);
 
   const releaseMedia = useCallback(() => {
@@ -158,6 +163,26 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /** ICE 연결이 일정 시간 안에 붙지 않으면 실패로 처리해 UI 가 멈춰 있지 않게 한다. */
+  const startConnectTimeout = useCallback(
+    (callId: string) => {
+      if (connectTimerRef.current) window.clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = window.setTimeout(() => {
+        const current = sessionRef.current;
+        if (!current || current.callId !== callId) return;
+        if (current.phase !== "connecting") return;
+        sendFrame({
+          type: "call.end",
+          conversationId: current.conversationId,
+          callId,
+          reason: "failed",
+        });
+        finish("연결에 실패했습니다. 네트워크를 확인해 주세요.");
+      }, CONNECT_TIMEOUT_MS);
+    },
+    [finish, sendFrame],
+  );
+
   const prepareConnection = useCallback(
     async (cfg: CallConfig, callId: string): Promise<RTCPeerConnection | null> => {
       if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
@@ -200,6 +225,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         const current = sessionRef.current;
         if (!current || current.callId !== callId) return;
         if (pc.connectionState === "connected") {
+          if (connectTimerRef.current) window.clearTimeout(connectTimerRef.current);
+          connectTimerRef.current = undefined;
           setSession((value) =>
             value?.callId === callId
               ? {
@@ -329,6 +356,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setSession((value) =>
       value?.callId === current.callId ? { ...value, phase: "connecting" } : value,
     );
+    startConnectTimeout(current.callId);
     sendFrame({
       type: "call.accept",
       conversationId: current.conversationId,
@@ -357,6 +385,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     prepareConnection,
     sendFrame,
     sendSignal,
+    startConnectTimeout,
   ]);
 
   const decline = useCallback(() => {
@@ -441,6 +470,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
             setSession((value) =>
               value?.callId === call.callId ? { ...value, phase: "connecting" } : value,
             );
+            startConnectTimeout(call.callId);
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
             sendSignal({ description: { type: "offer", sdp: offer.sdp ?? "" } });
@@ -516,6 +546,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     flushCandidates,
     prepareConnection,
     sendSignal,
+    startConnectTimeout,
     subscribeFrames,
   ]);
 

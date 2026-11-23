@@ -403,6 +403,7 @@ export interface CallLogEntry {
   id: string;
   callId: string;
   status: "ringing" | "completed" | "missed" | "declined" | "cancelled" | "failed";
+  media: "audio" | "video";
   direction: "outgoing" | "incoming";
   startedAt: string;
   answeredAt: string | null;
@@ -413,7 +414,8 @@ export interface CallLogEntry {
 /** `GET /api/call/config` 응답. */
 export interface CallConfig {
   enabled: boolean;
+  videoEnabled: boolean;
   iceServers: RTCIceServer[];
   ringTimeoutSeconds: number;
-  media: "audio";
+  media: Array<"audio" | "video">;
 }

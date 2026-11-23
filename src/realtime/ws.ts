@@ -73,13 +73,13 @@ const clientFrameSchema = z.discriminatedUnion("type", [
     type: z.literal("call.invite"),
     conversationId,
     callId: z.string().uuid(),
-    media: z.literal("audio"),
+    media: z.enum(["audio", "video"]).default("audio"),
   }),
   z.object({
     type: z.literal("call.accept"),
     conversationId,
     callId: z.string().uuid(),
-    media: z.literal("audio"),
+    media: z.enum(["audio", "video"]).default("audio"),
   }),
   z.object({
     type: z.literal("call.decline"),
@@ -494,6 +494,7 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
               conversationId: frame.conversationId,
               callerUserId: connection.userId,
               calleeUserId: peerUserId,
+              media: frame.media,
             }).catch(() => undefined);
           } else if (frame.type === "call.accept") {
             void markCallAnswered(db, { callId: frame.callId }).catch(() => undefined);

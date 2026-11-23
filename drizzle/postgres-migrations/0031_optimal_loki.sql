@@ -1,0 +1,2 @@
+ALTER TABLE "call_logs" ADD COLUMN "media" text DEFAULT 'audio' NOT NULL;--> statement-breakpoint
+ALTER TABLE "call_logs" ADD CONSTRAINT "call_logs_media_chk" CHECK ("call_logs"."media" in ('audio', 'video'));

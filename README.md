@@ -17,12 +17,12 @@
 - **프로필·연락처**: **상태 메시지(공개 프로필, 최대 80자)**, **연락처 즐겨찾기**, **1:1 차단/해제(양방향 전송 차단)**, 즐겨찾기 우선 정렬
 - **메시지**: AES-256-GCM 암호문 + 기기별 봉투, **X3DH signed prekey·Double Ratchet(v2)**, 서명, 멱등 전송, 기기 집합 검증(409), 복호화 실패 표시, **읽은 뒤 자동 삭제(대화별 1·7·30일, 참여자 전원 읽음 기준)**, **이모지 반응·답장·수정**, **전송 취소(모두에게서 삭제)·나에게만 삭제**, **로컬(IndexedDB) 검색**
 - **파일 첨부**: 파일별 AES-GCM 암호화 후 암호문만 업로드, **이미지 인라인 미리보기**, **음성 메시지 녹음·재생(최대 5분·파형 포함)**, 로컬/S3 저장 선택, `Range` 부분 다운로드, 고아 첨부 TTL 정리, 참여자만 다운로드
-- **1:1 음성 통화(WebRTC)**: 통화 버튼 → 수신 벨(30초) → 수락/거절, 음소거·종료, 시그널링은 기존 WS(서버 무저장), 미디어는 P2P + TURN 폴백(단기 자격증명)
+- **1:1 음성·영상 통화(WebRTC)**: 통화 버튼 → 수신 벨(30초) → 수락/거절, 음소거·종료·카메라 끄기, 시그널링은 기존 WS(서버 무저장), 미디어는 P2P + TURN 폴백(단기 자격증명). `CALL_VIDEO_ENABLED=false` 로 영상만 끌 수 있다
 - **푸시·PWA**: VAPID Web Push(RFC 8291), 서비스 워커, **오프라인 앱 셸**, PNG 192/512 아이콘, 로그아웃/기기 폐기 시 구독 정리
 - **성능**: 동시성 부하 테스트(Node/k6), 클라이언트 DR·첨부 암복호화 벤치마크
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
 - **관리자 콘솔**: `ADMIN_USERNAMES` allowlist 전용 `/admin` — 개요 통계, 사용자·기기·세션 조회, 세션 강제 종료, decoy 프로필 웹 관리, 감사 로그(메타데이터만)
-- **테스트 258개**: 서버 145(144 passed·1 skipped: 단위·API·WS·버스·푸시·초대·첨부 정리·첨부 삭제 정책·CSP·decoy·관리자·자동 로그아웃·자동 삭제·테마·대화 UX·Moments·프로필/연락처·Google OAuth·기기 플랫폼·음성 통화·통화 기록/부재중 배지) + 클라이언트 96(DR·X3DH/OPK·Sender Keys·첨부·음성·파형·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션·테마·검색·Moments·비밀번호 표시 토글·기기/마이크 감지·통화 헬퍼) + 브라우저 E2E 17(그룹·초대·이미지·반응·음성 녹음/재생·1:1 음성 통화·부재중 배지·Google 가입/로그인·로그인 테마·자동 로그아웃·오프라인)
+- **테스트 260개**: 서버 146(145 passed·1 skipped: 단위·API·WS·버스·푸시·초대·첨부 정리·첨부 삭제 정책·CSP·decoy·관리자·자동 로그아웃·자동 삭제·테마·대화 UX·Moments·프로필/연락처·Google OAuth·기기 플랫폼·음성/영상 통화·통화 기록/부재중 배지) + 클라이언트 96(DR·X3DH/OPK·Sender Keys·첨부·음성·파형·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션·테마·검색·Moments·비밀번호 표시 토글·기기/마이크 감지·통화 헬퍼) + 브라우저 E2E 18(그룹·초대·이미지·반응·음성 녹음/재생·1:1 음성 통화·1:1 영상 통화·부재중 배지·Google 가입/로그인·로그인 테마·자동 로그아웃·오프라인)
 
 ## 빠른 시작
 
@@ -74,7 +74,8 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Google OAuth 클라이언트(웹). 세 값이 모두 있어야 활성화 |
 | `GOOGLE_REDIRECT_URL` | — | `https://<도메인>/api/auth/google/callback` (콘솔 등록값과 동일) |
 | `APP_ORIGIN` | — | OAuth 완료 후 돌아갈 SPA 주소(기본: 리디렉션 URL 의 origin) |
-| `CALL_ENABLED` | `true` | 1:1 음성 통화 on/off(끄면 통화 버튼·시그널링 비활성) |
+| `CALL_ENABLED` | `true` | 1:1 통화 on/off(끄면 통화 버튼·시그널링 비활성) |
+| `CALL_VIDEO_ENABLED` | `true` | 영상 통화 노출 on/off(끄면 영상 버튼 숨김, 음성은 유지) |
 | `CALL_STUN_URLS` | — | 쉼표 구분 `stun:` URL(예: `stun:turn.example.com:3478`) |
 | `CALL_TURN_URLS` / `CALL_TURN_SECRET` | — | `turn:`/`turns:` URL + coturn `static-auth-secret`(둘을 함께 설정) |
 | `CALL_RING_TIMEOUT_SECONDS` | `30` | 수신 벨 타임아웃 |
@@ -132,7 +133,7 @@ pnpm moments:cleanup   # 만료된 Moments·고아 이미지 정리(크론 권�
 - [그룹 대화](docs/09-groups.md) — 기기별 봉투, 참여자 추가, 인원 제한과 한계
 - [파일 첨부](docs/10-attachments.md) — 파일별 암호화, 저장·접근 제어, 백업과 한계
 - [Google OAuth](docs/27-google-oauth.md) — `state`+PKCE, 1회용 티켓, 계정 연결/해제, 운영 설정
-- [1:1 음성 통화](docs/29-voice-call.md) — WebRTC P2P/TURN, WS 시그널링, 상태 머신, coturn 설정, **인터넷망 배포 체크리스트**
+- [1:1 음성·영상 통화](docs/29-voice-call.md) — WebRTC P2P/TURN, WS 시그널링, 상태 머신, coturn 설정, **인터넷망 배포 체크리스트**
 - [TURN(coturn) compose](docker-compose.turn.yml) — 인터넷/제한망 통화용 릴레이 서버(공인 IP)
 - [Double Ratchet](docs/11-double-ratchet.md) — v2 세션·DH 래칫, 이력 키, 백업과 한계
 - [Sender Keys](docs/14-sender-keys.md) — 그룹 체인 배포, 회전, 백업과 보안 한계

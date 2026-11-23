@@ -446,6 +446,38 @@ describe("websocket realtime", () => {
     }
   });
 
+  it("relays 1:1 video call invites and accepts with media=video", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+
+    const aliceSocket = await openSocket(alice);
+    const bobSocket = await openSocket(bob);
+    try {
+      const callId = randomUUID();
+      sendFrame(aliceSocket.socket, {
+        type: "call.invite",
+        conversationId,
+        callId,
+        media: "video",
+      });
+      const invite = await bobSocket.frames.next((frame) => frame.type === "call.invite");
+      expect(invite.media).toBe("video");
+
+      sendFrame(bobSocket.socket, {
+        type: "call.accept",
+        conversationId,
+        callId,
+        media: "video",
+      });
+      const accepted = await aliceSocket.frames.next((frame) => frame.type === "call.accepted");
+      expect(accepted.media).toBe("video");
+    } finally {
+      await closeSocket(bobSocket.socket);
+      await closeSocket(aliceSocket.socket);
+    }
+  });
+
   it("relays 1:1 call signaling to the peer but not back to the caller", async () => {
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { PhoneIncoming, PhoneMissed, PhoneOutgoing } from "lucide-react";
+import { PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react";
 
 import { api } from "../lib/api.ts";
 import { callLogLabel } from "../lib/call.ts";
@@ -41,11 +41,14 @@ export function CallHistoryDialog({
         <ul className="max-h-80 space-y-2 overflow-y-auto">
           {calls.map((entry) => {
             const missed = entry.status === "missed";
-            const Icon = missed
-              ? PhoneMissed
-              : entry.direction === "incoming"
-                ? PhoneIncoming
-                : PhoneOutgoing;
+            const Icon =
+              entry.media === "video"
+                ? Video
+                : missed
+                  ? PhoneMissed
+                  : entry.direction === "incoming"
+                    ? PhoneIncoming
+                    : PhoneOutgoing;
             return (
               <li
                 key={entry.id}

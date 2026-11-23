@@ -889,6 +889,62 @@ test("1:1 음성 통화: 발신 → 수락 → 음소거 → 종료", async ({ b
   }
 });
 
+test("1:1 영상 통화: 발신 → 수락 → 카메라 끄기 → 종료", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("videocaller");
+  const bobName = uniqueName("videocallee");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+    await expect(bob.getByTitle("실시간 연결됨")).toBeVisible();
+    await startConversation(alice, bobName);
+
+    await alice.getByRole("button", { name: "영상 통화" }).click();
+    await expect(alice.getByTestId("call-status")).toHaveText(/영상 통화 발신 중/);
+
+    await expect(bob.getByRole("dialog", { name: "수신 전화" })).toBeVisible({
+      timeout: 25_000,
+    });
+    await expect(bob.getByTestId("call-status")).toHaveText(/영상 통화/);
+    await bob.getByRole("button", { name: "수락", exact: true }).click();
+
+    // 양쪽 모두 영상 패널이 뜨고 원격 영상이 실제로 재생된다(가짜 카메라).
+    await expect(alice.getByTestId("remote-video")).toBeVisible({ timeout: 25_000 });
+    await expect(bob.getByTestId("remote-video")).toBeVisible({ timeout: 25_000 });
+    await expect(alice.getByTestId("call-status")).toHaveText(/통화 중/, { timeout: 25_000 });
+    await expect
+      .poll(
+        async () =>
+          await alice
+            .getByTestId("remote-video")
+            .evaluate((node) => (node as HTMLVideoElement).videoWidth),
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0);
+
+    // 카메라 끄기/켜기
+    await alice.getByRole("button", { name: "카메라 끄기" }).click();
+    await expect(alice.getByRole("button", { name: "카메라 켜기" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await alice.getByRole("button", { name: "통화 종료" }).click();
+    await expect(bob.getByTestId("call-status")).toHaveText(/상대가 통화를 종료했습니다/, {
+      timeout: 15_000,
+    });
+    await expect(bob.getByRole("dialog", { name: "수신 전화" })).toHaveCount(0);
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("부재중 전화 배지가 생기고 대화를 열면 사라진다", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();

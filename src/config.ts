@@ -108,6 +108,7 @@ const envSchema = z.object({
   OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
   // 1:1 음성 통화(WebRTC). 시그널링은 기존 WS 로, 미디어는 P2P(불가 시 TURN) 로 흐른다.
   CALL_ENABLED: z.enum(["true", "false"]).default("true"),
+  CALL_VIDEO_ENABLED: z.enum(["true", "false"]).default("true"),
   CALL_STUN_URLS: z.string().default(""),
   CALL_TURN_URLS: z.string().default(""),
   CALL_TURN_SECRET: z.preprocess(
@@ -167,6 +168,8 @@ export interface Config {
 
 export interface CallConfig {
   enabled: boolean;
+  /** 영상 통화 노출 여부. false 면 오디오만 제공한다. */
+  videoEnabled: boolean;
   /** STUN 서버 URL 목록(stun:). 비어 있으면 호스트 후보만 사용한다. */
   stunUrls: string[];
   /** TURN 서버 URL 목록(turn:/turns:). */
@@ -312,6 +315,7 @@ export function loadConfig(env: Env = process.env): Config {
     oauthTicketTtlSeconds: value.OAUTH_TICKET_TTL_SECONDS,
     calls: {
       enabled: value.CALL_ENABLED === "true",
+      videoEnabled: value.CALL_VIDEO_ENABLED === "true",
       stunUrls: parseUrlList(value.CALL_STUN_URLS, ["stun"], "CALL_STUN_URLS"),
       turnUrls: parseUrlList(value.CALL_TURN_URLS, ["turn", "turns"], "CALL_TURN_URLS"),
       turnSecret: value.CALL_TURN_SECRET ?? null,

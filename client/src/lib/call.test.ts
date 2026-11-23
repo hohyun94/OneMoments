@@ -64,5 +64,12 @@ describe("call helpers", () => {
     expect(callLogLabel({ status: "cancelled", direction: "outgoing" })).toBe("취소함");
     expect(callLogLabel({ status: "failed", direction: "outgoing" })).toBe("연결 실패");
     expect(callLogLabel({ status: "ringing", direction: "incoming" })).toBe("연결 중");
+    // 영상 통화는 미디어 접두사가 붙는다.
+    expect(callLogLabel({ status: "completed", direction: "outgoing", media: "video" })).toBe(
+      "영상 발신 통화",
+    );
+    expect(callLogLabel({ status: "missed", direction: "incoming", media: "video" })).toBe(
+      "영상 부재중 전화",
+    );
   });
 });

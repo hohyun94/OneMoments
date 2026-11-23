@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { CallOverlay } from "./components/CallOverlay.tsx";
@@ -31,7 +32,10 @@ export interface CallSession {
   peerLabel: string;
   direction: "outgoing" | "incoming";
   phase: CallPhase;
+  media: "audio" | "video";
   muted: boolean;
+  /** 영상 통화에서 카메라를 껐는지 */
+  cameraOff: boolean;
   /** 연결 완료 시각(ms). 통화 시간 표시에 쓴다. */
   connectedAt: number | null;
   /** 종료/거절 안내 문구. */
@@ -40,16 +44,25 @@ export interface CallSession {
 
 interface CallContextValue {
   enabled: boolean;
+  videoEnabled: boolean;
   session: CallSession | null;
   startCall: (input: {
     conversationId: string;
     peerUserId: string;
     peerLabel: string;
+    media?: "audio" | "video";
   }) => Promise<void>;
   accept: () => Promise<void>;
   decline: () => void;
   hangup: () => void;
   toggleMute: () => void;
+  toggleCamera: () => void;
+  /** 원격/로컬 영상 표시용 엘리먼트 참조(영상 통화에서만 사용). */
+  remoteVideoRef: RefObject<HTMLVideoElement | null>;
+  localVideoRef: RefObject<HTMLVideoElement | null>;
+  /** 영상 엘리먼트가 늦게 마운트되어도 붙일 수 있도록 스트림도 노출한다. */
+  remoteVideoStream: MediaStream | null;
+  localVideoStream: MediaStream | null;
 }
 
 const CallContext = createContext<CallContextValue | null>(null);
@@ -79,6 +92,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
+  const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingOfferRef = useRef<CallSignal["description"] | null>(null);
   const ringTimerRef = useRef<number | undefined>(undefined);
@@ -119,6 +136,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const releaseMedia = useCallback(() => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     localStreamRef.current = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
+    setRemoteVideoStream(null);
+    setLocalVideoStream(null);
     const pc = pcRef.current;
     pcRef.current = null;
     if (pc) {
@@ -216,24 +238,44 @@ export function CallProvider({ children }: { children: ReactNode }) {
   );
 
   const prepareConnection = useCallback(
-    async (cfg: CallConfig, callId: string): Promise<RTCPeerConnection | null> => {
+    async (
+      cfg: CallConfig,
+      callId: string,
+      media: "audio" | "video",
+    ): Promise<RTCPeerConnection | null> => {
       if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
-        finish("이 브라우저는 음성 통화를 지원하지 않습니다.");
+        finish("이 브라우저는 통화를 지원하지 않습니다.");
         return null;
       }
       let stream: MediaStream;
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          ...(media === "video"
+            ? {
+                video: {
+                  width: { ideal: 1280 },
+                  height: { ideal: 720 },
+                  facingMode: "user",
+                },
+              }
+            : {}),
         });
       } catch {
-        finish("마이크 권한이 필요합니다.");
+        finish(media === "video" ? "카메라·마이크 권한이 필요합니다." : "마이크 권한이 필요합니다.");
         return null;
       }
       localStreamRef.current = stream;
+      if (media === "video") {
+        setLocalVideoStream(stream);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = stream;
+          void localVideoRef.current.play().catch(() => undefined);
+        }
+      }
       const pc = new RTCPeerConnection({ iceServers: cfg.iceServers });
       pcRef.current = pc;
-      for (const track of stream.getAudioTracks()) pc.addTrack(track, stream);
+      for (const track of stream.getTracks()) pc.addTrack(track, stream);
 
       pc.onicecandidate = (event) => {
         if (!event.candidate) return;
@@ -248,6 +290,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
         });
       };
       pc.ontrack = (event) => {
+        if (event.track.kind === "video") {
+          const stream = new MediaStream([event.track]);
+          setRemoteVideoStream(stream);
+          const video = remoteVideoRef.current;
+          if (video) {
+            video.srcObject = stream;
+            void video.play().catch(() => undefined);
+          }
+          return;
+        }
         const remote = remoteAudioRef.current;
         if (!remote) return;
         remote.srcObject = event.streams[0] ?? new MediaStream([event.track]);
@@ -344,11 +396,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   // 발신 시작
   const startCall = useCallback(
-    async (input: { conversationId: string; peerUserId: string; peerLabel: string }) => {
+    async (input: {
+      conversationId: string;
+      peerUserId: string;
+      peerLabel: string;
+      media?: "audio" | "video";
+    }) => {
       const current = sessionRef.current;
       if (current && current.phase !== "ended" && current.phase !== "idle") return;
+      const media = input.media ?? "audio";
       const cfg = await ensureConfig();
-      if (!cfg) {
+      if (!cfg || (media === "video" && !cfg.videoEnabled)) {
         setSession({
           callId: crypto.randomUUID(),
           conversationId: input.conversationId,
@@ -356,9 +414,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
           peerLabel: input.peerLabel,
           direction: "outgoing",
           phase: "ended",
+          media,
           muted: false,
+          cameraOff: false,
           connectedAt: null,
-          note: "음성 통화를 사용할 수 없습니다.",
+          note: media === "video" ? "영상 통화를 사용할 수 없습니다." : "음성 통화를 사용할 수 없습니다.",
         });
         return;
       }
@@ -371,7 +431,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
         peerLabel: input.peerLabel,
         direction: "outgoing",
         phase: "outgoing",
+        media,
         muted: false,
+        cameraOff: false,
         connectedAt: null,
         note: null,
       });
@@ -379,7 +441,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         type: "call.invite",
         conversationId: input.conversationId,
         callId,
-        media: "audio",
+        media,
       });
       ringTimerRef.current = window.setTimeout(() => {
         const latest = sessionRef.current;
@@ -401,7 +463,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       finish("음성 통화를 사용할 수 없습니다.");
       return;
     }
-    const pc = await prepareConnection(cfg, current.callId);
+    const pc = await prepareConnection(cfg, current.callId, current.media);
     if (!pc) {
       declineInternal(current.callId, current.conversationId, "unsupported");
       return;
@@ -415,7 +477,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       type: "call.accept",
       conversationId: current.conversationId,
       callId: current.callId,
-      media: "audio",
+      media: current.media,
     });
     // 상대 offer 가 먼저 도착해 있으면 바로 적용한다.
     const offer = pendingOfferRef.current;
@@ -478,6 +540,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setSession((current) => (current ? { ...current, muted: nextMuted } : current));
   }, []);
 
+  const toggleCamera = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (!stream) return;
+    const tracks = stream.getVideoTracks();
+    if (tracks.length === 0) return;
+    const turningOff = tracks.some((track) => track.enabled);
+    for (const track of tracks) track.enabled = !turningOff;
+    setSession((current) => (current ? { ...current, cameraOff: turningOff } : current));
+  }, []);
+
   // 서버 시그널링 처리
   useEffect(() => {
     const handle = (frame: ServerFrame) => {
@@ -499,7 +571,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
           peerLabel: findPeerLabel(call.conversationId, call.fromUserId),
           direction: "incoming",
           phase: "incoming",
+          media: call.media,
           muted: false,
+          cameraOff: false,
           connectedAt: null,
           note: null,
         });
@@ -518,7 +592,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           const cfg = configRef.current;
           if (!cfg || current.phase !== "outgoing") return;
           void (async () => {
-            const pc = await prepareConnection(cfg, call.callId);
+            const pc = await prepareConnection(cfg, call.callId, current.media);
             if (!pc) return;
             clearTimers();
             setSession((value) =>
@@ -615,14 +689,32 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CallContextValue>(
     () => ({
       enabled: Boolean(config?.enabled),
+      videoEnabled: Boolean(config?.videoEnabled),
       session,
       startCall,
       accept,
       decline,
       hangup,
       toggleMute,
+      toggleCamera,
+      remoteVideoRef,
+      localVideoRef,
+      remoteVideoStream,
+      localVideoStream,
     }),
-    [accept, config?.enabled, decline, hangup, session, startCall, toggleMute],
+    [
+      accept,
+      config?.enabled,
+      config?.videoEnabled,
+      decline,
+      hangup,
+      localVideoStream,
+      remoteVideoStream,
+      session,
+      startCall,
+      toggleCamera,
+      toggleMute,
+    ],
   );
 
   return (

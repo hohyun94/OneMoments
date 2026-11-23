@@ -34,7 +34,8 @@ describe("voice call bootstrap", () => {
     const response = await client.request("GET", "/api/call/config");
     expect(response.status).toBe(200);
     expect(response.body.enabled).toBe(true);
-    expect(response.body.media).toBe("audio");
+    expect(response.body.videoEnabled).toBe(true);
+    expect(response.body.media).toEqual(["audio", "video"]);
     expect(response.body.ringTimeoutSeconds).toBe(30);
     expect(Array.isArray(response.body.iceServers)).toBe(true);
     // 기본 설정에는 TURN 이 없으므로 호스트 후보만 쓴다.

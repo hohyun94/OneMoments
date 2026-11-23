@@ -26,9 +26,13 @@ export interface PeerUser {
   deleted: boolean;
 }
 
+/** 클라이언트가 자기 신고하는 플랫폼(보안 판단에는 사용하지 않는다). */
+export type DevicePlatform = "ios" | "android" | "mobile" | "desktop" | "unknown";
+
 export interface PublicDevice {
   id: string;
   name: string;
+  platform: DevicePlatform;
   identityPublicKey: string;
   signingPublicKey: string;
   createdAt: string;

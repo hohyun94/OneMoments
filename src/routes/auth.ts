@@ -115,6 +115,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         username: body.username,
         password: body.password,
         deviceName: body.device.name,
+        platform: body.device.platform,
         ...keys,
       });
 
@@ -165,6 +166,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         device = await registerDevice(db, {
           userId: user.id,
           name: body.device.name,
+          platform: body.device.platform,
           ...keys,
         });
       } else {

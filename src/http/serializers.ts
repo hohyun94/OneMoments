@@ -47,6 +47,7 @@ export function toPublicDevice(row: DeviceRow): PublicDevice {
   return {
     id: row.id,
     name: row.name,
+    platform: row.platform,
     identityPublicKey: row.identityPublicKey,
     signingPublicKey: row.signingPublicKey,
     createdAt: row.createdAt.toISOString(),

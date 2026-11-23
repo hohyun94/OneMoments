@@ -267,6 +267,7 @@ export function createGoogleOAuthRouter(db: Database, config: Config): Router {
           provider: "google",
           subject: ticket.subject,
           deviceName: body.device.name,
+          platform: body.device.platform,
           ...keys,
         });
         const issued = await issueSession(db, config, {
@@ -291,6 +292,7 @@ export function createGoogleOAuthRouter(db: Database, config: Config): Router {
       const device = await registerDevice(db, {
         userId: user.id,
         name: body.device.name,
+        platform: body.device.platform,
         ...keys,
       });
       await deleteSessionsForDevice(db, device.id);

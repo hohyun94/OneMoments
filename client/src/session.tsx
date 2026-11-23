@@ -32,6 +32,7 @@ import {
   clampIdleTimeoutSeconds,
   effectiveIdleTimeoutSeconds,
 } from "./lib/idleTimeout.ts";
+import { currentPlatform } from "./lib/device.ts";
 import { disablePush } from "./lib/push.ts";
 import { markDeviceRecovered } from "./lib/recovery.ts";
 import { clearSearchIndex } from "./lib/search.ts";
@@ -305,6 +306,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         password,
         device: {
           name: deviceName(),
+          platform: currentPlatform(),
           identityPublicKey: generated.identityPublicKey,
           signingPublicKey: generated.signingPublicKey,
           ...signedPreKeyBody({ ...generated, username }),
@@ -362,6 +364,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
               password,
               device: {
                 name: deviceName(),
+                platform: currentPlatform(),
                 identityPublicKey: current.identityPublicKey,
                 signingPublicKey: current.signingPublicKey,
                 ...signedPreKeyBody(current),
@@ -524,6 +527,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           ...(username ? { username } : {}),
           device: {
             name: deviceName(),
+            platform: currentPlatform(),
             identityPublicKey: generated.identityPublicKey,
             signingPublicKey: generated.signingPublicKey,
             ...signedPreKeyBody({ ...generated, username: username ?? "" }),

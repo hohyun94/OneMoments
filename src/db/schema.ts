@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import type { DevicePlatform } from "../types/protocol.js";
 import {
   check,
   index,
@@ -140,6 +141,8 @@ export const devices = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    /** 클라이언트 신고 플랫폼. UA 기반 추정이며 서버 권한 판단에는 쓰지 않는다. */
+    platform: text("platform").$type<DevicePlatform>().notNull().default("unknown"),
     // X25519 공개키(base64, 32바이트)
     identityPublicKey: text("identity_public_key").notNull(),
     // Ed25519 공개키(base64, 32바이트)
@@ -156,6 +159,10 @@ export const devices = pgTable(
   },
   (table) => [
     index("devices_user_idx").on(table.userId),
+    check(
+      "devices_platform_chk",
+      sql`${table.platform} in ('ios', 'android', 'mobile', 'desktop', 'unknown')`,
+    ),
     check(
       "devices_idle_timeout_chk",
       sql`${table.idleTimeoutSeconds} between 60 and 1800`,

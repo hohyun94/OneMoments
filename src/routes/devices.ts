@@ -47,6 +47,7 @@ export function createDevicesRouter(db: Database, config: Config): Router {
       const device = await registerDevice(db, {
         userId: auth.userId,
         name: body.name,
+        platform: body.platform,
         ...keys,
       });
       res.status(201).json({ device: toOwnDevice(device) });

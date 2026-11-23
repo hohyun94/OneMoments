@@ -1,0 +1,2 @@
+ALTER TABLE "devices" ADD COLUMN "platform" text DEFAULT 'unknown' NOT NULL;--> statement-breakpoint
+ALTER TABLE "devices" ADD CONSTRAINT "devices_platform_chk" CHECK ("devices"."platform" in ('ios', 'android', 'mobile', 'desktop', 'unknown'));

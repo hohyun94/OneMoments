@@ -26,6 +26,11 @@ export const deviceNameSchema = z
   .min(1, "Device name is required")
   .max(64, "Device name must be at most 64 characters");
 
+/** 클라이언트가 신고하는 플랫폼. 없으면 unknown. */
+export const devicePlatformSchema = z
+  .enum(["ios", "android", "mobile", "desktop", "unknown"])
+  .default("unknown");
+
 export const publicKeySchema = z.string().min(1, "Public key is required").max(256);
 
 export const signedPreKeySchema = z.object({
@@ -45,6 +50,7 @@ export const oneTimePreKeysSchema = z
 
 export const deviceKeysSchema = z.object({
   name: deviceNameSchema,
+  platform: devicePlatformSchema,
   identityPublicKey: publicKeySchema,
   signingPublicKey: publicKeySchema,
   signedPreKey: signedPreKeySchema.optional(),

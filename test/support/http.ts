@@ -91,7 +91,7 @@ export class TestClient {
   async register(
     username: string,
     identity: Identity,
-    options: { password?: string; deviceName?: string } = {},
+    options: { password?: string; deviceName?: string; platform?: string } = {},
   ): Promise<ApiResponse> {
     return this.request("POST", "/api/auth/register", {
       body: {
@@ -99,6 +99,7 @@ export class TestClient {
         password: options.password ?? "password-12345",
         device: {
           name: options.deviceName ?? "test-device",
+          ...(options.platform ? { platform: options.platform } : {}),
           identityPublicKey: identity.identity.publicKeyBase64,
           signingPublicKey: identity.signing.publicKeyBase64,
         },
@@ -109,7 +110,7 @@ export class TestClient {
   async loginWithNewDevice(
     username: string,
     identity: Identity,
-    options: { password?: string; deviceName?: string } = {},
+    options: { password?: string; deviceName?: string; platform?: string } = {},
   ): Promise<ApiResponse> {
     return this.request("POST", "/api/auth/login", {
       body: {
@@ -117,6 +118,7 @@ export class TestClient {
         password: options.password ?? "password-12345",
         device: {
           name: options.deviceName ?? "second-device",
+          ...(options.platform ? { platform: options.platform } : {}),
           identityPublicKey: identity.identity.publicKeyBase64,
           signingPublicKey: identity.signing.publicKeyBase64,
         },
@@ -124,10 +126,15 @@ export class TestClient {
     });
   }
 
-  async addDevice(name: string, identity: Identity): Promise<ApiResponse> {
+  async addDevice(
+    name: string,
+    identity: Identity,
+    options: { platform?: string } = {},
+  ): Promise<ApiResponse> {
     return this.request("POST", "/api/devices", {
       body: {
         name,
+        ...(options.platform ? { platform: options.platform } : {}),
         identityPublicKey: identity.identity.publicKeyBase64,
         signingPublicKey: identity.signing.publicKeyBase64,
       },

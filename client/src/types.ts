@@ -1,3 +1,4 @@
+import type { DevicePlatform } from "./lib/device.ts";
 import type { ThemeSettings } from "./lib/theme.ts";
 
 export interface PublicUser {
@@ -20,6 +21,7 @@ export interface PeerUser {
 export interface Device {
   id: string;
   name: string;
+  platform: DevicePlatform;
   identityPublicKey: string;
   signingPublicKey: string;
   createdAt: string;

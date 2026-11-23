@@ -24,7 +24,7 @@ import {
   type UserRow,
 } from "../db/schema.js";
 import { AppError } from "../http/errors.js";
-import type { ThemeMode } from "../types/protocol.js";
+import type { DevicePlatform, ThemeMode } from "../types/protocol.js";
 
 export interface DeviceKeys {
   identityPublicKey: string;
@@ -41,6 +41,7 @@ export interface RegisterAccountInput extends DeviceKeys {
   username: string;
   password: string;
   deviceName: string;
+  platform: DevicePlatform;
 }
 
 export interface RegisterOAuthAccountInput extends DeviceKeys {
@@ -48,18 +49,20 @@ export interface RegisterOAuthAccountInput extends DeviceKeys {
   provider: "google";
   subject: string;
   deviceName: string;
+  platform: DevicePlatform;
 }
 
 /** 기기 행 + 원타임 프리키를 같은 트랜잭션에 넣는다. */
 async function insertDevice(
   tx: Parameters<Parameters<Database["transaction"]>[0]>[0],
-  input: DeviceKeys & { userId: string; deviceName: string },
+  input: DeviceKeys & { userId: string; deviceName: string; platform?: DevicePlatform },
 ): Promise<DeviceRow> {
   const [device] = await tx
     .insert(devices)
     .values({
       userId: input.userId,
       name: input.deviceName,
+      platform: input.platform ?? "unknown",
       identityPublicKey: input.identityPublicKey,
       signingPublicKey: input.signingPublicKey,
       signedPreKeyId: input.signedPreKey?.id ?? null,
@@ -429,7 +432,7 @@ export async function listDevices(db: Database, userId: string): Promise<DeviceR
 
 export async function registerDevice(
   db: Database,
-  input: { userId: string; name: string } & DeviceKeys,
+  input: { userId: string; name: string; platform: DevicePlatform } & DeviceKeys,
 ): Promise<DeviceRow> {
   return db.transaction(async (tx) => {
     const [device] = await tx
@@ -437,6 +440,7 @@ export async function registerDevice(
       .values({
         userId: input.userId,
         name: input.name,
+        platform: input.platform,
         identityPublicKey: input.identityPublicKey,
         signingPublicKey: input.signingPublicKey,
         signedPreKeyId: input.signedPreKey?.id ?? null,

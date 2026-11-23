@@ -5,6 +5,7 @@ import {
   BellOff,
   KeyRound,
   Laptop,
+  Mic,
   ShieldCheck,
   Timer,
   Trash2,
@@ -22,6 +23,12 @@ import {
   Spinner,
 } from "../components/ui.tsx";
 import { ApiError, api } from "../lib/api.ts";
+import { currentPlatform, platformLabel } from "../lib/device.ts";
+import {
+  checkMicrophone,
+  microphoneStatusLabel,
+  type MicrophoneStatus,
+} from "../lib/microphone.ts";
 import {
   IDLE_TIMEOUT_OPTIONS,
   idleTimeoutLabel,
@@ -73,6 +80,9 @@ export function DevicesPage() {
   const [sessionOverrideEnabled, setSessionOverrideEnabled] = useState(
     sessionIdleTimeoutSeconds !== null,
   );
+  const [micState, setMicState] = useState<"idle" | "checking" | MicrophoneStatus>(
+    "idle",
+  );
 
   // 다른 곳(예: 재로그인)에서 세션 오버라이드가 바뀌면 체크박스를 동기화한다.
   useEffect(() => {
@@ -118,6 +128,12 @@ export function DevicesPage() {
     } finally {
       setPushBusy(false);
     }
+  }
+
+  async function checkMic(): Promise<void> {
+    setMicState("checking");
+    const status = await checkMicrophone();
+    setMicState(status);
   }
 
   async function changeDeviceIdleTimeout(seconds: number): Promise<void> {
@@ -365,6 +381,7 @@ export function DevicesPage() {
                     </p>
                     <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
                       <ShieldCheck className="h-3 w-3" aria-hidden />
+                      {platformLabel(device.platform)} ·{" "}
                       {new Date(device.createdAt).toLocaleDateString("ko-KR")} 등록
                       {device.lastSeenAt
                         ? ` · 최근 접속 ${new Date(device.lastSeenAt).toLocaleDateString("ko-KR")}`
@@ -517,6 +534,60 @@ export function DevicesPage() {
             iOS는 홈 화면에 추가한 PWA에서만 Web Push를 지원합니다. 알림 권한은
             브라우저 사이트 설정에서 언제든지 해제할 수 있습니다.
           </p>
+        </Card>
+
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+                <Mic className="h-4 w-4 text-zinc-500" aria-hidden />
+                마이크 확인
+              </h2>
+              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                이 브라우저에서 마이크를 사용할 수 있는지 확인합니다. 버튼을 누르면
+                브라우저가 마이크 권한을 요청하며, 성공하면 즉시 트랙을 중지합니다. 확인
+                결과는 서버에 저장하지 않습니다.
+              </p>
+            </div>
+            <span className="shrink-0 text-[11px] text-zinc-500">
+              {platformLabel(currentPlatform())}
+            </span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void checkMic()}
+              disabled={micState === "checking"}
+            >
+              {micState === "checking" ? (
+                <Spinner />
+              ) : (
+                <Mic className="h-4 w-4" aria-hidden />
+              )}
+              마이크 확인
+            </Button>
+            <span className="text-xs text-zinc-600" role="status">
+              {micState === "idle"
+                ? "아직 확인하지 않았습니다."
+                : micState === "checking"
+                  ? "권한과 장치를 확인하는 중…"
+                  : microphoneStatusLabel(micState)}
+            </span>
+          </div>
+
+          {micState === "denied" ? (
+            <p className="mt-2 text-xs text-zinc-500">
+              브라우저 주소창의 사이트 설정에서 마이크 권한을 허용한 뒤 다시 확인해
+              주세요.
+            </p>
+          ) : null}
+          {micState === "insecure" ? (
+            <p className="mt-2 text-xs text-zinc-500">
+              마이크는 HTTPS 또는 localhost에서만 사용할 수 있습니다.
+            </p>
+          ) : null}
         </Card>
 
         <Card className="p-5">

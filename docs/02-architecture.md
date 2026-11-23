@@ -93,7 +93,7 @@
 | `user_blocks` | blocker_user_id, blocked_user_id, created_at (PK) | 1:1 차단 메타데이터. 차단자/대상만 저장하며 메시지 내용은 저장하지 않는다. 양방향 전송 차단에 사용 |
 | `user_favorites` | user_id, favorite_user_id, created_at (PK) | 연락처 즐겨찾기 메타데이터. 대화 목록 정렬에만 사용 |
 | `sessions` | id, user_id, token_hash, created_at, expires_at, last_seen_at, user_agent, idle_timeout_seconds | 쿠키 세션(원문 토큰 저장 안 함). idle_timeout_seconds 는 세션 오버라이드(1~30분, null 이면 기기 기본값) |
-| `devices` | id, user_id, name, identity_public_key, signing_public_key, idle_timeout_seconds, created_at, last_seen_at, revoked_at | 기기 공개키. idle_timeout_seconds 는 기기 기본 무활동 로그아웃(1~30분, 기본 5분) |
+| `devices` | id, user_id, name, platform, identity_public_key, signing_public_key, idle_timeout_seconds, created_at, last_seen_at, revoked_at | 기기 공개키. platform 은 클라이언트 신고값(ios/android/mobile/desktop/unknown)이며 보안 판단에 쓰지 않는다. idle_timeout_seconds 는 기기 기본 무활동 로그아웃(1~30분, 기본 5분) |
 | `conversations` | id, kind('direct'\|'group'), name, auto_delete_after_read_seconds, created_at | 1:1 또는 그룹. 그룹은 name 필수. auto_delete 는 읽은 뒤 자동 삭제(1시간~30일, null 이면 끔) |
 | `conversation_participants` | conversation_id, user_id, joined_at, hidden_at, muted_at, role('owner'\|'member') (PK) | 참여자. 그룹 최대 20명, 사용자별 숨김/음소거, 소유자 권한 |
 | `messages` | id, conversation_id, sender_user_id, sender_device_id, **sender_signing_public_key**, ciphertext, nonce, signature, client_message_id, kind('text'\|'reaction'\|'edit'), target_message_id, sender_key_id, sender_key_iteration, created_at | 암호문 1건. kind/target 은 반응·수정·답장 메타데이터, 내용은 암호문 안 |
@@ -184,7 +184,7 @@
 | 메서드 | 경로 | 설명 |
 |---|---|---|
 | GET | `/api/devices` | 내 기기 목록(활성/폐기, 기기별 `idleTimeoutSeconds`) |
-| POST | `/api/devices` | 기기 추가(로그인 상태) |
+| POST | `/api/devices` | 기기 추가(로그인 상태). `{name, platform?, identityPublicKey, signingPublicKey, ...prekeys}` |
 | PUT | `/api/auth/profile` | `{statusMessage: string \| null}` 공개 상태 메시지(최대 80자, 평문 프로필) |
 | PUT | `/api/devices/:id/timeout` | `{seconds: 60~1800}` 기기 기본 무활동 로그아웃 변경 |
 | DELETE | `/api/devices/:id` | 기기 폐기 → 해당 세션 무효 |

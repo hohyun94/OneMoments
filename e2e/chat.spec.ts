@@ -732,6 +732,14 @@ test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser
     // 복호화한 Blob 오디오가 실제로 재생되는지 확인한다(CSP media-src 회귀 방지).
     async function expectPlayable(page: Page): Promise<void> {
       const audio = page.locator("audio").first();
+      await expect(audio).toHaveCount(1);
+      // 네이티브 <audio controls> 대신 컴팩트 커스텀 컨트롤을 쓴다.
+      expect(await audio.getAttribute("controls")).toBeNull();
+      const download = page.getByRole("button", { name: "다운로드" }).first();
+      await expect(download).toBeVisible();
+      // 다운로드는 아이콘만(텍스트 없이) 표시한다.
+      expect((await download.innerText()).trim()).toBe("");
+
       const duration = await audio.evaluate(async (node: HTMLAudioElement) => {
         if (node.readyState < 1) {
           await new Promise<void>((resolve) => {
@@ -743,14 +751,22 @@ test("음성 메시지를 녹음하면 파형이 표시된다", async ({ browser
       });
       expect(Number.isFinite(duration)).toBe(true);
       expect(duration).toBeGreaterThan(0);
-      await audio.evaluate(async (node: HTMLAudioElement) => {
-        await node.play();
-      });
+
+      // 카드가 컴팩트한지(이전 네이티브 플레이어 대비 절반 수준) 확인한다.
+      const box = await page.getByTestId("voice-card").first().boundingBox();
+      expect(box?.height ?? 0).toBeLessThan(90);
+
+      await page.getByRole("button", { name: "재생" }).first().click();
+      await expect(page.getByRole("button", { name: "일시정지" }).first()).toBeVisible();
       await expect
         .poll(() => audio.evaluate((node: HTMLAudioElement) => node.currentTime), {
           timeout: 10_000,
         })
         .toBeGreaterThan(0);
+      await page.getByRole("button", { name: "일시정지" }).first().click();
+      await expect
+        .poll(() => audio.evaluate((node: HTMLAudioElement) => node.paused))
+        .toBe(true);
     }
 
     await expectPlayable(alice);

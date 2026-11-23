@@ -13,6 +13,7 @@ import {
   BellOff,
   Clock,
   History,
+  MapPin,
   Mic,
   Pencil,
   Paperclip,
@@ -92,6 +93,11 @@ import {
   suggestedAttachmentName,
 } from "../lib/attachmentName.ts";
 import { recoveredAtFor } from "../lib/recovery.ts";
+import {
+  encodeLocationPayload,
+  type LocationPayload,
+} from "../lib/location.ts";
+import { LocationShareDialog } from "./LocationShareDialog.tsx";
 
 interface PendingMessage {
   clientMessageId: string;
@@ -304,6 +310,7 @@ export function ChatView({
   const [sendError, setSendError] = useState<string | null>(null);
   const [safety, setSafety] = useState<SafetyNumber | null>(null);
   const [safetyOpen, setSafetyOpen] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
   const [safetyChanged, setSafetyChanged] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1058,6 +1065,22 @@ export function ChatView({
     }
   }
 
+  /** 위치 공유도 일반 텍스트 메시지와 같은 경로로 보낸다(본문이 암호화됨). */
+  async function sendLocation(location: LocationPayload): Promise<void> {
+    const pending: PendingMessage = {
+      clientMessageId: crypto.randomUUID(),
+      plaintext: encodeLocationPayload(location),
+      kind: "text",
+      targetMessageId: replyTarget?.message.id,
+    };
+    pendingRef.current = pending;
+    await deliver(pending);
+    if (pendingRef.current === null) {
+      setLocationOpen(false);
+      setReplyTarget(null);
+    }
+  }
+
   async function reactTo(message: MessageView, emoji: string): Promise<void> {
     const current = reactionState.get(message.id)?.mine ?? null;
     const pending: PendingMessage = {
@@ -1698,6 +1721,17 @@ export function ChatView({
                 type="button"
                 variant="ghost"
                 size="icon"
+                onClick={() => setLocationOpen(true)}
+                disabled={sending || editing !== null || recordingSeconds !== null}
+                aria-label="위치 공유"
+                title="현재 위치 보내기"
+              >
+                <MapPin className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={sending || editing !== null}
                 aria-label="파일 첨부"
@@ -1738,6 +1772,13 @@ export function ChatView({
           Enter 전송 · Shift+Enter 줄바꿈
         </p>
       </form>
+
+      <LocationShareDialog
+        open={locationOpen}
+        onClose={() => setLocationOpen(false)}
+        onSend={(location) => void sendLocation(location)}
+        sending={sending}
+      />
 
       <Dialog open={safetyOpen} onClose={() => setSafetyOpen(false)} title="안전번호">
         <p className="text-sm leading-relaxed text-zinc-600">

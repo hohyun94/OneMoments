@@ -134,6 +134,13 @@ MVP 이후 과제를 순차 진행한다.
    - **전역 수신**(모든 화면에서 벨), **ICE restart 재연결**, **통화 기록/부재중 배지**(메타데이터 + 미디어, `GET /api/conversations/:id/calls`)
    - 테스트: 서버 WS 3 + REST/설정 4 + 통화 기록 1, E2E 2브라우저(가짜 마이크·카메라) 2(음성·영상)
    - 후속: 그룹 통화(SFU+SFrame), 화면 공유·전면/후면 전환, 부재중 알림
+13. **위치 공유** — 완료 · `docs/30-location-share.md`
+   - 세션/기기정보에는 좌표가 없고 서버는 브라우저 측위를 조회할 수 없다 → **클라이언트 권한 + 암호문 메시지**로 구현
+   - `onemoments:location:v1:` + base64(JSON) `{lat,lng,accuracy,at,label?}` (첨부·모먼트와 동일 패턴, 서버 변경 없음)
+   - 미리보기(좌표·정확도)·장소 이름 → 기존 텍스트 전송 경로, 수신 카드 + OpenStreetMap 외부 링크(지도 임베드 없음)
+   - 프라이버시: 검색 인덱스는 "위치 공유"만, 위치 메시지 수정 불가, `Permissions-Policy: geolocation=(self)`
+   - 테스트: 클라이언트 단위 8(페이로드 4·권한 4), E2E 1(Playwright `setGeolocation`), 서버 헤더 1
+   - 후속: IP 기반 최근 접속 지역(관리/보안 화면), 실시간 위치 공유(정책 선행)
 
 ## 리스크
 

@@ -10,11 +10,13 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock } from "../lib/format.ts";
+import { parseLocationPayload, type LocationPayload } from "../lib/location.ts";
 import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
 import { formatDuration } from "../lib/voice.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
+import { LocationCard } from "./LocationCard.tsx";
 import { cn } from "./ui.tsx";
 
 export async function decryptAttachmentBlob(
@@ -369,7 +371,12 @@ function AttachmentCard({
 }
 
 type Result =
-  | { status: "ok"; text: string; attachment: AttachmentPayload | null }
+  | {
+      status: "ok";
+      text: string;
+      attachment: AttachmentPayload | null;
+      location: LocationPayload | null;
+    }
   | { status: "error"; detail: string };
 
 const cache = new Map<string, Result>();
@@ -415,10 +422,13 @@ function decryptCached(identity: StoredIdentity, message: MessageView): Promise<
   const promise = decryptMessage({ identity, message })
     .then((decrypted): Result => {
       const attachment = parseAttachmentPayload(decrypted);
+      const location = attachment ? null : parseLocationPayload(decrypted);
       return {
         status: "ok",
-        text: attachment ? attachment.text : decrypted,
+        // 위치는 카드로만 표시하고 base64 본문은 화면에 노출하지 않는다.
+        text: attachment ? attachment.text : location ? "" : decrypted,
         attachment,
+        location,
       };
     })
     .catch((error): Result => ({ status: "error", detail: failureDetail(error) }))
@@ -440,7 +450,9 @@ export async function decryptMessageText(
   message: MessageView,
 ): Promise<string | null> {
   const result = await decryptCached(identity, message);
-  return result.status === "ok" ? result.text : null;
+  if (result.status !== "ok") return null;
+  if (result.location) return "위치 공유";
+  return result.text;
 }
 
 function parseAttachment(text: string): AttachmentPayload | null {
@@ -505,7 +517,12 @@ export function MessageBubble({
     void decryptCached(identity, source).then((value) => {
       if (!cancelled) setResult(value);
       if (value.status !== "ok" || message.kind !== "text") return;
-      const searchable = [value.text, value.attachment?.name ?? ""]
+      // 위치 공유는 좌표(base64) 대신 검색 가능한 문구로만 인덱싱한다.
+      const searchable = (
+        value.location
+          ? ["위치 공유", value.location.label ?? ""]
+          : [value.text, value.attachment?.name ?? ""]
+      )
         .filter((part) => part.length > 0)
         .join(" ");
       void indexDecryptedMessage({
@@ -536,7 +553,7 @@ export function MessageBubble({
   }, [identity, replyTarget]);
 
   const canAct = message.kind === "text";
-  const canEdit = own && canAct && result?.status === "ok" && !result.attachment;
+  const canEdit = own && canAct && result?.status === "ok" && !result.attachment && !result.location;
   const reactionPicker = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
   return (
@@ -638,6 +655,7 @@ export function MessageBubble({
             {result.attachment ? (
               <AttachmentCard attachment={result.attachment} own={own} />
             ) : null}
+            {result.location ? <LocationCard location={result.location} own={own} /> : null}
           </div>
         ) : result?.status === "error" ? (
           <p
@@ -704,7 +722,8 @@ export function MessageBubble({
           <button
             type="button"
             onClick={() => {
-              if (result?.status === "ok") onReply?.(message, result.text);
+              if (result?.status !== "ok") return;
+              onReply?.(message, result.location ? "위치 공유" : result.text);
             }}
             aria-label="답장"
             className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"

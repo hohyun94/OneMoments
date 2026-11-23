@@ -24,6 +24,7 @@ backups/
 .redis-pull*
 .env
 .env.local
+.secrets/
 .web*.out
 .web*.err
 .DS_Store

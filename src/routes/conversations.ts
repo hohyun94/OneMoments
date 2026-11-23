@@ -40,7 +40,7 @@ import {
   setConversationMuted,
 } from "../services/conversations.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
-import { listCallLogs } from "../services/calls.js";
+import { listCallLogs, markMissedCallsSeen } from "../services/calls.js";
 import { hideMessageForUser, listMessages, setMessagePinned } from "../services/messages.js";
 import {
   createAttachment,
@@ -408,6 +408,23 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
       await requireParticipant(db, { conversationId, userId: auth.userId });
       const calls = await listCallLogs(db, { conversationId, userId: auth.userId });
       res.json({ calls });
+    }),
+  );
+
+  /** 부재중 통화 배지를 해제한다(수신자만 해당). */
+  router.post(
+    "/:conversationId/calls/seen",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId } = conversationIdParamsSchema.parse(req.params);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+      const cleared = await markMissedCallsSeen(db, {
+        conversationId,
+        userId: auth.userId,
+      });
+      res.json({ cleared });
     }),
   );
 

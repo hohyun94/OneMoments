@@ -889,6 +889,44 @@ test("1:1 음성 통화: 발신 → 수락 → 음소거 → 종료", async ({ b
   }
 });
 
+test("부재중 전화 배지가 생기고 대화를 열면 사라진다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("missed");
+  const bobName = uniqueName("missedpeer");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+    await expect(bob.getByTitle("실시간 연결됨")).toBeVisible();
+    await startConversation(alice, bobName);
+
+    await alice.getByRole("button", { name: "음성 통화" }).click();
+    await expect(bob.getByRole("dialog", { name: "수신 전화" })).toBeVisible({
+      timeout: 25_000,
+    });
+    // 받지 않고 발신자가 취소 → 수신자에게 부재중으로 남는다.
+    await alice.getByRole("button", { name: "통화 취소" }).click();
+    await expect(bob.getByTestId("call-status")).toHaveText(/취소/, { timeout: 15_000 });
+
+    const bobList = bob.getByRole("navigation", { name: "대화 목록" });
+    const badge = bobList.getByLabel(/부재중 전화 1건/);
+    await expect(badge).toBeVisible({ timeout: 15_000 });
+
+    const bobConversation = bobList.getByRole("button", { name: new RegExp(aliceName) });
+    await expect(bobConversation).toBeVisible({ timeout: 15_000 });
+    await bobConversation.click();
+    await expect(bob.getByLabel("메시지 입력")).toBeVisible();
+    await expect(badge).toHaveCount(0, { timeout: 15_000 });
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("auto-logout: 무활동 5분 후 로그인 화면으로 전환한다", async ({
   browser,
 }) => {

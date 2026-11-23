@@ -18,6 +18,7 @@ function conversation(input: Partial<ConversationSummary>): ConversationSummary 
     favorite: false,
     blocked: null,
     unreadCount: input.unreadCount ?? 0,
+    missedCallCount: input.missedCallCount ?? 0,
     lastMessageAt: null,
   };
 }

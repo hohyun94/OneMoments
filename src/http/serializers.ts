@@ -74,6 +74,7 @@ export function toConversationSummary(
   lastMessageAt: Date | string | null,
   favorite: boolean,
   blocked: "me" | "peer" | null,
+  missedCallCount = 0,
 ): ConversationSummary {
   return {
     id: conversation.id,
@@ -89,6 +90,7 @@ export function toConversationSummary(
     favorite,
     blocked,
     unreadCount,
+    missedCallCount,
     lastMessageAt: iso(lastMessageAt),
   };
 }

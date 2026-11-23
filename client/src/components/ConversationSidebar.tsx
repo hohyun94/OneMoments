@@ -3,6 +3,7 @@ import {
   Contact,
   LogOut,
   MessageSquarePlus,
+  PhoneMissed,
   Pin,
   Search,
   ShieldAlert,
@@ -178,6 +179,7 @@ export function ConversationSidebar({
               const deleted = !isGroup && Boolean(conversation.peer?.deleted);
               const active = conversation.id === selectedId;
               const unread = conversation.unreadCount;
+              const missedCalls = conversation.missedCallCount ?? 0;
               const pinned = pinnedIds.includes(conversation.id);
               return (
                 <li key={conversation.id} className="flex items-center gap-1">
@@ -214,6 +216,16 @@ export function ConversationSidebar({
                           />
                         ) : null}
                         <span className="flex shrink-0 items-center gap-1.5">
+                          {missedCalls > 0 ? (
+                            <span
+                              aria-label={`부재중 전화 ${missedCalls}건`}
+                              title={`부재중 전화 ${missedCalls}건`}
+                              className="flex h-5 items-center gap-0.5 rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white"
+                            >
+                              <PhoneMissed className="h-3 w-3" aria-hidden />
+                              {missedCalls > 99 ? "99+" : missedCalls}
+                            </span>
+                          ) : null}
                           {unread > 0 && !active ? (
                             <span
                               aria-label={`읽지 않은 메시지 ${unread}개`}

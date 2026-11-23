@@ -21,6 +21,7 @@ import { AppError } from "../http/errors.js";
 import { toConversationSummary } from "../http/serializers.js";
 import type { ConversationSummary } from "../types/protocol.js";
 import { isBlockedBetween } from "./contacts.js";
+import { countMissedCallsByConversation } from "./calls.js";
 
 export interface ConversationContext {
   conversation: ConversationRow;
@@ -605,7 +606,7 @@ export async function listConversations(
   if (rows.length === 0) return [];
   const conversationIds = rows.map((row) => row.conversation.id);
 
-  const [participants, lastMessages] = await Promise.all([
+  const [participants, lastMessages, missedCounts] = await Promise.all([
     db
       .select({
         conversationId: conversationParticipants.conversationId,
@@ -644,6 +645,7 @@ export async function listConversations(
         ),
       )
       .groupBy(messages.conversationId),
+    countMissedCallsByConversation(db, { conversationIds, userId }),
   ]);
 
   const membersByConversation = new Map<string, UserRow[]>();
@@ -683,6 +685,7 @@ export async function listConversations(
         lastByConversation.get(row.conversation.id) ?? null,
         relation.favorite,
         relation.blocked,
+        missedCounts.get(row.conversation.id) ?? 0,
       ),
     );
   }

@@ -674,6 +674,8 @@ export const callLogs = pgTable(
     endedByUserId: uuid("ended_by_user_id").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** 수신자가 부재중 기록을 확인한 시각(배지 해제용). */
+    calleeSeenAt: timestamp("callee_seen_at", { withTimezone: true }),
   },
   (table) => [
     check(

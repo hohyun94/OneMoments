@@ -69,6 +69,8 @@ export interface ConversationSummary {
   blocked: "me" | "peer" | null;
   /** 읽지 않은(내가 보내지 않은) 메시지 수 */
   unreadCount: number;
+  /** 아직 확인하지 않은 부재중 통화 수(수신자 기준) */
+  missedCallCount: number;
   lastMessageAt: string | null;
 }
 

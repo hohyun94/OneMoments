@@ -122,6 +122,37 @@ describe("voice call logs", () => {
       expect(missed.direction).toBe("incoming");
       expect(missed.durationSeconds).toBeNull();
 
+      // 수신자 대화 목록에는 확인 전까지 부재중 배지 수가 잡힌다.
+      const missedBadge = async (client: TestClient): Promise<number> => {
+        for (let attempt = 0; attempt < 40; attempt += 1) {
+          const response = await client.request("GET", "/api/conversations");
+          const entry = (response.body.conversations as Array<{ id: string; missedCallCount: number }>)
+            .find((item) => item.id === conversationId);
+          if (entry && entry.missedCallCount > 0) return entry.missedCallCount;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return 0;
+      };
+      expect(await missedBadge(bob.client)).toBe(1);
+      const conversationsForCaller = await alice.client.request("GET", "/api/conversations");
+      expect(
+        (conversationsForCaller.body.conversations as Array<{ id: string; missedCallCount: number }>)
+          .find((item) => item.id === conversationId)?.missedCallCount,
+      ).toBe(0);
+
+      // 대화를 열면(확인 처리) 배지가 사라진다.
+      const seen = await bob.client.request(
+        "POST",
+        `/api/conversations/${conversationId}/calls/seen`,
+      );
+      expect(seen.status).toBe(200);
+      expect(seen.body.cleared).toBe(1);
+      const afterSeen = await bob.client.request("GET", "/api/conversations");
+      expect(
+        (afterSeen.body.conversations as Array<{ id: string; missedCallCount: number }>)
+          .find((item) => item.id === conversationId)?.missedCallCount,
+      ).toBe(0);
+
       // 2) 거절
       const declinedId = randomUUID();
       sendFrame(aliceSocket.socket, {

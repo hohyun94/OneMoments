@@ -1,0 +1,1 @@
+ALTER TABLE "call_logs" ADD COLUMN "callee_seen_at" timestamp with time zone;

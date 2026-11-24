@@ -425,6 +425,18 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
     await expect(bobImage).toBeVisible();
     expect(await bobImage.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
 
+    // 이미지를 클릭하면 라이트박스가 열리고 Esc 로 닫힌다.
+    await bob.getByRole("button", { name: `${fileName} 크게 보기` }).click();
+    const lightbox = bob.getByRole("dialog", { name: "이미지 크게 보기" });
+    await expect(lightbox).toBeVisible();
+    expect(
+      await lightbox
+        .getByRole("img", { name: fileName })
+        .evaluate((image) => image.naturalWidth),
+    ).toBeGreaterThan(0);
+    await bob.keyboard.press("Escape");
+    await expect(lightbox).toHaveCount(0);
+
     const downloadPromise = bob.waitForEvent("download");
     await bob.getByRole("button", { name: "다운로드" }).click();
     const download = await downloadPromise;

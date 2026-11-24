@@ -76,6 +76,7 @@ import {
   previewHost,
   type LinkPreviewMeta,
 } from "../lib/linkPreviewMessage.ts";
+import { uploadAttachment } from "../lib/upload.ts";
 import { useRealtime } from "../realtime.tsx";
 import { useCall } from "../calls.tsx";
 import type {
@@ -130,6 +131,22 @@ interface PendingAttachment {
 
 /** 한 번에 첨부할 수 있는 파일 수(파일마다 별도 메시지로 전송). */
 const MAX_ATTACHMENT_COUNT = 5;
+
+/** 전송 중인 첨부(진행률·취소·재시도). */
+interface UploadItem {
+  id: string;
+  name: string;
+  size: number;
+  file: File;
+  durationSeconds?: number;
+  waveform?: number[];
+  /** 첫 파일에 붙일 캡션. 재시도해도 유지된다. */
+  caption: string;
+  phase: "encrypting" | "uploading" | "failed" | "cancelled";
+  percent: number;
+  error?: string;
+  controller: AbortController | null;
+}
 
 function prependMessage(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -311,6 +328,8 @@ export function ChatView({
   const [linkPreview, setLinkPreview] = useState<LinkPreviewMeta | null>(null);
   const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
   const [linkPreviewError, setLinkPreviewError] = useState<string | null>(null);
+  /** 진행 중/실패한 첨부 업로드(진행률·취소·재시도). */
+  const [uploads, setUploads] = useState<UploadItem[]>([]);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -1008,65 +1027,58 @@ export function ChatView({
     setAttachmentError(null);
     try {
       const targetMessageId = replyTarget?.message.id;
-      const queue: PendingMessage[] = [];
 
-      // 파일마다 별도 메시지로 보낸다. 첫 파일에 캡션/답장을 붙인다.
-      for (const [index, item] of attachments.entries()) {
-        const clientMessageId = crypto.randomUUID();
-        // 파일은 1회용 키로 암호화하고, 키는 메시지 암호문 안에 넣어 전달한다.
-        const encrypted = await encryptAttachment(item.file);
-        const uploaded = await api<{ attachment: { id: string; size: number } }>(
-          `/api/conversations/${conversation.id}/attachments`,
-          {
-            method: "POST",
-            rawBody: new Blob([encrypted.ciphertext], {
-              type: "application/octet-stream",
-            }),
-            headers: {
-              "x-attachment-client-message-id": clientMessageId,
-            },
-          },
+      if (attachments.length > 0) {
+        // 첨부는 진행률·취소를 보여주기 위해 트레이로 옮겨 하나씩 암호화·업로드한다.
+        const items: UploadItem[] = attachments.map((item) => ({
+          id: crypto.randomUUID(),
+          name: (item.name.trim() || item.file.name).slice(0, ATTACHMENT_NAME_MAX),
+          size: item.file.size,
+          file: item.file,
+          ...(item.durationSeconds !== undefined
+            ? { durationSeconds: item.durationSeconds }
+            : {}),
+          ...(item.waveform ? { waveform: item.waveform } : {}),
+          caption: text,
+          phase: "encrypting" as const,
+          percent: 0,
+          controller: null,
+        }));
+        setUploads((current) => [...current, ...items]);
+        setAttachments([]);
+        setDraft("");
+
+        const queue: PendingMessage[] = [];
+        let captionUsed = false;
+        for (const item of items) {
+          const pending = await uploadOne(item, !captionUsed, targetMessageId);
+          if (!pending) continue;
+          captionUsed = true;
+          queue.push(pending);
+        }
+        // 성공한 항목은 트레이에서 제거하고 실패/취소 항목만 남긴다.
+        setUploads((current) =>
+          current.filter((upload) => upload.phase === "failed" || upload.phase === "cancelled"),
         );
-        queue.push({
-          clientMessageId,
-          plaintext: encodeAttachmentPayload({
-            id: uploaded.attachment.id,
-            name: (item.name.trim() || item.file.name).slice(0, ATTACHMENT_NAME_MAX),
-            mime: item.file.type || "application/octet-stream",
-            size: item.file.size,
-            key: encrypted.key,
-            iv: encrypted.iv,
-            text: index === 0 ? text : "",
-            ...(item.durationSeconds !== undefined
-              ? { durationSeconds: item.durationSeconds }
-              : {}),
-            ...(item.waveform ? { waveform: item.waveform } : {}),
-          }),
-          kind: "text",
-          viewOnce: index === 0 ? viewOnce : false,
-          targetMessageId: index === 0 ? targetMessageId : undefined,
-        });
+        for (const pending of queue) {
+          pendingRef.current = pending;
+          await deliver(pending);
+        }
+        if (pendingRef.current === null) setReplyTarget(null);
+        return;
       }
 
-      if (attachments.length === 0) {
-        queue.push({
-          clientMessageId: crypto.randomUUID(),
-          plaintext:
-            linkPreview !== null
-              ? encodeLinkMessage({ text, preview: linkPreview })
-              : text,
-          kind: "text",
-          viewOnce,
-          targetMessageId,
-        });
-      }
-
+      const pending: PendingMessage = {
+        clientMessageId: crypto.randomUUID(),
+        plaintext:
+          linkPreview !== null ? encodeLinkMessage({ text, preview: linkPreview }) : text,
+        kind: "text",
+        viewOnce,
+        targetMessageId,
+      };
       setDraft("");
-      for (const pending of queue) {
-        pendingRef.current = pending;
-        await deliver(pending);
-      }
-      setAttachments([]);
+      pendingRef.current = pending;
+      await deliver(pending);
       setViewOnce(false);
       setLinkPreview(null);
       if (pendingRef.current === null) setReplyTarget(null);
@@ -1082,6 +1094,126 @@ export function ChatView({
       } else {
         setSendError("첨부 파일을 보낼 수 없습니다. 잠시 후 다시 시도해 주세요.");
       }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  /** 파일 하나를 암호화·업로드해 메시지 페이로드를 만든다(진행률·취소 지원). */
+  async function uploadOne(
+    item: UploadItem,
+    asFirst: boolean,
+    targetMessageId: string | undefined,
+  ): Promise<PendingMessage | null> {
+    const controller = new AbortController();
+    setUploads((current) =>
+      current.map((upload) =>
+        upload.id === item.id
+          ? { ...upload, phase: "encrypting", percent: 0, error: undefined, controller }
+          : upload,
+      ),
+    );
+    try {
+      const encrypted = await encryptAttachment(item.file);
+      if (controller.signal.aborted) {
+        setUploads((current) =>
+          current.map((upload) =>
+            upload.id === item.id
+              ? { ...upload, phase: "cancelled", controller: null }
+              : upload,
+          ),
+        );
+        return null;
+      }
+      setUploads((current) =>
+        current.map((upload) =>
+          upload.id === item.id ? { ...upload, phase: "uploading" } : upload,
+        ),
+      );
+      const uploaded = await uploadAttachment({
+        conversationId: conversation.id,
+        clientMessageId: item.id,
+        body: new Blob([encrypted.ciphertext], { type: "application/octet-stream" }),
+        signal: controller.signal,
+        onProgress: (progress) => {
+          setUploads((current) =>
+            current.map((upload) =>
+              upload.id === item.id ? { ...upload, percent: progress.percent } : upload,
+            ),
+          );
+        },
+      });
+      return {
+        clientMessageId: item.id,
+        plaintext: encodeAttachmentPayload({
+          id: uploaded.attachment.id,
+          name: item.name,
+          mime: item.file.type || "application/octet-stream",
+          size: item.size,
+          key: encrypted.key,
+          iv: encrypted.iv,
+          text: asFirst ? item.caption : "",
+          ...(item.durationSeconds !== undefined
+            ? { durationSeconds: item.durationSeconds }
+            : {}),
+          ...(item.waveform ? { waveform: item.waveform } : {}),
+        }),
+        kind: "text",
+        viewOnce: asFirst ? viewOnce : false,
+        targetMessageId: asFirst ? targetMessageId : undefined,
+      };
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setUploads((current) =>
+          current.map((upload) =>
+            upload.id === item.id
+              ? { ...upload, phase: "cancelled", controller: null }
+              : upload,
+          ),
+        );
+        return null;
+      }
+      const message =
+        error instanceof AttachmentError
+          ? error.message
+          : error instanceof ApiError
+            ? error.message
+            : "첨부 파일을 보낼 수 없습니다.";
+      setUploads((current) =>
+        current.map((upload) =>
+          upload.id === item.id
+            ? { ...upload, phase: "failed", error: message, controller: null }
+            : upload,
+        ),
+      );
+      return null;
+    }
+  }
+
+  function cancelUpload(id: string): void {
+    setUploads((current) =>
+      current.map((upload) => {
+        if (upload.id !== id) return upload;
+        upload.controller?.abort();
+        return { ...upload, controller: null };
+      }),
+    );
+  }
+
+  function removeUpload(id: string): void {
+    setUploads((current) => current.filter((upload) => upload.id !== id));
+  }
+
+  async function retryUpload(item: UploadItem): Promise<void> {
+    if (sending) return;
+    setSending(true);
+    setSendError(null);
+    try {
+      const pending = await uploadOne(item, true, replyTarget?.message.id);
+      if (!pending) return;
+      setUploads((current) => current.filter((upload) => upload.id !== item.id));
+      pendingRef.current = pending;
+      await deliver(pending);
     } finally {
       setSending(false);
     }
@@ -1764,6 +1896,74 @@ export function ChatView({
                   >
                     @{name}
                   </button>
+                ))}
+              </div>
+            ) : null}
+            {uploads.length > 0 ? (
+              <div className="mb-2 space-y-1.5" data-testid="upload-tray">
+                {uploads.map((upload) => (
+                  <div
+                    key={upload.id}
+                    className="flex items-center gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px]"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-zinc-700">{upload.name}</p>
+                      <div className="mt-1 h-1 w-full overflow-hidden rounded bg-zinc-200">
+                        <div
+                          className={cn(
+                            "h-full transition-all",
+                            upload.phase === "failed" ? "bg-rose-500" : "bg-accent-600",
+                          )}
+                          style={{ width: `${upload.percent}%` }}
+                        />
+                      </div>
+                      <p
+                        data-testid="upload-status"
+                        className={cn(
+                          "mt-0.5 truncate",
+                          upload.phase === "failed" ? "text-rose-600" : "text-zinc-400",
+                        )}
+                      >
+                        {upload.phase === "encrypting"
+                          ? "암호화 중…"
+                          : upload.phase === "uploading"
+                            ? `전송 중 ${upload.percent}%`
+                            : upload.phase === "failed"
+                              ? (upload.error ?? "전송 실패")
+                              : "취소됨"}
+                      </p>
+                    </div>
+                    {upload.phase === "failed" || upload.phase === "cancelled" ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void retryUpload(upload)}
+                          disabled={sending}
+                        >
+                          다시 시도
+                        </Button>
+                        <button
+                          type="button"
+                          onClick={() => removeUpload(upload.id)}
+                          aria-label="목록에서 제거"
+                          className="text-zinc-400 hover:text-zinc-600"
+                        >
+                          <X className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => cancelUpload(upload.id)}
+                      >
+                        취소
+                      </Button>
+                    )}
+                  </div>
                 ))}
               </div>
             ) : null}

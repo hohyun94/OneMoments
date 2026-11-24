@@ -19,6 +19,7 @@ import { indexDecryptedMessage } from "../lib/search.ts";
 import { viewOnceHint } from "../lib/viewOnce.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { LocationCard } from "./LocationCard.tsx";
+import { ImageLightbox } from "./ImageLightbox.tsx";
 import { cn } from "./ui.tsx";
 
 export async function decryptAttachmentBlob(
@@ -91,6 +92,7 @@ function AttachmentCard({
   const [downloading, setDownloading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(needsPreview);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -202,7 +204,7 @@ function AttachmentCard({
             <button
               type="button"
               className="block w-full"
-              onClick={() => window.open(previewUrl, "_blank", "noopener,noreferrer")}
+              onClick={() => setLightboxOpen(true)}
               aria-label={`${attachment.name} 크게 보기`}
             >
               <img
@@ -367,6 +369,15 @@ function AttachmentCard({
         <p className={cn("mt-1.5 text-[11px]", own ? "text-accent-contrast/80" : "text-red-600")}>
           {error}
         </p>
+      ) : null}
+      {lightboxOpen && previewUrl ? (
+        <ImageLightbox
+          src={previewUrl}
+          name={attachment.name}
+          onClose={() => setLightboxOpen(false)}
+          onDownload={() => void download()}
+          downloading={downloading}
+        />
       ) : null}
     </div>
   );

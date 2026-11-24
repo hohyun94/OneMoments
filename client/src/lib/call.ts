@@ -102,3 +102,18 @@ export function screenShareLabel(sharing: boolean): string {
   return sharing ? "화면 공유 중지" : "화면 공유";
 }
 
+/**
+ * 영상 트랜시버 순서 → 역할.
+ *
+ * 통화 연결 시 비디오 m-line 을 **카메라(0), 화면(1)** 순서로 미리 협상해 두므로
+ * 재협상 없이 화면 트랙만 갈아끼울 수 있다.
+ */
+export function videoTransceiverRole(videoIndex: number): "camera" | "screen" {
+  return videoIndex >= 1 ? "screen" : "camera";
+}
+
+/** 상대가 화면을 공유 중일 때의 안내 문구(아니면 빈 문자열). */
+export function remoteScreenLabel(sharing: boolean): string {
+  return sharing ? "상대가 화면 공유 중" : "";
+}
+

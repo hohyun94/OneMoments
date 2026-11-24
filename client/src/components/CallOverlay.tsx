@@ -12,7 +12,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { useCall } from "../calls.tsx";
-import { cameraFlipLabel, canShareScreen, screenShareLabel } from "../lib/call.ts";
+import { cameraFlipLabel, canShareScreen, remoteScreenLabel, screenShareLabel } from "../lib/call.ts";
 import { formatDuration } from "../lib/voice.ts";
 import { Button, cn } from "./ui.tsx";
 
@@ -28,25 +28,45 @@ export function CallOverlay() {
     toggleScreenShare,
     flipCamera,
     remoteVideoRef,
+    remoteCameraRef,
     localVideoRef,
+    localScreenRef,
     remoteVideoStream,
+    remoteScreenStream,
     localVideoStream,
+    localScreenStream,
   } = useCall();
   const [elapsed, setElapsed] = useState(0);
 
+  const remoteSharing = Boolean(session?.remoteScreenSharing);
+  // 무대에는 상대 화면(공유 중이고 트랙이 도착했을 때) 또는 상대 카메라를 붙인다.
+  const stageStream = remoteSharing ? (remoteScreenStream ?? remoteVideoStream) : remoteVideoStream;
+
   // 영상 엘리먼트는 통화 단계에 따라 늦게 마운트되므로, 마운트/스트림 변경 시 붙여준다.
   useEffect(() => {
-    const remote = remoteVideoRef.current;
-    if (remote && remote.srcObject !== remoteVideoStream) {
-      remote.srcObject = remoteVideoStream;
-      if (remoteVideoStream) void remote.play().catch(() => undefined);
+    const targets: Array<[HTMLVideoElement | null, MediaStream | null]> = [
+      [remoteVideoRef.current, stageStream],
+      [remoteCameraRef.current, remoteVideoStream],
+      [localVideoRef.current, localVideoStream],
+      [localScreenRef.current, localScreenStream],
+    ];
+    for (const [element, stream] of targets) {
+      if (!element || element.srcObject === stream) continue;
+      element.srcObject = stream;
+      if (stream) void element.play().catch(() => undefined);
     }
-    const local = localVideoRef.current;
-    if (local && local.srcObject !== localVideoStream) {
-      local.srcObject = localVideoStream;
-      if (localVideoStream) void local.play().catch(() => undefined);
-    }
-  }, [remoteVideoStream, localVideoStream, remoteVideoRef, localVideoRef, session?.phase]);
+  }, [
+    stageStream,
+    remoteVideoStream,
+    localVideoStream,
+    localScreenStream,
+    remoteVideoRef,
+    remoteCameraRef,
+    localVideoRef,
+    localScreenRef,
+    session?.phase,
+    remoteSharing,
+  ]);
 
   useEffect(() => {
     const connectedAt = session?.connectedAt ?? null;
@@ -132,6 +152,38 @@ export function CallOverlay() {
               {session.phase === "connecting" ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
                   연결 중…
+                </div>
+              ) : null}
+              {remoteSharing ? (
+                <>
+                  <span
+                    data-testid="remote-screen-badge"
+                    className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] text-white"
+                  >
+                    {remoteScreenLabel(true)}
+                  </span>
+                  {/* 공유 중에는 상대 카메라를 작은 타일로 함께 보여준다. */}
+                  <div className="absolute left-3 top-16 h-28 w-20 overflow-hidden rounded-xl border border-white/30 bg-black/70">
+                    <video
+                      ref={remoteCameraRef}
+                      data-testid="remote-camera"
+                      autoPlay
+                      playsInline
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </>
+              ) : null}
+              {session.screenSharing ? (
+                <div className="absolute bottom-3 right-32 h-28 w-20 overflow-hidden rounded-xl border border-white/30 bg-black/70">
+                  <video
+                    ref={localScreenRef}
+                    data-testid="local-screen"
+                    autoPlay
+                    playsInline
+                    muted
+                    className="h-full w-full object-cover"
+                  />
                 </div>
               ) : null}
               <div className="absolute bottom-3 right-3 h-32 w-24 overflow-hidden rounded-xl border border-white/30 bg-black/60">

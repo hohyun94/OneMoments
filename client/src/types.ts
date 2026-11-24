@@ -1,4 +1,4 @@
-import type { DevicePlatform } from "./lib/device.ts";
+﻿import type { DevicePlatform } from "./lib/device.ts";
 import type { ThemeSettings } from "./lib/theme.ts";
 
 export interface PublicUser {
@@ -348,7 +348,7 @@ export type CallServerFrame =
       callId: string;
       fromUserId: string;
       fromDeviceId: string;
-      media: "audio";
+      media: "audio" | "video";
       createdAt: string;
     }
   | {
@@ -357,7 +357,7 @@ export type CallServerFrame =
       callId: string;
       fromUserId: string;
       fromDeviceId: string;
-      media: "audio";
+      media: "audio" | "video";
     }
   | {
       type: "call.declined";
@@ -389,6 +389,14 @@ export type CallServerFrame =
       fromUserId: string;
       fromDeviceId: string;
       signal: CallSignal;
+    }
+  | {
+      type: "call.screen";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      sharing: boolean;
     };
 
 /** SDP/ICE 는 서버가 해석하지 않고 그대로 중계된다. */

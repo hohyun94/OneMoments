@@ -535,6 +535,55 @@ describe("websocket realtime", () => {
     }
   });
 
+  it("relays screen sharing state to the peer without echoing to the sender", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+
+    const aliceSocket = await openSocket(alice);
+    const bobSocket = await openSocket(bob);
+    try {
+      const callId = randomUUID();
+      sendFrame(aliceSocket.socket, {
+        type: "call.invite",
+        conversationId,
+        callId,
+        media: "video",
+      });
+      await bobSocket.frames.next((frame) => frame.type === "call.invite");
+
+      sendFrame(aliceSocket.socket, {
+        type: "call.screen",
+        conversationId,
+        callId,
+        sharing: true,
+      });
+      const started = await bobSocket.frames.next((frame) => frame.type === "call.screen");
+      expect(started.sharing).toBe(true);
+      expect(started.callId).toBe(callId);
+      expect(started.fromDeviceId).toBe(alice.deviceId);
+
+      // 발신 기기로 되돌아오지 않는다.
+      await expect(
+        aliceSocket.frames.next((frame) => frame.type === "call.screen", 300),
+      ).rejects.toThrow(/Timed out/);
+
+      sendFrame(aliceSocket.socket, {
+        type: "call.screen",
+        conversationId,
+        callId,
+        sharing: false,
+      });
+      const stopped = await bobSocket.frames.next(
+        (frame) => frame.type === "call.screen" && frame.sharing === false,
+      );
+      expect(stopped.sharing).toBe(false);
+    } finally {
+      await closeSocket(aliceSocket.socket);
+      await closeSocket(bobSocket.socket);
+    }
+  });
+
   it("rejects calls in group conversations and from non-participants", async () => {
     const alice = await registerAccount("alice");
     const bob = await registerAccount("bob");

@@ -124,6 +124,12 @@ const clientFrameSchema = z.discriminatedUnion("type", [
         message: "signal must include description or candidate",
       }),
   }),
+  z.object({
+    type: z.literal("call.screen"),
+    conversationId,
+    callId: z.string().uuid(),
+    sharing: z.boolean(),
+  }),
   z.object({ type: z.literal("ping") }),
 ]);
 
@@ -441,7 +447,8 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
         case "call.decline":
         case "call.cancel":
         case "call.end":
-        case "call.signal": {
+        case "call.signal":
+        case "call.screen": {
           if (!config.calls.enabled) {
             throw AppError.forbidden("Voice calls are disabled");
           }
@@ -476,6 +483,9 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
               break;
             case "call.end":
               relayed = { type: "call.ended", ...base, reason: frame.reason ?? "hangup" };
+              break;
+            case "call.screen":
+              relayed = { type: "call.screen", ...base, sharing: frame.sharing };
               break;
             default:
               relayed = { type: "call.signal", ...base, signal: frame.signal };

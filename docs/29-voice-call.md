@@ -59,6 +59,7 @@
 | `call.cancel` | `conversationId`, `callId` | 동일 |
 | `call.end` | `conversationId`, `callId`, `reason?`(`hangup`\|`failed`\|`timeout`) | 동일 |
 | `call.signal` | `conversationId`, `callId`, `signal{ description?, candidate? }` | SDP ≤ 64KB, candidate ≤ 2KB |
+| `call.screen` | `conversationId`, `callId`, `sharing`(boolean) | 참여자 + **direct 대화**만. 미디어 없이 상태만 중계 |
 
 ### 서버 → 클라이언트(중계)
 
@@ -167,7 +168,8 @@ CALL_TURN_SECRET=<동일한 값>
 | 통화 중(음성) | 하단 바: 통화 시간, **음소거**, **종료**. 상대가 끊으면 자동 종료 + 안내 |
 | 발신 중(영상) | **상대 수락 전부터 내 카메라 미리보기**(전체 화면, 좌우 반전) + 상대 영역은 "연결 대기" 플레이스홀더. 카메라 끄기·**통화 취소** |
 | 통화 중(영상) | 전체 화면 패널: 원격 영상 + 우하단 **내 미리보기**, **음소거·카메라 끄기/켜기·종료**. 연결 후에는 **화면 공유**(지원 브라우저), 카메라가 2개 이상이면 **전면/후면 전환** |
-| 화면 공유 | 송신 트랙만 디스플레이로 교체(`replaceTrack`, 재협상 없음). 내 미리보기에 “화면 공유 중” 표시, 중지하면 카메라로 복귀 |
+| 화면 공유(내가) | 내 화면은 **작은 썸네일 타일**로, 내 카메라는 계속 우하단에 유지. “화면 공유 중” 배지. 상대는 내 화면을 크게 + 내 카메라를 작게 본다 |
+| 화면 공유(상대가) | 무대(큰 화면)가 상대 화면으로 바뀌고 **“상대가 화면 공유 중”** 배지 + 상대 카메라 작은 타일 |
 | 오류 | 마이크/카메라 권한 거부, 수락 없음(타임아웃), 연결 실패(`failed`) 안내 |
 
 - 다중 기기: 벨은 **모든 기기**에 울리고, 먼저 수락한 기기와 연결한다. 나머지 기기는 `call.accepted` 수신 시 벨을 닫는다.
@@ -182,10 +184,17 @@ CALL_TURN_SECRET=<동일한 값>
   대화를 열면 `POST /api/conversations/:id/calls/seen` 으로 확인 처리되어 배지가 즉시 사라진다(통화 종료/취소 시 목록을 무효화).
 - **부재중 푸시**: 응답 전에 끝난 통화(`missed`)는 수신자의 구독 기기로 **Web Push** 알림을 보낸다
   (`type:"call"`, “부재중 음성/영상 통화가 있습니다.”, 대화 ID·callId·미디어만). 발신자·내용은 담지 않는다.
-- **화면 공유**: `getDisplayMedia` 로 얻은 트랙을 **송신 비디오 트랙만 교체**해 보낸다. 재협상이 없어 연결이 끊기지 않고,
-  브라우저의 “공유 중지” 로 끝내도 `track.onended` 핸들러가 카메라로 되돌린다. 모바일 Safari 처럼 API 가 없는 브라우저에서는 버튼을 숨긴다.
+- **화면 공유(동시 전송)**: 연결 시 비디오 m-line 을 **카메라(0) · 화면(1)** 두 개로 미리 협상한다.
+  공유를 시작하면 화면 트랜시버의 송신 트랙만 `replaceTrack` 하므로 **재협상 없이** 카메라와 화면이 동시에 흐른다.
+  - **m-line 은 offer 를 만드는 쪽(발신자)만 추가**한다. 수신자가 미리 `addTransceiver` 하면 offer 의 m-line 과
+    연결되지 않아 answer 가 `recvonly` 가 되고 미디어가 흐르지 않는다. 수신자는 offer 로 생성된 트랜시버에
+    `replaceTrack` 으로 자기 트랙을 붙이고 `direction="sendrecv"` 로 바꾼다.
+  - 공유 상태는 `call.screen` 프레임(`{ sharing: boolean }`)으로만 알린다(서버 저장 없음).
+    수신 측은 **“상대가 화면 공유 중”** 배지와 함께 상대 카메라를 작은 타일로 보여준다.
+  - 브라우저의 “공유 중지” 로 끝내도 `track.onended` 가 상태·송신을 정리하고 `call.screen(false)` 를 보낸다.
+  - 모바일 Safari 처럼 API 가 없는 브라우저에서는 버튼을 숨긴다.
 - **카메라 전환**: `enumerateDevices()` 의 `videoinput` 이 2개 이상일 때만 버튼을 노출하고,
-  미리보기 단계에서는 미리보기 스트림을, 연결 후에는 송신 트랙을 새 `facingMode` 로 교체한다.
+  미리보기 단계에서는 미리보기 스트림을, 연결 후에는 **카메라 트랜시버의 트랙만** 교체한다(화면 공유와 독립).
 
 ## 8. 상태 머신
 
@@ -207,6 +216,7 @@ idle ──invite(발신)──▶ outgoing ──accepted──▶ connecting �
 | 서버(WS) | 1:1 초대 중계(음성/영상 미디어 보존), 발신 기기 미반향, signal/accepted/ended 중계, 그룹 거부(`CALL_REQUIRES_DIRECT`), 비참여자 404 |
 | 서버(REST) | `/api/call/config` 인증, ICE 목록, `videoEnabled`, TURN 자격증명 HMAC, 스킴 검증·시크릿 필수 |
 | 서버(기록·푸시) | `finishCallLog` 가 확정 상태·수신자·미디어를 반환, 부재중만 Web Push(`type:"call"`, 발신자·SDP 미포함) |
+| 서버(WS) | `call.screen` 상태 중계(발신 기기 미반향, `sharing` 보존) |
 | 클라이언트 | 상태 머신, ICE 설정 정규화, 발신/수락/종료 핸들러, 통화 기록 라벨(음성/영상), 카메라 전환·화면 공유 헬퍼 |
 | E2E | 가짜 마이크·카메라(`--use-fake-device-for-media-stream`) 2브라우저: 음성 발신 → 수락 → 연결 → 음소거 → 종료 / 영상 발신 → **수락 전 내 미리보기 재생(videoWidth>0)+상대 대기 영역** → 수락 → 원격 영상 재생 → 카메라 끄기 → 종료 |
 

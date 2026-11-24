@@ -20,6 +20,8 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: "retain-on-failure",
+    // UI 문구 검증은 한국어 기준이다(브라우저 언어 감지로 영어가 되지 않게 고정).
+    locale: "ko-KR",
   },
   projects: [
     {

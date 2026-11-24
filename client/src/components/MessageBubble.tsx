@@ -465,6 +465,7 @@ export function MessageBubble({
   own,
   senderName,
   readLabel,
+  readDetail,
   renderMessage,
   edited = false,
   replyTarget,
@@ -484,6 +485,8 @@ export function MessageBubble({
   own: boolean;
   senderName: string;
   readLabel?: string | undefined;
+  /** 읽은 참여자별 시각(툴팁) */
+  readDetail?: string | undefined;
   /** 수정된 본문을 복호화할 때 사용하는 이벤트 메시지 */
   renderMessage?: MessageView | null;
   edited?: boolean;
@@ -674,6 +677,7 @@ export function MessageBubble({
         )}
 
         <p
+          title={own && readDetail ? readDetail : undefined}
           className={cn(
             "mt-1 text-right text-[10px]",
             own ? "text-accent-contrast/80" : "text-zinc-400",

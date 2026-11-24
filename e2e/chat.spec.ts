@@ -995,6 +995,56 @@ test("1:1 영상 통화: 발신 → 수락 → 카메라 끄기 → 종료", asy
   }
 });
 
+test("프로필 사진을 올리면 상대 화면에도 표시된다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("avatar");
+  const bobName = uniqueName("avatarpeer");
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+    await startConversation(alice, bobName);
+
+    // 1x1 PNG 를 올리면 128px JPEG 로 변환되어 저장된다.
+    await alice.goto("/contacts");
+    await alice.getByLabel("프로필 사진 선택").setInputFiles({
+      name: "avatar.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+        "base64",
+      ),
+    });
+    await expect(alice.getByText("프로필 사진을 변경했습니다.")).toBeVisible();
+    await expect(alice.getByRole("button", { name: "사진 삭제" })).toBeVisible();
+
+    // 상대(밥)는 대화 목록에서 알리스의 아바타 이미지를 받아 표시한다.
+    await bob.reload();
+    await expect(bob.getByTestId("avatar-image").first()).toBeVisible({ timeout: 20_000 });
+    await expect
+      .poll(
+        async () =>
+          await bob
+            .getByTestId("avatar-image")
+            .first()
+            .evaluate((node) => (node as HTMLImageElement).naturalWidth),
+        { timeout: 20_000 },
+      )
+      .toBeGreaterThan(0);
+
+    // 삭제하면 다시 이니셜로 돌아간다.
+    await alice.getByRole("button", { name: "사진 삭제" }).click();
+    await expect(alice.getByText("프로필 사진을 삭제했습니다.")).toBeVisible();
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("부재중 전화 배지가 생기고 대화를 열면 사라진다", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();

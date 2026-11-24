@@ -232,6 +232,20 @@
       "when": 1795527890087,
       "tag": "0032_foamy_ultimatum",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795532351036,
+      "tag": "0033_bored_thunderbolt_ross",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795532581026,
+      "tag": "0034_known_ultragirl",
+      "breakpoints": true
     }
   ]
 }

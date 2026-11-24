@@ -143,6 +143,11 @@ MVP 이후 과제를 순차 진행한다.
    - 프라이버시: 검색 인덱스는 "위치 공유"만, 위치 메시지 수정 불가, `Permissions-Policy: geolocation=(self)`
    - 테스트: 클라이언트 단위 8(페이로드 4·권한 4), E2E 1(Playwright `setGeolocation`), 서버 헤더 1
    - 후속: IP 기반 최근 접속 지역(관리/보안 화면), 실시간 위치 공유(정책 선행)
+14. **1:1 보완(뷰 원스·링크 미리보기·마지막 접속)** — 완료
+   - **한 번 보기**: `messages.view_once`(마이그레이션 0034) + `POST /messages/:id/viewed` → 열람 시 메시지·봉투·첨부 삭제 + `message.deleted` 브로드캐스트 · `docs/24-conversation-ux.md`
+   - **링크 미리보기**: `GET /api/link-preview`(SSRF 방어) → 메타데이터를 **암호문 안에** 담아 전송(서버 저장 없음), `LINK_PREVIEW_ENABLED` 로 끔 · `docs/33-link-preview.md`
+   - **마지막 접속(옵트인)**: `users.last_seen_at/last_seen_visible`(마이그레이션 0033), 기본 비공개, 대화 헤더에 `마지막 접속 N분 전` · `docs/26-contacts-profile.md`
+   - 테스트: 서버 +9(뷰 원스 2·링크 5·마지막 접속 2), 클라이언트 +7, E2E +1(뷰 원스)
 
 ## 리스크
 

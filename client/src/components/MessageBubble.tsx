@@ -1,4 +1,4 @@
-import { Download, FileText, Pause, Pencil, Pin, Play, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
+import { Download, EyeOff, FileText, Pause, Pencil, Pin, Play, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type MouseEvent } from "react";
 
 import {
@@ -11,10 +11,12 @@ import {
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock } from "../lib/format.ts";
 import { parseLocationPayload, type LocationPayload } from "../lib/location.ts";
+import { parseLinkMessage, previewHost, type LinkMessagePayload } from "../lib/linkPreviewMessage.ts";
 import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
 import { formatDuration } from "../lib/voice.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
+import { viewOnceHint } from "../lib/viewOnce.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { LocationCard } from "./LocationCard.tsx";
 import { cn } from "./ui.tsx";
@@ -376,6 +378,7 @@ type Result =
       text: string;
       attachment: AttachmentPayload | null;
       location: LocationPayload | null;
+      link: LinkMessagePayload | null;
     }
   | { status: "error"; detail: string };
 
@@ -423,12 +426,14 @@ function decryptCached(identity: StoredIdentity, message: MessageView): Promise<
     .then((decrypted): Result => {
       const attachment = parseAttachmentPayload(decrypted);
       const location = attachment ? null : parseLocationPayload(decrypted);
+      const link = attachment || location ? null : parseLinkMessage(decrypted);
       return {
         status: "ok",
-        // 위치는 카드로만 표시하고 base64 본문은 화면에 노출하지 않는다.
-        text: attachment ? attachment.text : location ? "" : decrypted,
+        // 위치·링크는 카드로만 표시하고 base64/JSON 본문은 화면에 노출하지 않는다.
+        text: attachment ? attachment.text : location ? "" : link ? link.text : decrypted,
         attachment,
         location,
+        link,
       };
     })
     .catch((error): Result => ({ status: "error", detail: failureDetail(error) }))
@@ -477,6 +482,8 @@ export function MessageBubble({
   onDelete,
   pinned = false,
   onTogglePin,
+  viewOnceLocked = false,
+  onOpenViewOnce,
   mentionNames = [],
   mentionUser,
 }: {
@@ -499,6 +506,9 @@ export function MessageBubble({
   onDelete?: (message: MessageView) => void;
   pinned?: boolean;
   onTogglePin?: (message: MessageView) => void;
+  /** 한 번 보기 메시지에서 수신자가 아직 열지 않은 상태 */
+  viewOnceLocked?: boolean;
+  onOpenViewOnce?: (message: MessageView) => void;
   /** 참여자 username 목록(멘션 강조용) */
   mentionNames?: string[];
   /** 현재 사용자 username. 이 값이 멘션되면 '나를 멘션' 배지를 표시한다. */
@@ -520,6 +530,8 @@ export function MessageBubble({
     void decryptCached(identity, source).then((value) => {
       if (!cancelled) setResult(value);
       if (value.status !== "ok" || message.kind !== "text") return;
+      // 한 번 보기 메시지는 로컬 검색 인덱스에 남기지 않는다(열람 후 삭제되어도 흔적 방지).
+      if (message.viewOnce) return;
       // 위치 공유는 좌표(base64) 대신 검색 가능한 문구로만 인덱싱한다.
       const searchable = (
         value.location
@@ -598,7 +610,40 @@ export function MessageBubble({
           </p>
         ) : null}
 
-        {result?.status === "ok" ? (
+        {viewOnceLocked ? (
+          <div className="space-y-2">
+            <p
+              className={cn(
+                "flex items-center gap-1.5 text-xs font-medium",
+                own ? "text-accent-contrast/90" : "text-zinc-800",
+              )}
+            >
+              <EyeOff className="h-3.5 w-3.5" aria-hidden />
+              한 번 보기
+            </p>
+            <p
+              className={cn(
+                "text-[11px] leading-relaxed",
+                own ? "text-accent-contrast/80" : "text-zinc-500",
+              )}
+            >
+              {viewOnceHint(own)}
+            </p>
+            <button
+              type="button"
+              data-testid="view-once-open"
+              onClick={() => onOpenViewOnce?.(message)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-medium",
+                own
+                  ? "bg-white/20 text-accent-contrast hover:bg-white/30"
+                  : "bg-accent-600 text-accent-contrast hover:bg-accent-700",
+              )}
+            >
+              열기
+            </button>
+          </div>
+        ) : result?.status === "ok" ? (
           <div className="space-y-1.5">
             {result.text ? (
               <p className="whitespace-pre-wrap break-words leading-relaxed">
@@ -659,6 +704,42 @@ export function MessageBubble({
               <AttachmentCard attachment={result.attachment} own={own} />
             ) : null}
             {result.location ? <LocationCard location={result.location} own={own} /> : null}
+            {result.link ? (
+              <a
+                href={result.link.preview.url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                data-testid="link-preview"
+                className={cn(
+                  "block rounded-lg border px-2.5 py-2 text-xs transition-colors",
+                  own
+                    ? "border-white/30 bg-white/10 hover:bg-white/15"
+                    : "border-zinc-200 bg-zinc-50 hover:bg-zinc-100",
+                )}
+              >
+                <span
+                  className={cn(
+                    "block truncate text-[10px] uppercase tracking-wide",
+                    own ? "text-accent-contrast/70" : "text-zinc-400",
+                  )}
+                >
+                  {result.link.preview.siteName ?? previewHost(result.link.preview.url)}
+                </span>
+                {result.link.preview.title ? (
+                  <span className="mt-0.5 block font-medium">{result.link.preview.title}</span>
+                ) : null}
+                {result.link.preview.description ? (
+                  <span
+                    className={cn(
+                      "mt-0.5 line-clamp-2 block",
+                      own ? "text-accent-contrast/80" : "text-zinc-500",
+                    )}
+                  >
+                    {result.link.preview.description}
+                  </span>
+                ) : null}
+              </a>
+            ) : null}
           </div>
         ) : result?.status === "error" ? (
           <p
@@ -684,6 +765,7 @@ export function MessageBubble({
           )}
         >
           {formatClock(message.createdAt)}
+          {message.viewOnce ? " · 한 번 보기" : ""}
           {edited ? " · 수정됨" : ""}
           {own && readLabel ? ` · ${readLabel}` : ""}
         </p>

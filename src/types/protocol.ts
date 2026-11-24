@@ -1,4 +1,4 @@
-/** REST·WebSocket 공통 와이어 타입. */
+﻿/** REST·WebSocket 공통 와이어 타입. */
 
 export interface PublicUser {
   id: string;
@@ -6,6 +6,8 @@ export interface PublicUser {
   statusMessage: string | null;
   /** 공개 프로필 아바타가 있으면 마지막 변경 시각(캐시 무효화용) */
   avatarUpdatedAt: string | null;
+  /** 마지막 접속 시각 공개(옵트인) 여부. 내 프로필에서만 의미가 있다 */
+  lastSeenVisible: boolean;
   createdAt: string;
   deleted: boolean;
   /** ADMIN_USERNAMES allowlist 에 포함된 경우에만 true */
@@ -27,6 +29,8 @@ export interface PeerUser {
   statusMessage: string | null;
   /** 공개 프로필 아바타가 있으면 마지막 변경 시각(없으면 null) */
   avatarUpdatedAt: string | null;
+  /** 마지막 접속 시각. 상대가 공개를 켜지 않았거나 삭제된 계정이면 null */
+  lastSeenAt: string | null;
   deleted: boolean;
 }
 
@@ -120,6 +124,8 @@ export interface MessageView {
   senderKeyIteration: number | null;
   /** 대화 상단에 고정되었는지(메타데이터). */
   pinned: boolean;
+  /** 한 번 보기: 수신자가 열람하면 서버에서 삭제된다. */
+  viewOnce: boolean;
   createdAt: string;
   key: DeviceKeyEnvelope | null;
 }
@@ -192,6 +198,8 @@ export type ClientFrame =
       conversationId: string;
       clientMessageId: string;
       kind?: "text" | "reaction" | "edit";
+      /** 한 번 보기(수신자 열람 시 삭제) */
+      viewOnce?: boolean;
       targetMessageId?: string;
       ciphertext: string;
       nonce: string;

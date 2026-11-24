@@ -1,4 +1,4 @@
-import express, { Router, type Request } from "express";
+﻿import express, { Router, type Request } from "express";
 
 import { isAdminUsername } from "../auth/admin.js";
 import { DEFAULT_IDLE_TIMEOUT_SECONDS } from "../auth/idleTimeout.js";
@@ -38,6 +38,7 @@ import {
   updateThemeBodySchema,
   updateProfileBodySchema,
   updateAvatarBodySchema,
+  updateLastSeenBodySchema,
 } from "../http/validation.js";
 import {
   addOneTimePreKeys,
@@ -52,6 +53,7 @@ import {
   registerAccount,
   registerDevice,
   updateDeviceSignedPreKey,
+  updateLastSeenVisibility,
   updateSessionIdleTimeout,
   updateUserStatus,
   updateUserTheme,
@@ -534,6 +536,25 @@ export function createAuthRouter(db: Database, config: Config): Router {
       await clearUserAvatar(db, { userId: auth.userId });
       const user = await findUserById(db, auth.userId);
       if (!user) throw AppError.unauthorized();
+      res.json({ user: authUser(user) });
+    }),
+  );
+
+  /**
+   * 마지막 접속 시각 공개 여부(옵트인).
+   * 기본은 비공개이며, 켜면 대화 상대에게 `peer.lastSeenAt` 이 노출된다.
+   */
+  router.put(
+    "/profile/last-seen",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = updateLastSeenBodySchema.parse(req.body);
+      const user = await updateLastSeenVisibility(db, {
+        userId: auth.userId,
+        visible: body.visible,
+      });
       res.json({ user: authUser(user) });
     }),
   );

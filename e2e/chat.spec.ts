@@ -1045,6 +1045,51 @@ test("프로필 사진을 올리면 상대 화면에도 표시된다", async ({ 
   }
 });
 
+test("한 번 보기 메시지는 상대가 열면 양쪽에서 사라진다", async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const bobContext = await browser.newContext();
+  const alice = await aliceContext.newPage();
+  const bob = await bobContext.newPage();
+  const aliceName = uniqueName("viewonce");
+  const bobName = uniqueName("viewoncepeer");
+  const secret = `일회성-${Date.now()}`;
+
+  try {
+    await register(alice, aliceName);
+    await register(bob, bobName);
+    await expect(alice.getByTitle("실시간 연결됨")).toBeVisible();
+    await expect(bob.getByTitle("실시간 연결됨")).toBeVisible();
+    await startConversation(alice, bobName);
+
+    // 발신: 한 번 보기 모드를 켜고 전송한다.
+    await alice.getByRole("button", { name: "한 번 보기" }).click();
+    await expect(alice.getByRole("button", { name: "한 번 보기" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await sendMessage(alice, secret);
+    await expect(alice.getByText("한 번 보기: 상대가 열면 양쪽에서 삭제됩니다.")).toHaveCount(0);
+
+    // 수신: 내용은 숨겨지고 '열기' 버튼이 보인다.
+    await bob.getByRole("button", { name: new RegExp(aliceName) }).click();
+    await expect(bob.getByTestId("view-once-open").first()).toBeVisible({ timeout: 20_000 });
+    await expect(bob.getByText(secret)).toHaveCount(0);
+
+    // 열면 서버가 삭제하고 양쪽 모두에서 사라진다.
+    await bob.getByTestId("view-once-open").first().click();
+    await expect(bob.getByText(secret)).toHaveCount(0);
+    await expect
+      .poll(async () => await bob.getByTestId("view-once-open").count(), { timeout: 20_000 })
+      .toBe(0);
+    await expect
+      .poll(async () => await alice.getByText(secret).count(), { timeout: 20_000 })
+      .toBe(0);
+  } finally {
+    await aliceContext.close();
+    await bobContext.close();
+  }
+});
+
 test("부재중 전화 배지가 생기고 대화를 열면 사라진다", async ({ browser }) => {
   const aliceContext = await browser.newContext();
   const bobContext = await browser.newContext();

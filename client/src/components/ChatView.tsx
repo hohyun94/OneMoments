@@ -1,4 +1,4 @@
-import {
+﻿import {
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -12,7 +12,9 @@ import {
   Bell,
   BellOff,
   Clock,
+  EyeOff,
   History,
+  Link2,
   MapPin,
   Mic,
   Pencil,
@@ -55,7 +57,7 @@ import {
   type PreparedSenderKeyMessage,
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
-import { formatBytes, formatClock, formatDayLabel } from "../lib/format.ts";
+import { formatBytes, formatClock, formatDayLabel, formatRelativeTime } from "../lib/format.ts";
 import { applyMention, mentionQueryAtCursor } from "../lib/mentions.ts";
 import {
   MAX_VOICE_SECONDS,
@@ -67,6 +69,13 @@ import { computeWaveform } from "../lib/waveform.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { describeReads, readersFor } from "../lib/readReceipts.ts";
+import { isViewOnceLocked } from "../lib/viewOnce.ts";
+import {
+  encodeLinkMessage,
+  extractFirstUrl,
+  previewHost,
+  type LinkPreviewMeta,
+} from "../lib/linkPreviewMessage.ts";
 import { useRealtime } from "../realtime.tsx";
 import { useCall } from "../calls.tsx";
 import type {
@@ -105,6 +114,8 @@ interface PendingMessage {
   plaintext: string;
   kind?: "text" | "reaction" | "edit";
   targetMessageId?: string;
+  /** 한 번 보기(수신자 열람 시 서버에서 삭제). */
+  viewOnce?: boolean;
 }
 
 interface PendingAttachment {
@@ -292,6 +303,14 @@ export function ChatView({
   });
 
   const [draft, setDraft] = useState("");
+  /** 다음 전송을 한 번 보기로 보낼지. */
+  const [viewOnce, setViewOnce] = useState(false);
+  /** 수신자가 이번 세션에서 이미 연 한 번 보기 메시지(내용 표시용). */
+  const [openedViewOnce, setOpenedViewOnce] = useState<Set<string>>(() => new Set());
+  /** 첨부할 링크 미리보기(서버가 OG 메타데이터만 가져오고 저장하지 않는다). */
+  const [linkPreview, setLinkPreview] = useState<LinkPreviewMeta | null>(null);
+  const [linkPreviewBusy, setLinkPreviewBusy] = useState(false);
+  const [linkPreviewError, setLinkPreviewError] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const draftRef = useRef<HTMLTextAreaElement>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -579,6 +598,13 @@ export function ChatView({
     .filter((name): name is string => Boolean(name));
   const peerOnline =
     !isGroup && peer ? onlineUsers(conversation.id).includes(peer.id) : false;
+  /** 본문에 URL 이 있으면 미리보기 버튼을 노출한다. */
+  const draftUrl = extractFirstUrl(draft);
+
+  // 본문에서 URL 이 사라지면 첨부해 둔 미리보기도 버린다.
+  useEffect(() => {
+    if (linkPreview && !draft.includes(linkPreview.url)) setLinkPreview(null);
+  }, [draft, linkPreview]);
 
   useEffect(() => {
     setDraft("");
@@ -703,6 +729,7 @@ export function ChatView({
             body: {
               ...prepared.payload,
               kind: pending.kind ?? "text",
+              ...(pending.viewOnce ? { viewOnce: true } : {}),
               ...(pending.targetMessageId
                 ? { targetMessageId: pending.targetMessageId }
                 : {}),
@@ -733,6 +760,7 @@ export function ChatView({
           body: {
             ...payload,
             kind: pending.kind ?? "text",
+            ...(pending.viewOnce ? { viewOnce: true } : {}),
             ...(pending.targetMessageId
               ? { targetMessageId: pending.targetMessageId }
               : {}),
@@ -1015,6 +1043,7 @@ export function ChatView({
             ...(item.waveform ? { waveform: item.waveform } : {}),
           }),
           kind: "text",
+          viewOnce: index === 0 ? viewOnce : false,
           targetMessageId: index === 0 ? targetMessageId : undefined,
         });
       }
@@ -1022,8 +1051,12 @@ export function ChatView({
       if (attachments.length === 0) {
         queue.push({
           clientMessageId: crypto.randomUUID(),
-          plaintext: text,
+          plaintext:
+            linkPreview !== null
+              ? encodeLinkMessage({ text, preview: linkPreview })
+              : text,
           kind: "text",
+          viewOnce,
           targetMessageId,
         });
       }
@@ -1034,6 +1067,8 @@ export function ChatView({
         await deliver(pending);
       }
       setAttachments([]);
+      setViewOnce(false);
+      setLinkPreview(null);
       if (pendingRef.current === null) setReplyTarget(null);
     } catch (error) {
       if (error instanceof AttachmentError) {
@@ -1049,6 +1084,43 @@ export function ChatView({
       }
     } finally {
       setSending(false);
+    }
+  }
+
+  /** 링크 미리보기를 서버에서 가져온다(공개 메타데이터, 서버 저장 없음). */
+  async function loadLinkPreview(url: string): Promise<void> {
+    if (linkPreviewBusy) return;
+    setLinkPreviewBusy(true);
+    setLinkPreviewError(null);
+    try {
+      const response = await api<{ preview: LinkPreviewMeta | null }>(
+        `/api/link-preview?url=${encodeURIComponent(url)}`,
+      );
+      if (response.preview) {
+        setLinkPreview(response.preview);
+      } else {
+        setLinkPreviewError("미리보기를 가져올 수 없습니다.");
+      }
+    } catch {
+      setLinkPreviewError("미리보기를 가져올 수 없습니다.");
+    } finally {
+      setLinkPreviewBusy(false);
+    }
+  }
+
+  /** 다른 참여자가 보낸 한 번 보기 메시지를 연다(열람 알림 → 서버가 삭제). */
+  async function openViewOnce(target: MessageView): Promise<void> {
+    setOpenedViewOnce((previous) => {
+      const next = new Set(previous);
+      next.add(target.id);
+      return next;
+    });
+    try {
+      await api(`/api/conversations/${conversation.id}/messages/${target.id}/viewed`, {
+        method: "POST",
+      });
+    } catch {
+      // 삭제 알림은 서버/WS 가 처리한다. 실패해도 이미 열어 본 내용은 유지한다.
     }
   }
 
@@ -1210,7 +1282,9 @@ export function ChatView({
                     : "차단됨"
                   : peerOnline
                     ? "온라인"
-                    : "오프라인"}
+                    : peer?.lastSeenAt
+                      ? `마지막 접속 ${formatRelativeTime(peer.lastSeenAt)}`
+                      : "오프라인"}
                 {peer?.statusMessage ? ` · ${peer.statusMessage}` : ""}
                 {conversation.autoDeleteAfterReadSeconds !== null
                   ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
@@ -1487,6 +1561,12 @@ export function ChatView({
                             pinned: !target.pinned,
                           })
                         }
+                        viewOnceLocked={isViewOnceLocked({
+                          viewOnce: message.viewOnce,
+                          own: message.senderUserId === currentUserId,
+                          opened: openedViewOnce.has(message.id),
+                        })}
+                        onOpenViewOnce={(target) => void openViewOnce(target)}
                         mentionNames={mentionNames}
                         mentionUser={currentUsername}
                         onReply={(target, text) => {
@@ -1687,6 +1767,46 @@ export function ChatView({
                 ))}
               </div>
             ) : null}
+            {viewOnce ? (
+              <p className="mb-1.5 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+                <EyeOff className="h-3 w-3" aria-hidden />
+                한 번 보기: 상대가 열면 양쪽에서 삭제됩니다.
+              </p>
+            ) : null}
+            {draftUrl && !linkPreview && attachments.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => void loadLinkPreview(draftUrl)}
+                disabled={linkPreviewBusy}
+                className="mb-1.5 inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+              >
+                <Link2 className="h-3 w-3" aria-hidden />
+                {linkPreviewBusy ? "미리보기 불러오는 중…" : "링크 미리보기"}
+              </button>
+            ) : null}
+            {linkPreview ? (
+              <div className="mb-1.5 flex items-start gap-2 rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-[11px]">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-zinc-800">
+                    {linkPreview.title ?? linkPreview.url}
+                  </p>
+                  <p className="truncate text-zinc-400">
+                    {linkPreview.siteName ?? previewHost(linkPreview.url)}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLinkPreview(null)}
+                  aria-label="링크 미리보기 제거"
+                  className="text-zinc-400 hover:text-zinc-600"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
+            ) : null}
+            {linkPreviewError ? (
+              <p className="mb-1.5 text-[11px] text-rose-600">{linkPreviewError}</p>
+            ) : null}
             <div className="flex items-end gap-2">
               <input
                 ref={fileInputRef}
@@ -1719,6 +1839,18 @@ export function ChatView({
                 title="현재 위치 보내기"
               >
                 <MapPin className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant={viewOnce ? "default" : "ghost"}
+                size="icon"
+                onClick={() => setViewOnce((value) => !value)}
+                disabled={sending || editing !== null || recordingSeconds !== null}
+                aria-label="한 번 보기"
+                aria-pressed={viewOnce}
+                title={viewOnce ? "한 번 보기 끄기" : "한 번 보기(상대가 열면 양쪽에서 삭제)"}
+              >
+                <EyeOff className="h-4 w-4" />
               </Button>
               <Button
                 type="button"

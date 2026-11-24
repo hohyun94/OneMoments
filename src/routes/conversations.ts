@@ -489,6 +489,51 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
     }),
   );
 
+  /**
+   * 한 번 보기 메시지 열람.
+   *
+   * 수신자가 열람을 알리면 서버가 메시지·기기 봉투·첨부를 삭제하고 모든 기기에 알린다.
+   * 발신자는 열람 처리할 수 없다.
+   */
+  router.post(
+    "/:conversationId/messages/:messageId/viewed",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { conversationId, messageId } = messageIdParamsSchema.parse(req.params);
+      await requireParticipant(db, { conversationId, userId: auth.userId });
+
+      const [message] = await db
+        .select({ senderUserId: messages.senderUserId, viewOnce: messages.viewOnce })
+        .from(messages)
+        .where(and(eq(messages.id, messageId), eq(messages.conversationId, conversationId)))
+        .limit(1);
+      if (!message) throw AppError.notFound("MESSAGE_NOT_FOUND", "Message not found");
+      if (!message.viewOnce) {
+        throw AppError.badRequest("NOT_VIEW_ONCE", "This message is not view-once");
+      }
+      if (message.senderUserId === auth.userId) {
+        throw AppError.forbidden("Only the recipient can open a view-once message");
+      }
+
+      const result = await deleteMessagesAndArtifacts(db, attachmentStorage, {
+        conversationId,
+        messageIds: [messageId],
+      });
+      if (result.deletedMessageIds.length > 0) {
+        const participantUserIds = await listParticipantUserIds(db, conversationId);
+        bus.publish({
+          type: "message.deleted",
+          conversationId,
+          messageIds: result.deletedMessageIds,
+          participantUserIds,
+        });
+      }
+      res.json({ opened: true, deletedMessageIds: result.deletedMessageIds });
+    }),
+  );
+
   /** 메시지 고정 토글(메타데이터만). 1:1 은 참여자, 그룹은 owner 또는 발신자만. */
   router.put(
     "/:conversationId/messages/:messageId/pin",
@@ -525,6 +570,7 @@ export function createConversationsRouter(options: ConversationsRouterOptions): 
         senderDeviceId: auth.deviceId,
         payload: body,
         kind: body.kind,
+        viewOnce: body.viewOnce,
         targetMessageId: body.targetMessageId,
       });
       // 멱등 재전송은 새 이벤트가 아니므로 다시 브로드캐스트하지 않는다.

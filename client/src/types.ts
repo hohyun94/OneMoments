@@ -7,6 +7,8 @@ export interface PublicUser {
   statusMessage: string | null;
   /** 공개 프로필 아바타 마지막 변경 시각(없으면 null) */
   avatarUpdatedAt: string | null;
+  /** 마지막 접속 시각 공개(옵트인) 여부 */
+  lastSeenVisible: boolean;
   createdAt: string;
   deleted: boolean;
   /** ADMIN_USERNAMES allowlist 에 포함된 경우에만 true */
@@ -18,6 +20,8 @@ export interface PeerUser {
   username: string | null;
   statusMessage: string | null;
   avatarUpdatedAt: string | null;
+  /** 상대가 공개를 켰을 때만 채워진다 */
+  lastSeenAt: string | null;
   deleted: boolean;
 }
 
@@ -144,6 +148,8 @@ export interface MessageView {
   senderKeyIteration: number | null;
   /** 대화 상단에 고정되었는지(메타데이터). */
   pinned: boolean;
+  /** 한 번 보기: 수신자가 열람하면 서버에서 삭제된다. */
+  viewOnce: boolean;
   createdAt: string;
   key: DeviceKeyEnvelope | null;
 }

@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 const DEVELOPMENT_SESSION_SECRET =
   "onemoments-development-only-session-secret-do-not-use";
@@ -106,6 +106,8 @@ const envSchema = z.object({
   GOOGLE_USERINFO_URL: z.string().url().default("https://openidconnect.googleapis.com/v1/userinfo"),
   OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
   OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
+  // 링크 미리보기: 서버가 외부 OG 메타데이터를 대신 가져온다(SSRF 방어 적용).
+  LINK_PREVIEW_ENABLED: z.enum(["true", "false"]).default("true"),
   // 1:1 음성 통화(WebRTC). 시그널링은 기존 WS 로, 미디어는 P2P(불가 시 TURN) 로 흐른다.
   CALL_ENABLED: z.enum(["true", "false"]).default("true"),
   CALL_VIDEO_ENABLED: z.enum(["true", "false"]).default("true"),
@@ -130,6 +132,8 @@ export interface Config {
   cookieSecure: boolean;
   corsOrigins: string[];
   adminUsernames: string[];
+  /** 링크 미리보기(서버가 외부 OG 메타데이터를 대신 가져옴) */
+  linkPreviewEnabled: boolean;
   maxCiphertextBytes: number;
   maxEnvelopes: number;
   authRateLimitMax: number;
@@ -282,6 +286,7 @@ export function loadConfig(env: Env = process.env): Config {
     adminUsernames: value.ADMIN_USERNAMES.split(",")
       .map((username) => username.trim().toLowerCase())
       .filter((username) => username.length > 0),
+    linkPreviewEnabled: value.LINK_PREVIEW_ENABLED === "true",
     maxCiphertextBytes: value.MAX_CIPHERTEXT_BYTES,
     maxEnvelopes: value.MAX_ENVELOPES,
     authRateLimitMax: value.AUTH_RATE_LIMIT_MAX,

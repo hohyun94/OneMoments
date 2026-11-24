@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "view_once" boolean DEFAULT false NOT NULL;

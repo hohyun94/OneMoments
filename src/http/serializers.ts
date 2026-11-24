@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ConversationRow,
   DeviceRow,
   MessageKeyRow,
@@ -29,6 +29,7 @@ export function toPublicUser(row: UserRow): PublicUser {
     username: row.username,
     statusMessage: row.statusMessage,
     avatarUpdatedAt: iso(row.avatarUpdatedAt),
+    lastSeenVisible: row.lastSeenVisible,
     createdAt: row.createdAt.toISOString(),
     deleted: row.deletedAt !== null,
   };
@@ -41,6 +42,8 @@ export function toPeerUser(row: UserRow): PeerUser {
     username: deleted ? null : row.username,
     statusMessage: deleted ? null : row.statusMessage,
     avatarUpdatedAt: deleted ? null : iso(row.avatarUpdatedAt),
+    // 공개를 켠 계정만 마지막 접속 시각을 노출한다.
+    lastSeenAt: deleted || !row.lastSeenVisible ? null : iso(row.lastSeenAt),
     deleted,
   };
 }
@@ -140,6 +143,7 @@ export function toMessageView(row: MessageRow, key: MessageKeyRow | null): Messa
     senderDeviceId: row.senderDeviceId,
     senderSigningPublicKey: row.senderSigningPublicKey,
     kind: row.kind as "text" | "reaction" | "edit",
+    viewOnce: row.viewOnce,
     targetMessageId: row.targetMessageId,
     ciphertext: row.ciphertext,
     nonce: row.nonce,

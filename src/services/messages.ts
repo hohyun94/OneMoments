@@ -24,6 +24,8 @@ export interface CreateMessageInput {
   senderSigningPublicKey: string;
   payload: NormalizedMessagePayload;
   kind: "text" | "reaction" | "edit";
+  /** 한 번 보기 메시지(수신자가 열람하면 삭제). text 메시지에만 적용된다. */
+  viewOnce?: boolean;
   targetMessageId?: string | undefined;
 }
 
@@ -106,6 +108,7 @@ export async function createMessage(
         clientMessageId: payload.clientMessageId,
         kind: input.kind,
         targetMessageId: input.targetMessageId ?? null,
+        viewOnce: input.kind === "text" ? (input.viewOnce ?? false) : false,
         senderKeyId: payload.senderKeyId,
         senderKeyIteration: payload.senderKeyIteration,
       })

@@ -28,6 +28,7 @@ interface ActiveDevice {
 interface MessageView {
   id: string;
   kind: "text" | "reaction" | "edit";
+  viewOnce: boolean;
   targetMessageId: string | null;
   clientMessageId: string;
   senderUserId: string;
@@ -75,7 +76,11 @@ async function sendMessage(
   conversationId: string,
   clientMessageId: string,
   plaintext: string,
-  options: { kind?: "text" | "reaction" | "edit"; targetMessageId?: string } = {},
+  options: {
+    kind?: "text" | "reaction" | "edit";
+    targetMessageId?: string;
+    viewOnce?: boolean;
+  } = {},
 ) {
   const devices = await activeDevices(sender.client, conversationId);
   const payload = encryptMessage({
@@ -95,6 +100,7 @@ async function sendMessage(
       body: {
         ...payload,
         kind: options.kind ?? "text",
+        ...(options.viewOnce ? { viewOnce: true } : {}),
         ...(options.targetMessageId
           ? { targetMessageId: options.targetMessageId }
           : {}),
@@ -360,5 +366,65 @@ describe("conversation UX message kinds", () => {
       `/api/conversations/${conversationId}/messages/${sent.body.message.id}?scope=me`,
     );
     expect(response.status).toBe(404);
+  });
+
+  it("deletes a view-once message for everyone once the recipient opens it", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createDirect(alice, bob);
+
+    const sent = await sendMessage(alice, conversationId, "vo1", "secret once", {
+      viewOnce: true,
+    });
+    expect(sent.status).toBe(201);
+    expect(sent.body.message.viewOnce).toBe(true);
+    const messageId = sent.body.message.id as string;
+
+    // 상대 이력에도 한 번 보기 표시가 실린다.
+    const forBob = await listMessages(bob.client, conversationId);
+    expect(forBob.find((item) => item.id === messageId)?.viewOnce).toBe(true);
+
+    // 발신자는 열람 처리할 수 없다.
+    const bySender = await alice.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages/${messageId}/viewed`,
+    );
+    expect(bySender.status).toBe(403);
+
+    // 수신자가 열람하면 양쪽 이력에서 사라진다.
+    const opened = await bob.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages/${messageId}/viewed`,
+    );
+    expect(opened.status).toBe(200);
+    expect(opened.body.opened).toBe(true);
+    expect(opened.body.deletedMessageIds).toEqual([messageId]);
+
+    const bobAfter = await listMessages(bob.client, conversationId);
+    expect(bobAfter.some((item) => item.id === messageId)).toBe(false);
+    const aliceAfter = await listMessages(alice.client, conversationId);
+    expect(aliceAfter.some((item) => item.id === messageId)).toBe(false);
+  });
+
+  it("rejects opening a normal message as view-once and non-participants", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const carol = await registerAccount("carol");
+    const conversationId = await createDirect(alice, bob);
+    const sent = await sendMessage(alice, conversationId, "plain1", "hi");
+    const messageId = sent.body.message.id as string;
+
+    const notViewOnce = await bob.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages/${messageId}/viewed`,
+    );
+    expect(notViewOnce.status).toBe(400);
+    expect(notViewOnce.body.error.code).toBe("NOT_VIEW_ONCE");
+
+    const stranger = await carol.client.request(
+      "POST",
+      `/api/conversations/${conversationId}/messages/${messageId}/viewed`,
+    );
+    expect(stranger.status).toBe(404);
   });
 });

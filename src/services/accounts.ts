@@ -354,6 +354,38 @@ export async function updateUserStatus(
   return user;
 }
 
+/** 마지막 접속 시각 공개 여부(옵트인)를 저장한다. */
+export async function updateLastSeenVisibility(
+  db: Database,
+  input: { userId: string; visible: boolean },
+): Promise<UserRow> {
+  const [user] = await db
+    .update(users)
+    .set({ lastSeenVisible: input.visible })
+    .where(and(eq(users.id, input.userId), isNull(users.deletedAt)))
+    .returning();
+  if (!user) throw AppError.unauthorized("Unknown account");
+  return user;
+}
+
+/**
+ * 마지막 접속 시각을 갱신한다.
+ *
+ * WS 연결/해제마다 호출되므로 60초에 한 번만 실제 쓰기를 한다(불필요한 UPDATE 방지).
+ */
+export async function touchUserLastSeen(db: Database, userId: string): Promise<void> {
+  await db
+    .update(users)
+    .set({ lastSeenAt: sql`now()` })
+    .where(
+      and(
+        eq(users.id, userId),
+        isNull(users.deletedAt),
+        sql`(${users.lastSeenAt} is null or ${users.lastSeenAt} < now() - interval '60 seconds')`,
+      ),
+    );
+}
+
 /**
  * 계정 익명화 삭제.
  * 세션·기기를 무효화하고 계정을 deleted_at 으로 표시하되, 메시지는 유지한다.

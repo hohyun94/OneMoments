@@ -104,6 +104,8 @@ interface SessionContextValue {
   uploadAvatar: (file: File) => Promise<void>;
   /** 공개 프로필 아바타를 지운다. */
   removeAvatar: () => Promise<void>;
+  /** 마지막 접속 시각 공개 여부(옵트인)를 저장한다. */
+  updateLastSeenVisibility: (visible: boolean) => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -688,6 +690,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSession((current) => (current ? { ...current, user: response.user } : current));
   }, []);
 
+  /** 마지막 접속 시각 공개 여부(옵트인, 기본 비공개). */
+  const updateLastSeenVisibility = useCallback(async (visible: boolean) => {
+    const response = await api<{ user: PublicUser }>("/api/auth/profile/last-seen", {
+      method: "PUT",
+      body: { visible },
+    });
+    setSession((current) => (current ? { ...current, user: response.user } : current));
+  }, []);
+
   // 무활동 자동 로그아웃: 입력/스크롤/포인터 활동이 없으면 세션과 화면 캐시를 지운다.
   // 값은 기기 기본값 또는 세션 오버라이드를 따르며, 설정 변경 시 타이머가 재시작된다.
   const idleTimeoutMs = idleTimeoutSeconds * 1000;
@@ -750,6 +761,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateStatusMessage,
       uploadAvatar,
       removeAvatar,
+      updateLastSeenVisibility,
       oauthEnabled,
       googleLinked,
       hasPassword,
@@ -778,6 +790,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateStatusMessage,
       uploadAvatar,
       removeAvatar,
+      updateLastSeenVisibility,
       oauthEnabled,
       googleLinked,
       hasPassword,

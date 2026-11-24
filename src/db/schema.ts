@@ -37,6 +37,9 @@ export const users = pgTable(
     themeAccent: text("theme_accent").notNull().default("violet"),
     // 공개 프로필 상태 메시지(최대 80자, 메시지 암호화 대상 아님).
     statusMessage: text("status_message"),
+    // 마지막 접속 시각(WS 연결/해제 시 갱신). 공개 여부는 사용자가 옵트인한다.
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    lastSeenVisible: boolean("last_seen_visible").notNull().default(false),
     // 공개 프로필 아바타. 상태 메시지와 같은 공개 메타데이터로, base64 텍스트(최대 256KB)로 저장한다.
     avatarMime: text("avatar_mime"),
     avatarData: text("avatar_data"),
@@ -284,6 +287,8 @@ export const messages = pgTable(
     senderKeyIteration: integer("sender_key_iteration"),
     /** 대화 상단에 고정된 시각. null 이면 고정 아님(내용은 여전히 암호문). */
     pinnedAt: timestamp("pinned_at", { withTimezone: true }),
+    /** 한 번 보기: 수신자가 열람하면 서버에서 메시지·봉투·첨부를 삭제한다. */
+    viewOnce: boolean("view_once").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

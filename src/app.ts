@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+﻿import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,6 +20,7 @@ import { createCallsRouter } from "./routes/calls.js";
 import { createConversationsRouter } from "./routes/conversations.js";
 import { createContactsRouter } from "./routes/contacts.js";
 import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
+import { createLinkPreviewRouter } from "./routes/linkPreview.js";
 import { createPushRouter } from "./routes/push.js";
 import { createInvitesRouter } from "./routes/invites.js";
 import { createMomentsRouter } from "./routes/moments.js";
@@ -129,6 +130,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/invites", createInvitesRouter({ db, config }));
   app.use("/api/attachments", createAttachmentsRouter(db, config));
   app.use("/api/call", createCallsRouter(db, config));
+  app.use("/api/link-preview", createLinkPreviewRouter(db, config));
   app.use("/api/moments", createMomentsRouter(db, config));
   app.use("/api/contacts", createContactsRouter(db, config));
   app.use("/api/conversations", createConversationsRouter({ db, config, bus }));

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Ban,
@@ -30,7 +30,8 @@ import { useSession } from "../session.tsx";
 import type { ContactView } from "../types.ts";
 
 export function ContactsPage() {
-  const { session, updateStatusMessage, uploadAvatar, removeAvatar } = useSession();
+  const { session, updateStatusMessage, uploadAvatar, removeAvatar, updateLastSeenVisibility } =
+    useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [statusDraft, setStatusDraft] = useState(session?.user.statusMessage ?? "");
@@ -40,6 +41,8 @@ export function ContactsPage() {
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarMessage, setAvatarMessage] = useState<string | null>(null);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [lastSeenBusy, setLastSeenBusy] = useState(false);
+  const [lastSeenError, setLastSeenError] = useState<string | null>(null);
   const [blockTarget, setBlockTarget] = useState<ContactView | null>(null);
 
   useEffect(() => {
@@ -146,6 +149,18 @@ export function ContactsPage() {
     }
   }
 
+  async function toggleLastSeen(visible: boolean): Promise<void> {
+    setLastSeenError(null);
+    setLastSeenBusy(true);
+    try {
+      await updateLastSeenVisibility(visible);
+    } catch {
+      setLastSeenError("설정을 저장하지 못했습니다.");
+    } finally {
+      setLastSeenBusy(false);
+    }
+  }
+
   return (
     <div className="min-h-dvh bg-zinc-50">
       <header className="border-b border-zinc-200 bg-white">
@@ -224,6 +239,25 @@ export function ContactsPage() {
           {avatarError ? (
             <div className="mt-2">
               <Alert variant="error">{avatarError}</Alert>
+            </div>
+          ) : null}
+          <label className="mt-4 flex items-start gap-2 rounded-lg border border-zinc-200 p-3 text-xs text-zinc-600">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 accent-current"
+              checked={session.user.lastSeenVisible}
+              disabled={lastSeenBusy}
+              onChange={(event) => void toggleLastSeen(event.target.checked)}
+            />
+            <span>
+              <span className="font-medium text-zinc-800">마지막 접속 시간 공개</span>
+              <br />
+              끄면 대화 상대에게 접속 시각이 보이지 않습니다(기본: 비공개).
+            </span>
+          </label>
+          {lastSeenError ? (
+            <div className="mt-2">
+              <Alert variant="error">{lastSeenError}</Alert>
             </div>
           ) : null}
           <form className="mt-4" onSubmit={(event) => void saveStatus(event)}>

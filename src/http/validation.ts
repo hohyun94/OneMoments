@@ -180,6 +180,7 @@ export const sendMessageBodySchema = z.object({
     .max(64, "clientMessageId must be at most 64 characters")
     .regex(/^[A-Za-z0-9_-]+$/, "clientMessageId may contain letters, digits, dash, underscore"),
   kind: messageKindSchema.default("text"),
+  viewOnce: z.boolean().default(false),
   targetMessageId: z.string().uuid().optional(),
   ciphertext: z.string().min(1, "ciphertext is required"),
   nonce: z.string().min(1, "nonce is required"),
@@ -322,6 +323,11 @@ export const updateProfileBodySchema = z.object({
 
 export const contactUserIdParamsSchema = z.object({
   userId: z.string().uuid(),
+});
+
+/** 마지막 접속 시각 공개 여부(옵트인). */
+export const updateLastSeenBodySchema = z.object({
+  visible: z.boolean(),
 });
 
 /** 공개 프로필 아바타 업로드. base64(패딩 없이 허용) + 허용 MIME 만 받는다. */

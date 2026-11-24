@@ -30,6 +30,8 @@ export interface SendEncryptedMessageInput {
   senderDeviceId: string;
   payload: MessagePayloadInput;
   kind: "text" | "reaction" | "edit";
+  /** 한 번 보기(수신자 열람 시 삭제). */
+  viewOnce?: boolean;
   targetMessageId?: string | undefined;
 }
 
@@ -140,6 +142,7 @@ export async function sendEncryptedMessage(
     senderSigningPublicKey: senderDevice.signingPublicKey,
     payload,
     kind: input.kind,
+    viewOnce: input.viewOnce,
     targetMessageId: input.targetMessageId,
   });
 

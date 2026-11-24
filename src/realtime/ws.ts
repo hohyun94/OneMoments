@@ -1,4 +1,4 @@
-import type { IncomingMessage, Server } from "node:http";
+﻿import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 
 import { WebSocket, WebSocketServer } from "ws";
@@ -11,7 +11,7 @@ import { AppError } from "../http/errors.js";
 import { recordWsConnection } from "../metrics.js";
 import { resolveSession, type AuthContext } from "../http/middleware.js";
 import { toMessageView } from "../http/serializers.js";
-import { touchDevice } from "../services/accounts.js";
+import { touchDevice, touchUserLastSeen } from "../services/accounts.js";
 import { isParticipant, requireDirectCallPeer } from "../services/conversations.js";
 import { finishCallLog, markCallAnswered, startCallLog } from "../services/calls.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
@@ -56,6 +56,7 @@ const clientFrameSchema = z.discriminatedUnion("type", [
     conversationId,
     clientMessageId: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
     kind: z.enum(["text", "reaction", "edit"]).default("text"),
+    viewOnce: z.boolean().default(false),
     targetMessageId: z.string().uuid().optional(),
     ciphertext: z.string().min(1),
     nonce: z.string().min(1),
@@ -311,10 +312,14 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
       alive.delete(socket);
       frameLog.delete(socket);
       recordWsConnection(-1);
+      // 연결이 끊긴 시각도 "마지막 접속"으로 남긴다(60초 스로틀).
+      void touchUserLastSeen(db, auth.userId).catch(() => undefined);
     };
 
     hub.send(socket, { type: "ready", userId: auth.userId, deviceId: auth.deviceId });
     void touchDevice(db, auth.deviceId).catch(() => undefined);
+    // 마지막 접속 시각(옵트인 공개). 60초 스로틀은 서비스에서 처리한다.
+    void touchUserLastSeen(db, auth.userId).catch(() => undefined);
 
     socket.on("pong", () => alive.set(socket, true));
     socket.on("message", (data, isBinary) => {
@@ -432,6 +437,7 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
             senderDeviceId: connection.deviceId,
             payload: frame,
             kind: frame.kind ?? "text",
+            viewOnce: frame.viewOnce,
             targetMessageId: frame.targetMessageId,
           });
           hub.send(socket, {

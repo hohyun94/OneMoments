@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+﻿import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -21,6 +21,7 @@ import {
   nextCameraFacing,
   normalizeIceServers,
   videoConstraints,
+  videoTransceiverRole,
   type CameraFacing,
 } from "./lib/call.ts";
 import { useRealtime } from "./realtime.tsx";
@@ -47,6 +48,8 @@ export interface CallSession {
   cameraOff: boolean;
   /** 화면 공유 중인지(내 화면을 상대에게 보내는 중) */
   screenSharing: boolean;
+  /** 상대가 화면을 공유 중인지(시그널링으로만 알린다) */
+  remoteScreenSharing: boolean;
   /** 현재 카메라 방향(모바일 전면/후면) */
   facing: CameraFacing;
   /** 비디오 입력 장치가 2개 이상이면 카메라 전환 버튼을 노출한다. */
@@ -78,10 +81,16 @@ interface CallContextValue {
   flipCamera: () => Promise<void>;
   /** 원격/로컬 영상 표시용 엘리먼트 참조(영상 통화에서만 사용). */
   remoteVideoRef: RefObject<HTMLVideoElement | null>;
+  /** 상대가 화면을 공유할 때 작은 타일로 보여줄 상대 카메라. */
+  remoteCameraRef: RefObject<HTMLVideoElement | null>;
   localVideoRef: RefObject<HTMLVideoElement | null>;
+  /** 내 화면 공유 썸네일. */
+  localScreenRef: RefObject<HTMLVideoElement | null>;
   /** 영상 엘리먼트가 늦게 마운트되어도 붙일 수 있도록 스트림도 노출한다. */
   remoteVideoStream: MediaStream | null;
+  remoteScreenStream: MediaStream | null;
   localVideoStream: MediaStream | null;
+  localScreenStream: MediaStream | null;
 }
 
 const CallContext = createContext<CallContextValue | null>(null);
@@ -119,9 +128,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const facingRef = useRef<CameraFacing>("user");
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteCameraRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const localScreenRef = useRef<HTMLVideoElement | null>(null);
+  /** 카메라·화면 송신자. 연결 시 만든 트랜시버에서 가져온다. */
+  const cameraSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenSenderRef = useRef<RTCRtpSender | null>(null);
+  const screenTransceiverRef = useRef<RTCRtpTransceiver | null>(null);
   const [remoteVideoStream, setRemoteVideoStream] = useState<MediaStream | null>(null);
+  const [remoteScreenStream, setRemoteScreenStream] = useState<MediaStream | null>(null);
   const [localVideoStream, setLocalVideoStream] = useState<MediaStream | null>(null);
+  const [localScreenStream, setLocalScreenStream] = useState<MediaStream | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingOfferRef = useRef<CallSignal["description"] | null>(null);
   const ringTimerRef = useRef<number | undefined>(undefined);
@@ -168,11 +185,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
     screenStreamRef.current = null;
     cameraTrackRef.current = null;
     facingRef.current = "user";
+    cameraSenderRef.current = null;
+    screenSenderRef.current = null;
+    screenTransceiverRef.current = null;
+    if (remoteCameraRef.current) remoteCameraRef.current.srcObject = null;
+    if (localScreenRef.current) localScreenRef.current.srcObject = null;
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
     setRemoteVideoStream(null);
+    setRemoteScreenStream(null);
     setLocalVideoStream(null);
+    setLocalScreenStream(null);
     const pc = pcRef.current;
     pcRef.current = null;
     if (pc) {
@@ -283,11 +307,44 @@ export function CallProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  /**
+   * 상대 offer 로 만들어진 트랜시버에 **내 트랙을 붙인다**(수신 측).
+   *
+   * 미리 `addTransceiver` 로 만들어 두면 offer 의 m-line 과 연결되지 않아 answer 가 recvonly 가 된다.
+   * 따라서 수신자는 offer 로 생성된 트랜시버에 `replaceTrack` 으로 트랙만 붙이고 방향을 sendrecv 로 바꾼다.
+   */
+  const adoptRemoteTransceivers = useCallback(async (pc: RTCPeerConnection) => {
+    const stream = localStreamRef.current;
+    const audioTrack = stream?.getAudioTracks()[0] ?? null;
+    const cameraTrack = stream?.getVideoTracks()[0] ?? null;
+    const transceivers = pc.getTransceivers();
+    const audioTx = transceivers.find((tx) => tx.receiver.track?.kind === "audio") ?? null;
+    const videoTxs = transceivers.filter((tx) => tx.receiver.track?.kind === "video");
+
+    if (audioTx && audioTrack) {
+      audioTx.direction = "sendrecv";
+      await audioTx.sender.replaceTrack(audioTrack).catch(() => undefined);
+    }
+    const cameraTx = videoTxs[0] ?? null;
+    if (cameraTx && cameraTrack) {
+      cameraTx.direction = "sendrecv";
+      await cameraTx.sender.replaceTrack(cameraTrack).catch(() => undefined);
+      cameraSenderRef.current = cameraTx.sender;
+    }
+    const screenTx = videoTxs[1] ?? null;
+    if (screenTx) {
+      screenTx.direction = "sendrecv";
+      screenTransceiverRef.current = screenTx;
+      screenSenderRef.current = screenTx.sender;
+    }
+  }, []);
+
   const prepareConnection = useCallback(
     async (
       cfg: CallConfig,
       callId: string,
       media: "audio" | "video",
+      role: "offerer" | "answerer",
     ): Promise<RTCPeerConnection | null> => {
       if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
         finish("이 브라우저는 통화를 지원하지 않습니다.");
@@ -336,7 +393,26 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       const pc = new RTCPeerConnection({ iceServers: cfg.iceServers });
       pcRef.current = pc;
-      for (const track of stream.getTracks()) pc.addTrack(track, stream);
+      // 비디오는 **카메라(0), 화면(1)** 두 m-line 을 미리 협상한다.
+      // 그래야 화면 공유를 시작/중지할 때 재협상(offer/answer) 없이 송신 트랙만 교체할 수 있다.
+      // m-line 은 **offer 를 만드는 쪽만** 추가한다(수신 측이 미리 만들면 offer 의 m-line 과 연결되지 않는다).
+      if (role === "offerer") {
+        const audioTrack = stream.getAudioTracks()[0] ?? null;
+        if (audioTrack) {
+          pc.addTransceiver(audioTrack, { direction: "sendrecv", streams: [stream] });
+        }
+        if (media === "video") {
+          const cameraTrack = stream.getVideoTracks()[0] ?? null;
+          if (cameraTrack) {
+            cameraSenderRef.current = pc.addTransceiver(cameraTrack, {
+              direction: "sendrecv",
+              streams: [stream],
+            }).sender;
+          }
+          screenTransceiverRef.current = pc.addTransceiver("video", { direction: "sendrecv" });
+          screenSenderRef.current = screenTransceiverRef.current.sender;
+        }
+      }
 
       pc.onicecandidate = (event) => {
         if (!event.candidate) return;
@@ -352,7 +428,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
       };
       pc.ontrack = (event) => {
         if (event.track.kind === "video") {
+          // 비디오 m-line 순서로 카메라/화면을 구분한다(양쪽이 같은 순서로 협상한다).
+          const videoIndex = pc
+            .getTransceivers()
+            .filter((item) => item.receiver.track?.kind === "video")
+            .indexOf(event.transceiver);
+          const role = videoTransceiverRole(videoIndex);
           const stream = new MediaStream([event.track]);
+          if (role === "screen") {
+            setRemoteScreenStream(stream);
+            return;
+          }
           setRemoteVideoStream(stream);
           const video = remoteVideoRef.current;
           if (video) {
@@ -502,6 +588,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           muted: false,
           cameraOff: false,
           screenSharing: false,
+          remoteScreenSharing: false,
           facing: "user",
           canFlipCamera: false,
           connectedAt: null,
@@ -522,6 +609,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         muted: false,
         cameraOff: false,
         screenSharing: false,
+        remoteScreenSharing: false,
         facing: "user",
         canFlipCamera: false,
         connectedAt: null,
@@ -566,7 +654,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       finish("음성 통화를 사용할 수 없습니다.");
       return;
     }
-    const pc = await prepareConnection(cfg, current.callId, current.media);
+    const pc = await prepareConnection(cfg, current.callId, current.media, "answerer");
     if (!pc) {
       declineInternal(current.callId, current.conversationId, "unsupported");
       return;
@@ -588,6 +676,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     pendingOfferRef.current = null;
     try {
       await pc.setRemoteDescription(offer as RTCSessionDescriptionInit);
+      await adoptRemoteTransceivers(pc);
       await flushCandidates();
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -596,6 +685,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       finish("연결에 실패했습니다.");
     }
   }, [
+    adoptRemoteTransceivers,
     clearTimers,
     declineInternal,
     ensureConfig,
@@ -657,37 +747,49 @@ export function CallProvider({ children }: { children: ReactNode }) {
   /**
    * 화면 공유 토글.
    *
-   * 카메라 트랙을 유지한 채 송신 트랙만 디스플레이 트랙으로 교체한다(`replaceTrack`).
-   * 재협상(offer/answer)이 필요 없어 연결이 끊기지 않고, 중지하면 카메라로 되돌아간다.
+   * 연결 시 **카메라·화면 비디오 m-line 을 미리 협상**해 두었으므로,
+   * 화면 트랜시버의 송신 트랙만 갈아끼운다(`replaceTrack`). 재협상이 없어 연결이 끊기지 않고
+   * 카메라 트랙은 그대로 계속 흐른다(상대는 화면+카메라를 동시에 본다).
    */
   const toggleScreenShare = useCallback(async () => {
     const current = sessionRef.current;
     if (!current || current.media !== "video") return;
     if (current.phase !== "active" && current.phase !== "connecting") return;
-    const videoSender = () =>
-      pcRef.current?.getSenders().find((sender) => sender.track?.kind === "video") ?? null;
 
-    // 공유 중지
-    if (screenStreamRef.current) {
-      const display = screenStreamRef.current;
+    const announce = (sharing: boolean) => {
+      const latest = sessionRef.current;
+      if (!latest) return;
+      sendFrame({
+        type: "call.screen",
+        conversationId: latest.conversationId,
+        callId: latest.callId,
+        sharing,
+      });
+    };
+
+    /** 공유 종료: 화면 트랙 정리 → 송신 중지 → 상태 알림. */
+    const stopSharing = (display: MediaStream) => {
+      if (screenStreamRef.current !== display) return;
       screenStreamRef.current = null;
       display.getTracks().forEach((track) => {
         track.onended = null;
         track.stop();
       });
-      const camera = cameraTrackRef.current;
-      const sender = videoSender();
-      if (sender && camera) await sender.replaceTrack(camera).catch(() => undefined);
-      if (localVideoRef.current && localStreamRef.current) {
-        localVideoRef.current.srcObject = localStreamRef.current;
-        void localVideoRef.current.play().catch(() => undefined);
-      }
+      void screenSenderRef.current?.replaceTrack(null).catch(() => undefined);
+      if (localScreenRef.current) localScreenRef.current.srcObject = null;
+      setLocalScreenStream(null);
       setSession((value) => (value ? { ...value, screenSharing: false } : value));
+      announce(false);
+    };
+
+    // 공유 중지
+    if (screenStreamRef.current) {
+      stopSharing(screenStreamRef.current);
       return;
     }
 
     if (!canShareScreen()) return;
-    const sender = videoSender();
+    const sender = screenSenderRef.current;
     if (!sender) return;
     try {
       const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
@@ -703,30 +805,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       await sender.replaceTrack(track);
       screenStreamRef.current = display;
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = display;
-        void localVideoRef.current.play().catch(() => undefined);
-      }
+      setLocalScreenStream(display);
       setSession((value) => (value ? { ...value, screenSharing: true } : value));
-      // 브라우저 자체의 "공유 중지" 버튼으로 끝내도 카메라로 복귀한다.
-      track.onended = () => {
-        if (screenStreamRef.current !== display) return;
-        screenStreamRef.current = null;
-        display.getTracks().forEach((item) => item.stop());
-        const camera = cameraTrackRef.current;
-        const activeSender =
-          pcRef.current?.getSenders().find((item) => item.track?.kind === "video") ?? null;
-        if (activeSender && camera) void activeSender.replaceTrack(camera).catch(() => undefined);
-        if (localVideoRef.current && localStreamRef.current) {
-          localVideoRef.current.srcObject = localStreamRef.current;
-          void localVideoRef.current.play().catch(() => undefined);
-        }
-        setSession((value) => (value ? { ...value, screenSharing: false } : value));
-      };
+      announce(true);
+      // 브라우저 자체의 "공유 중지" 버튼으로 끝내도 상태가 정리된다.
+      track.onended = () => stopSharing(display);
     } catch {
       // 사용자가 선택 창을 닫았거나 권한이 없으면 조용히 무시한다.
     }
-  }, []);
+  }, [sendFrame]);
 
   /** 전면/후면 카메라 전환. 미리보기 단계에서는 미리보기만, 연결 후에는 송신 트랙을 교체한다. */
   const flipCamera = useCallback(async () => {
@@ -765,16 +852,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       cameraTrackRef.current = track;
       facingRef.current = next;
-      // 화면 공유 중에는 송신 트랙을 건드리지 않는다(공유를 끝낼 때 새 카메라로 복귀).
-      if (!screenStreamRef.current) {
-        const sender =
-          pcRef.current?.getSenders().find((item) => item.track?.kind === "video") ?? null;
-        if (sender) await sender.replaceTrack(track).catch(() => undefined);
+      // 카메라 트랜시버의 트랙만 교체한다(화면 트랜시버와 별개라 공유 중에도 안전).
+      if (cameraSenderRef.current) {
+        await cameraSenderRef.current.replaceTrack(track).catch(() => undefined);
       }
       const merged = new MediaStream([...local.getAudioTracks(), track]);
       localStreamRef.current = merged;
       setLocalVideoStream(merged);
-      if (!screenStreamRef.current && localVideoRef.current) {
+      if (localVideoRef.current) {
         localVideoRef.current.srcObject = merged;
         void localVideoRef.current.play().catch(() => undefined);
       }
@@ -810,6 +895,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           muted: false,
           cameraOff: false,
           screenSharing: false,
+          remoteScreenSharing: false,
           facing: "user",
           canFlipCamera: false,
           connectedAt: null,
@@ -830,7 +916,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           const cfg = configRef.current;
           if (!cfg || current.phase !== "outgoing") return;
           void (async () => {
-            const pc = await prepareConnection(cfg, call.callId, current.media);
+            const pc = await prepareConnection(cfg, call.callId, current.media, "offerer");
             if (!pc) {
               // 권한 거부 등으로 미디어를 못 얻으면 상대 벨을 즉시 정리한다.
               sendFrame({
@@ -879,6 +965,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
                 }
                 try {
                   await pc.setRemoteDescription(signal.description as RTCSessionDescriptionInit);
+                  await adoptRemoteTransceivers(pc);
                   await flushCandidates();
                   const answer = await pc.createAnswer();
                   await pc.setLocalDescription(answer);
@@ -910,10 +997,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
           })();
           return;
         }
+        case "call.screen": {
+          setSession((value) =>
+            value?.callId === call.callId
+              ? { ...value, remoteScreenSharing: call.sharing }
+              : value,
+          );
+          return;
+        }
       }
     };
     return subscribeFrames(handle);
   }, [
+    adoptRemoteTransceivers,
     clearTimers,
     declineInternal,
     findPeerLabel,
@@ -947,9 +1043,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       toggleScreenShare,
       flipCamera,
       remoteVideoRef,
+      remoteCameraRef,
       localVideoRef,
+      localScreenRef,
       remoteVideoStream,
+      remoteScreenStream,
       localVideoStream,
+      localScreenStream,
     }),
     [
       accept,
@@ -958,7 +1058,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
       decline,
       flipCamera,
       hangup,
+      localScreenStream,
       localVideoStream,
+      remoteScreenStream,
       remoteVideoStream,
       session,
       startCall,

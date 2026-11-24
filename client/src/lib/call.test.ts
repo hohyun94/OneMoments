@@ -12,8 +12,10 @@ import {
   isCallFrame,
   nextCameraFacing,
   normalizeIceServers,
+  remoteScreenLabel,
   screenShareLabel,
   videoConstraints,
+  videoTransceiverRole,
 } from "./call.ts";
 
 describe("call helpers", () => {
@@ -118,6 +120,14 @@ describe("call helpers", () => {
   it("labels the screen share action", () => {
     expect(screenShareLabel(false)).toBe("화면 공유");
     expect(screenShareLabel(true)).toBe("화면 공유 중지");
+  });
+
+  it("maps pre-negotiated video transceivers to camera and screen", () => {
+    expect(videoTransceiverRole(0)).toBe("camera");
+    expect(videoTransceiverRole(1)).toBe("screen");
+    expect(videoTransceiverRole(2)).toBe("screen");
+    expect(remoteScreenLabel(true)).toBe("상대가 화면 공유 중");
+    expect(remoteScreenLabel(false)).toBe("");
   });
 
   it("reports screen sharing support from the browser API", () => {

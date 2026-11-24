@@ -229,6 +229,13 @@ export type ClientFrame =
       callId: string;
       signal: CallSignal;
     }
+  | {
+      /** 화면 공유 시작/중지 알림(미디어는 흐르지 않고 상태만 알린다). */
+      type: "call.screen";
+      conversationId: string;
+      callId: string;
+      sharing: boolean;
+    }
   | { type: "ping" };
 
 /** 1:1 통화 미디어. 오디오와 영상(카메라 포함)을 지원한다. */
@@ -300,6 +307,14 @@ export type CallServerFrame =
       fromUserId: string;
       fromDeviceId: string;
       signal: CallSignal;
+    }
+  | {
+      type: "call.screen";
+      conversationId: string;
+      callId: string;
+      fromUserId: string;
+      fromDeviceId: string;
+      sharing: boolean;
     };
 
 export type ServerFrame =

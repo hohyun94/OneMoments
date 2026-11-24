@@ -50,6 +50,7 @@ export async function listContacts(
       id: users.id,
       username: users.username,
       statusMessage: users.statusMessage,
+      avatarUpdatedAt: users.avatarUpdatedAt,
     })
     .from(conversationParticipants)
     .innerJoin(users, eq(users.id, conversationParticipants.userId))
@@ -101,6 +102,7 @@ export async function listContacts(
       id: row.id,
       username: row.username,
       statusMessage: row.statusMessage,
+      avatarUpdatedAt: row.avatarUpdatedAt?.toISOString() ?? null,
       favorite: favoriteIds.has(row.id),
       blockedByMe: blockedIds.has(row.id),
       blockedMe: blockedMeIds.has(row.id),

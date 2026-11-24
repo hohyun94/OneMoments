@@ -417,6 +417,10 @@ export async function deleteAccount(
         oauthProvider: null,
         oauthSubject: null,
         statusMessage: null,
+        // 익명화 시 공개 프로필 아바타도 함께 지운다.
+        avatarMime: null,
+        avatarData: null,
+        avatarUpdatedAt: null,
       })
       .where(eq(users.id, input.userId));
   });

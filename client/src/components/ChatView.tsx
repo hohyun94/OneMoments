@@ -1176,7 +1176,7 @@ export function ChatView({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Avatar name={peerName} />
+        <Avatar name={peerName} userId={peer?.id} avatarUpdatedAt={peer?.avatarUpdatedAt} />
         <div className="min-w-0 flex-1">
           <h2
             className={cn(

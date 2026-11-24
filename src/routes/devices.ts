@@ -3,11 +3,13 @@ import { Router } from "express";
 import type { Config } from "../config.js";
 import { normalizeDeviceKeys } from "../crypto/envelope.js";
 import type { Database } from "../db/client.js";
-import { asyncHandler } from "../http/errors.js";
+import { asyncHandler, AppError } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import { toOwnDevice } from "../http/serializers.js";
 import { recordAuthEvent } from "../services/authEvents.js";
+import { findUserAvatar } from "../services/avatars.js";
 import {
+  contactUserIdParamsSchema,
   deviceIdParamsSchema,
   registerDeviceBodySchema,
   searchUsersQuerySchema,
@@ -116,8 +118,39 @@ export function createUsersRouter(db: Database, config: Config): Router {
         excludeUserId: auth.userId,
       });
       res.json({
-        user: user ? { id: user.id, username: user.username, deleted: false } : null,
+        user: user
+          ? {
+              id: user.id,
+              username: user.username,
+              avatarUpdatedAt: user.avatarUpdatedAt?.toISOString() ?? null,
+              deleted: false,
+            }
+          : null,
       });
+    }),
+  );
+
+  /**
+   * 공개 프로필 아바타 이미지.
+   * 로그인한 사용자면 조회할 수 있고(상태 메시지와 동일한 공개 범위), 변경 시각으로 캐시를 무효화한다.
+   */
+  router.get(
+    "/:userId/avatar",
+    session,
+    asyncHandler(async (req, res) => {
+      const params = contactUserIdParamsSchema.parse(req.params);
+      const avatar = await findUserAvatar(db, { userId: params.userId });
+      if (!avatar) throw AppError.notFound("Avatar not found");
+      const etag = `"${avatar.updatedAt?.getTime() ?? avatar.data.length.toString(16)}"`;
+      if (req.headers["if-none-match"] === etag) {
+        res.status(304).end();
+        return;
+      }
+      res.setHeader("Content-Type", avatar.mime);
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.setHeader("ETag", etag);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.send(avatar.data);
     }),
   );
 

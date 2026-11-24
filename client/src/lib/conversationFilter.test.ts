@@ -25,12 +25,12 @@ function conversation(input: Partial<ConversationSummary>): ConversationSummary 
 
 const alice = conversation({
   id: "direct-alice",
-  peer: { id: "u1", username: "Alice", statusMessage: null, deleted: false },
+  peer: { id: "u1", username: "Alice", statusMessage: null, avatarUpdatedAt: null, deleted: false },
 });
 const group = conversation({ id: "group-study", kind: "group", name: "스터디", memberCount: 5 });
 const deletedPeer = conversation({
   id: "direct-deleted",
-  peer: { id: "u2", username: null, statusMessage: null, deleted: true },
+  peer: { id: "u2", username: null, statusMessage: null, avatarUpdatedAt: null, deleted: true },
 });
 const unreadGroup = conversation({
   id: "group-unread",

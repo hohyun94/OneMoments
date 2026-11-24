@@ -4,6 +4,8 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from "react"
 import { twMerge } from "tailwind-merge";
 import { clsx, type ClassValue } from "clsx";
 
+import { avatarUrl } from "../lib/avatar.ts";
+
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
@@ -141,16 +143,44 @@ export function Spinner({ className }: { className?: string }) {
   return <Loader2 className={cn("h-4 w-4 animate-spin", className)} aria-hidden />;
 }
 
-export function Avatar({ name, className }: { name: string; className?: string }) {
+export function Avatar({
+  name,
+  userId,
+  avatarUpdatedAt,
+  className,
+}: {
+  name: string;
+  /** 공개 프로필 아바타 조회에 쓰는 사용자 ID(없으면 이니셜만). */
+  userId?: string;
+  avatarUpdatedAt?: string | null;
+  className?: string;
+}) {
   const initial = name.trim().charAt(0).toUpperCase() || "?";
+  const src = userId ? avatarUrl(userId, avatarUpdatedAt ?? null) : null;
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [src]);
+
+  const base =
+    "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700";
+
+  if (src && !failed) {
+    return (
+      <img
+        src={src}
+        alt=""
+        loading="lazy"
+        data-testid="avatar-image"
+        onError={() => setFailed(true)}
+        className={cn(base, "object-cover", className)}
+      />
+    );
+  }
+
   return (
-    <span
-      aria-hidden
-      className={cn(
-        "flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-100 text-sm font-semibold text-accent-700",
-        className,
-      )}
-    >
+    <span aria-hidden className={cn(base, className)}>
       {initial}
     </span>
   );

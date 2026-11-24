@@ -1,48 +1,54 @@
-import { KeyRound, Lock, ShieldQuestion } from "lucide-react";
+﻿import { KeyRound, Lock, ShieldQuestion } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import { ApiError } from "../lib/api.ts";
 import { BackupError } from "../lib/crypto/index.ts";
 import { GoogleButton } from "../components/GoogleButton.tsx";
+import { LanguageToggle } from "../components/LanguageToggle.tsx";
 import { Alert, Button, Card, Input, Label, PasswordInput, Spinner } from "../components/ui.tsx";
+import { useI18n } from "../i18n.tsx";
 import { useSession } from "../session.tsx";
 
-function messageOf(error: unknown): string {
+function messageOf(
+  error: unknown,
+  t: (key: string) => string,
+): string {
   if (error instanceof BackupError) {
     return error.reason === "passphrase"
-      ? "복구 암호가 올바르지 않습니다."
-      : "백업 형식이 올바르지 않습니다.";
+      ? t("error.backupPassphrase")
+      : t("error.backupFormat");
   }
   if (error instanceof ApiError) {
     switch (error.code) {
       case "USERNAME_TAKEN":
-        return "이미 사용 중인 아이디입니다.";
+        return t("error.usernameTaken");
       case "UNAUTHORIZED":
-        return "아이디 또는 비밀번호가 올바르지 않습니다.";
+        return t("error.unauthorized");
       case "VALIDATION_ERROR":
-        return "입력값을 확인해 주세요. 아이디는 3~32자, 비밀번호는 10자 이상입니다.";
+        return t("error.validation");
       case "TOO_MANY_REQUESTS":
-        return "시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.";
+        return t("error.tooManyRequests");
       case "DEVICE_REQUIRED":
-        return "기기 등록에 실패했습니다. 다시 시도해 주세요.";
+        return t("error.deviceRequired");
       case "BACKUP_NOT_FOUND":
-        return "이 계정의 키 백업을 찾을 수 없습니다.";
+        return t("error.backupNotFound");
       case "RECOVERY_UNAVAILABLE":
-        return "복구할 수 없는 기기입니다(폐기되었거나 존재하지 않음).";
+        return t("error.recoveryUnavailable");
       case "RECOVERY_CHALLENGE_INVALID":
-        return "복구 요청이 만료되었습니다. 다시 시도해 주세요.";
+        return t("error.recoveryChallengeInvalid");
       default:
         return error.message;
     }
   }
   if (error instanceof Error && /WebCrypto|subtle/i.test(error.message)) {
-    return "이 브라우저에서는 암호화 기능을 사용할 수 없습니다. 최신 브라우저를 사용해 주세요.";
+    return t("error.webcrypto");
   }
-  return "문제가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+  return t("error.generic");
 }
 
 export function AuthPage() {
   const { login, register, recover, lastUsername, oauthEnabled, startGoogle } = useSession();
+  const { t } = useI18n();
   const [mode, setMode] = useState<"login" | "register" | "recover">("login");
   const [username, setUsername] = useState(lastUsername);
   const [password, setPassword] = useState("");
@@ -55,7 +61,7 @@ export function AuthPage() {
     setError(null);
 
     if (mode === "register" && password !== confirm) {
-      setError("비밀번호가 서로 다릅니다.");
+      setError(t("error.passwordMismatch"));
       return;
     }
 
@@ -70,9 +76,9 @@ export function AuthPage() {
         caught instanceof ApiError &&
         caught.status === 401
       ) {
-        setError("복구 암호가 올바르지 않거나 백업이 손상되었습니다.");
+        setError(t("error.recoverFailed"));
       } else {
-        setError(messageOf(caught));
+        setError(messageOf(caught, t));
       }
     } finally {
       setBusy(false);
@@ -85,6 +91,9 @@ export function AuthPage() {
       className="min-h-dvh bg-gradient-to-br from-accent-50 via-white to-zinc-100 dark:from-accent-950 dark:via-zinc-950 dark:to-zinc-900"
     >
       <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-4 py-10">
+        <div className="mb-2 flex justify-end">
+          <LanguageToggle />
+        </div>
         <div className="mb-6 flex flex-col items-center text-center">
           <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-600 text-accent-contrast shadow-lg shadow-accent-600/20">
             <Lock className="h-6 w-6" aria-hidden />
@@ -96,9 +105,9 @@ export function AuthPage() {
           <div className="mb-5 grid grid-cols-3 gap-1 rounded-lg bg-zinc-100 p-1">
             {(
               [
-                { value: "login", label: "로그인" },
-                { value: "register", label: "가입" },
-                { value: "recover", label: "복구" },
+                { value: "login", label: t("auth.tab.login") },
+                { value: "register", label: t("auth.tab.register") },
+                { value: "recover", label: t("auth.tab.recover") },
               ] as const
             ).map((item) => (
               <button
@@ -123,18 +132,18 @@ export function AuthPage() {
           {oauthEnabled && mode !== "recover" ? (
             <div className="mb-5 space-y-3">
               <GoogleButton
-                label={mode === "register" ? "Google로 가입" : "Google로 로그인"}
+                label={mode === "register" ? t("auth.google.signup") : t("auth.google.login")}
                 disabled={busy}
                 onClick={() => {
                   setError(null);
                   void startGoogle(mode === "register" ? "signup" : "login").catch(
-                    (caught: unknown) => setError(messageOf(caught)),
+                    (caught: unknown) => setError(messageOf(caught, t)),
                   );
                 }}
               />
               <div className="flex items-center gap-2 text-[11px] text-zinc-400">
                 <span className="h-px flex-1 bg-zinc-200" />
-                또는 아이디로 계속
+                {t("auth.orContinue")}
                 <span className="h-px flex-1 bg-zinc-200" />
               </div>
             </div>
@@ -142,7 +151,7 @@ export function AuthPage() {
 
           <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-1.5">
-              <Label htmlFor="username">아이디</Label>
+              <Label htmlFor="username">{t("auth.username.label")}</Label>
               <Input
                 id="username"
                 name="username"
@@ -160,7 +169,7 @@ export function AuthPage() {
 
             <div className="space-y-1.5">
               <Label htmlFor="password">
-                {mode === "recover" ? "복구 암호" : "비밀번호"}
+                {mode === "recover" ? t("auth.recoverPassphrase.label") : t("auth.password.label")}
               </Label>
               <PasswordInput
                 id="password"
@@ -177,9 +186,9 @@ export function AuthPage() {
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder={
                   mode === "register"
-                    ? "10자 이상"
+                    ? t("auth.password.placeholder.min")
                     : mode === "recover"
-                      ? "백업할 때 설정한 복구 암호"
+                      ? t("auth.recoverPassphrase.placeholder")
                       : ""
                 }
               />
@@ -187,7 +196,7 @@ export function AuthPage() {
 
             {mode === "register" ? (
               <div className="space-y-1.5">
-                <Label htmlFor="confirm">비밀번호 확인</Label>
+                <Label htmlFor="confirm">{t("auth.confirm.label")}</Label>
                 <PasswordInput
                   id="confirm"
                   name="confirm"
@@ -205,8 +214,7 @@ export function AuthPage() {
 
             {mode === "recover" ? (
               <p className="text-xs leading-relaxed text-zinc-500">
-                복구 암호는 서버로 전송되지 않습니다. 이 기기의 이전 세션은 로그아웃되고,
-                백업한 기기 키로 대화 이력을 이어서 복호화합니다.
+                {t("auth.recover.note")}
               </p>
             ) : null}
 
@@ -219,18 +227,16 @@ export function AuthPage() {
                 <KeyRound className="h-4 w-4" aria-hidden />
               )}
               {mode === "login"
-                ? "로그인"
+                ? t("auth.submit.login")
                 : mode === "register"
-                  ? "가입하고 시작하기"
-                  : "백업으로 복구"}
+                  ? t("auth.submit.register")
+                  : t("auth.submit.recover")}
             </Button>
           </form>
         </Card>
 
         <p className="mt-5 text-center text-xs leading-relaxed text-zinc-500">
-          {mode === "recover"
-            ? "백업이 없거나 복구 암호를 잊으면 서버에서도 키를 복구할 수 없습니다."
-            : "기기 키는 이 브라우저에만 저장됩니다. 서버는 메시지 내용을 복호화할 수 없습니다."}
+          {mode === "recover" ? t("auth.footer.recover") : t("auth.footer.default")}
         </p>
       </div>
     </div>

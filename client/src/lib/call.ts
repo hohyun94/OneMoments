@@ -62,3 +62,43 @@ export function callLogLabel(entry: {
       return entry.direction === "incoming" ? `${media}수신 통화` : `${media}발신 통화`;
   }
 }
+
+/** 카메라 방향. 모바일에서 전면/후면을 오갈 때 쓴다. */
+export type CameraFacing = "user" | "environment";
+
+/** 다음 카메라 방향(전면 ↔ 후면). */
+export function nextCameraFacing(current: CameraFacing): CameraFacing {
+  return current === "user" ? "environment" : "user";
+}
+
+/** 현재 사용 중인 카메라 방향의 표시 이름. */
+export function cameraFacingLabel(facing: CameraFacing): string {
+  return facing === "user" ? "전면 카메라" : "후면 카메라";
+}
+
+/** 카메라 전환 버튼 문구(누르면 바뀔 방향을 알려준다). */
+export function cameraFlipLabel(current: CameraFacing): string {
+  return current === "user" ? "후면 카메라로 전환" : "전면 카메라로 전환";
+}
+
+/** 영상 트랙 제약. 발신 미리보기와 연결 시점이 같은 화질을 쓰도록 한 곳에 둔다. */
+export function videoConstraints(facing: CameraFacing): MediaTrackConstraints {
+  return { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: facing };
+}
+
+/** 비디오 입력 장치 수. 2개 이상일 때만 카메라 전환 버튼을 노출한다. */
+export function countVideoInputs(devices: Array<{ kind?: string }>): number {
+  return devices.filter((device) => device.kind === "videoinput").length;
+}
+
+/** 화면 공유 API 사용 가능 여부(HTTPS/localhost 등 보안 컨텍스트 필요). */
+export function canShareScreen(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return typeof navigator.mediaDevices?.getDisplayMedia === "function";
+}
+
+/** 화면 공유 버튼 문구. */
+export function screenShareLabel(sharing: boolean): string {
+  return sharing ? "화면 공유 중지" : "화면 공유";
+}
+

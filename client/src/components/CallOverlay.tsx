@@ -1,7 +1,18 @@
-import { Mic, MicOff, PhoneCall, PhoneOff, Video, VideoOff } from "lucide-react";
+import {
+  Mic,
+  MicOff,
+  PhoneCall,
+  PhoneOff,
+  ScreenShare,
+  ScreenShareOff,
+  SwitchCamera,
+  Video,
+  VideoOff,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useCall } from "../calls.tsx";
+import { cameraFlipLabel, canShareScreen, screenShareLabel } from "../lib/call.ts";
 import { formatDuration } from "../lib/voice.ts";
 import { Button, cn } from "./ui.tsx";
 
@@ -14,6 +25,8 @@ export function CallOverlay() {
     hangup,
     toggleMute,
     toggleCamera,
+    toggleScreenShare,
+    flipCamera,
     remoteVideoRef,
     localVideoRef,
     remoteVideoStream,
@@ -50,6 +63,8 @@ export function CallOverlay() {
   if (!session) return null;
 
   const isVideo = session.media === "video";
+  // 화면 공유는 데스크톱 브라우저에서만 제공된다(모바일 Safari 등은 API 자체가 없다).
+  const screenShareSupported = isVideo && canShareScreen();
   const status =
     session.phase === "incoming"
       ? isVideo
@@ -84,7 +99,10 @@ export function CallOverlay() {
                 autoPlay
                 playsInline
                 muted
-                className="h-full w-full scale-x-[-1] object-cover"
+                className={cn(
+                  "h-full w-full object-cover",
+                  !session.screenSharing && "scale-x-[-1]",
+                )}
               />
               {!localVideoStream ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
@@ -123,8 +141,19 @@ export function CallOverlay() {
                   autoPlay
                   playsInline
                   muted
-                  className="h-full w-full scale-x-[-1] object-cover"
+                  className={cn(
+                    "h-full w-full object-cover",
+                    !session.screenSharing && "scale-x-[-1]",
+                  )}
                 />
+                {session.screenSharing ? (
+                  <span
+                    data-testid="screen-share-badge"
+                    className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[10px] text-white"
+                  >
+                    화면 공유 중
+                  </span>
+                ) : null}
               </div>
             </>
           )}
@@ -167,6 +196,35 @@ export function CallOverlay() {
               <Video className="h-4 w-4" aria-hidden />
             )}
           </Button>
+          {ringing || !screenShareSupported ? null : (
+            <Button
+              type="button"
+              size="icon"
+              onClick={() => void toggleScreenShare()}
+              aria-label={screenShareLabel(session.screenSharing)}
+              aria-pressed={session.screenSharing}
+              title={screenShareLabel(session.screenSharing)}
+              className="bg-white/10 text-white hover:bg-white/20"
+            >
+              {session.screenSharing ? (
+                <ScreenShareOff className="h-4 w-4" aria-hidden />
+              ) : (
+                <ScreenShare className="h-4 w-4" aria-hidden />
+              )}
+            </Button>
+          )}
+          {ringing || !session.canFlipCamera ? null : (
+            <Button
+              type="button"
+              size="icon"
+              onClick={() => void flipCamera()}
+              aria-label={cameraFlipLabel(session.facing)}
+              title={cameraFlipLabel(session.facing)}
+              className="bg-white/10 text-white hover:bg-white/20"
+            >
+              <SwitchCamera className="h-4 w-4" aria-hidden />
+            </Button>
+          )}
           <Button
             type="button"
             size="icon"

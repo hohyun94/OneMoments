@@ -66,6 +66,7 @@ import {
 import { computeWaveform } from "../lib/waveform.ts";
 import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
+import { describeReads, readersFor } from "../lib/readReceipts.ts";
 import { useRealtime } from "../realtime.tsx";
 import { useCall } from "../calls.tsx";
 import type {
@@ -516,31 +517,17 @@ export function ChatView({
     [readsQuery.data, currentUserId],
   );
 
-  function readLabelFor(message: MessageView): string | undefined {
+  function readMetaFor(message: MessageView): { label: string; detail: string } | undefined {
     if (!readsQuery.isSuccess) return undefined;
-    const createdAt = Date.parse(message.createdAt);
-    const readers = otherReads.filter(
-      (read) => Date.parse(read.readAt) >= createdAt,
+    const readers = readersFor(otherReads, Date.parse(message.createdAt), currentUserId).map(
+      (read) => ({
+        label: senderLabel(read.userId),
+        lastReadMessageId: read.lastReadMessageId,
+        readAt: read.readAt,
+        updatedAt: read.updatedAt,
+      }),
     );
-    if (isGroup) {
-      if (readers.length === 0) return "안 읽음";
-      // 3명 이하이면 이름으로, 그 이상이면 인원수로 표시한다.
-      const label =
-        readers.length <= 3
-          ? `${readers.map((read) => senderLabel(read.userId)).join(", ")} 읽음`
-          : `${readers.length}명 읽음`;
-      // 커서가 이 메시지에 걸린 참여자가 있으면 그 시각을 함께 보여준다.
-      const cursorTimes = readers
-        .filter((read) => read.lastReadMessageId === message.id)
-        .map((read) => Date.parse(read.updatedAt));
-      const latest = cursorTimes.length > 0 ? Math.max(...cursorTimes) : null;
-      return latest ? `${label} · ${formatClock(new Date(latest).toISOString())}` : label;
-    }
-    const [peerRead] = readers;
-    if (!peerRead) return "안 읽음";
-    return peerRead.lastReadMessageId === message.id
-      ? `읽음 · ${formatClock(peerRead.updatedAt)}`
-      : "읽음";
+    return describeReads({ isGroup, readers, messageId: message.id, clock: formatClock });
   }
   const peer = conversation.peer;
   const peerName = isGroup
@@ -1176,7 +1163,7 @@ export function ChatView({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Avatar name={peerName} />
+        <Avatar name={peerName} userId={peer?.id} avatarUpdatedAt={peer?.avatarUpdatedAt} />
         <div className="min-w-0 flex-1">
           <h2
             className={cn(
@@ -1475,7 +1462,12 @@ export function ChatView({
                         senderName={senderLabel(message.senderUserId)}
                         readLabel={
                           message.senderUserId === currentUserId
-                            ? readLabelFor(message)
+                            ? readMetaFor(message)?.label
+                            : undefined
+                        }
+                        readDetail={
+                          message.senderUserId === currentUserId
+                            ? readMetaFor(message)?.detail
                             : undefined
                         }
                         renderMessage={editsByTarget.get(message.id)}

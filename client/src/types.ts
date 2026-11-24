@@ -5,6 +5,8 @@ export interface PublicUser {
   id: string;
   username: string;
   statusMessage: string | null;
+  /** 공개 프로필 아바타 마지막 변경 시각(없으면 null) */
+  avatarUpdatedAt: string | null;
   createdAt: string;
   deleted: boolean;
   /** ADMIN_USERNAMES allowlist 에 포함된 경우에만 true */
@@ -15,6 +17,7 @@ export interface PeerUser {
   id: string;
   username: string | null;
   statusMessage: string | null;
+  avatarUpdatedAt: string | null;
   deleted: boolean;
 }
 
@@ -57,6 +60,7 @@ export interface ContactView {
   id: string;
   username: string;
   statusMessage: string | null;
+  avatarUpdatedAt: string | null;
   favorite: boolean;
   blockedByMe: boolean;
   blockedMe: boolean;

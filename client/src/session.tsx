@@ -33,6 +33,7 @@ import {
   effectiveIdleTimeoutSeconds,
 } from "./lib/idleTimeout.ts";
 import { currentPlatform } from "./lib/device.ts";
+import { fileToAvatarPayload } from "./lib/avatar.ts";
 import { disablePush } from "./lib/push.ts";
 import { markDeviceRecovered } from "./lib/recovery.ts";
 import { clearSearchIndex } from "./lib/search.ts";
@@ -99,6 +100,10 @@ interface SessionContextValue {
   updateTheme: (theme: ThemeSettings) => Promise<void>;
   /** 공개 프로필 상태 메시지를 저장한다(null/빈 문자열이면 지움). */
   updateStatusMessage: (statusMessage: string | null) => Promise<void>;
+  /** 공개 프로필 아바타를 128px JPEG 로 줄여 저장한다. */
+  uploadAvatar: (file: File) => Promise<void>;
+  /** 공개 프로필 아바타를 지운다. */
+  removeAvatar: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -663,6 +668,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     );
   }, []);
 
+  /**
+   * 공개 프로필 아바타 업로드.
+   * 상태 메시지와 같은 공개 메타데이터라 평문으로 저장하고, 전송 전에 128px 로 줄인다.
+   */
+  const uploadAvatar = useCallback(async (file: File) => {
+    const payload = await fileToAvatarPayload(file);
+    const response = await api<{ user: PublicUser }>("/api/auth/profile/avatar", {
+      method: "PUT",
+      body: payload,
+    });
+    setSession((current) => (current ? { ...current, user: response.user } : current));
+  }, []);
+
+  const removeAvatar = useCallback(async () => {
+    const response = await api<{ user: PublicUser }>("/api/auth/profile/avatar", {
+      method: "DELETE",
+    });
+    setSession((current) => (current ? { ...current, user: response.user } : current));
+  }, []);
+
   // 무활동 자동 로그아웃: 입력/스크롤/포인터 활동이 없으면 세션과 화면 캐시를 지운다.
   // 값은 기기 기본값 또는 세션 오버라이드를 따르며, 설정 변경 시 타이머가 재시작된다.
   const idleTimeoutMs = idleTimeoutSeconds * 1000;
@@ -723,6 +748,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       theme,
       updateTheme,
       updateStatusMessage,
+      uploadAvatar,
+      removeAvatar,
       oauthEnabled,
       googleLinked,
       hasPassword,
@@ -749,6 +776,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       theme,
       updateTheme,
       updateStatusMessage,
+      uploadAvatar,
+      removeAvatar,
       oauthEnabled,
       googleLinked,
       hasPassword,

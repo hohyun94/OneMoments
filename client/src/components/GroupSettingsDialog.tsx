@@ -1,7 +1,8 @@
-import { Link2, LogOut, Settings } from "lucide-react";
+import { Link2, LogOut, Mail, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ApiError, api } from "../lib/api.ts";
+import { inviteMailto } from "../lib/inviteMail.ts";
 import type { ConversationSummary } from "../types.ts";
 import { Alert, Button, Dialog, Input, Label, Spinner } from "./ui.tsx";
 
@@ -147,16 +148,26 @@ export function GroupSettingsDialog({
             그룹에 참여할 수 있으니 신뢰하는 사람에게만 공유하세요.
           </p>
           {inviteUrl ? (
-            <div className="mt-3 flex gap-2">
-              <Input readOnly value={inviteUrl} aria-label="그룹 초대 링크" />
-              <Button
-                variant="outline"
-                className="shrink-0"
-                onClick={() => void navigator.clipboard.writeText(inviteUrl)}
+            <div className="mt-3 space-y-2">
+              <div className="flex gap-2">
+                <Input readOnly value={inviteUrl} aria-label="그룹 초대 링크" />
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => void navigator.clipboard.writeText(inviteUrl)}
+                >
+                  <Link2 className="h-4 w-4" aria-hidden />
+                  복사
+                </Button>
+              </div>
+              {/* 서버가 메일을 보내지 않고, 사용자의 메일 클라이언트로 초대 링크를 전달한다. */}
+              <a
+                href={inviteMailto(inviteUrl, { groupName: currentName })}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 hover:underline"
               >
-                <Link2 className="h-4 w-4" aria-hidden />
-                복사
-              </Button>
+                <Mail className="h-3.5 w-3.5" aria-hidden />
+                이메일로 보내기
+              </a>
             </div>
           ) : (
             <Button

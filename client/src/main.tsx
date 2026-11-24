@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App.tsx";
 import "./index.css";
+import { I18nProvider } from "./i18n.tsx";
 import { THEME_STORAGE_KEY, applyTheme, loadTheme } from "./lib/theme.ts";
 import { SessionProvider } from "./session.tsx";
 
@@ -45,11 +46,13 @@ if (!container) throw new Error("root element is missing");
 createRoot(container).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <SessionProvider>
-          <App />
-        </SessionProvider>
-      </BrowserRouter>
+      <I18nProvider>
+        <BrowserRouter>
+          <SessionProvider>
+            <App />
+          </SessionProvider>
+        </BrowserRouter>
+      </I18nProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

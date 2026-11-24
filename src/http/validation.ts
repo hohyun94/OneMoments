@@ -324,6 +324,19 @@ export const contactUserIdParamsSchema = z.object({
   userId: z.string().uuid(),
 });
 
+/** 공개 프로필 아바타 업로드. base64(패딩 없이 허용) + 허용 MIME 만 받는다. */
+export const AVATAR_MAX_BASE64_LENGTH = 88 * 1024;
+export const AVATAR_MIME_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
+
+export const updateAvatarBodySchema = z.object({
+  mime: z.enum(AVATAR_MIME_TYPES),
+  data: z
+    .string()
+    .min(16)
+    .max(AVATAR_MAX_BASE64_LENGTH)
+    .regex(/^[A-Za-z0-9+/]+={0,2}$/, "data must be base64"),
+});
+
 export const updateFavoriteBodySchema = z.object({
   favorite: z.boolean(),
 });

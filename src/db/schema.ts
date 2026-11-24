@@ -37,6 +37,10 @@ export const users = pgTable(
     themeAccent: text("theme_accent").notNull().default("violet"),
     // 공개 프로필 상태 메시지(최대 80자, 메시지 암호화 대상 아님).
     statusMessage: text("status_message"),
+    // 공개 프로필 아바타. 상태 메시지와 같은 공개 메타데이터로, base64 텍스트(최대 256KB)로 저장한다.
+    avatarMime: text("avatar_mime"),
+    avatarData: text("avatar_data"),
+    avatarUpdatedAt: timestamp("avatar_updated_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -67,6 +71,15 @@ export const users = pgTable(
     check(
       "users_status_message_chk",
       sql`${table.statusMessage} is null or char_length(${table.statusMessage}) <= 80`,
+    ),
+    check(
+      "users_avatar_mime_chk",
+      sql`${table.avatarMime} is null or ${table.avatarMime} in ('image/png', 'image/jpeg', 'image/webp')`,
+    ),
+    // mime 과 data 는 항상 함께 있거나 함께 없다.
+    check(
+      "users_avatar_pair_chk",
+      sql`(${table.avatarMime} is null) = (${table.avatarData} is null)`,
     ),
   ],
 );

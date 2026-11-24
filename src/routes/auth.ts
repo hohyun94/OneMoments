@@ -37,6 +37,7 @@ import {
   updateSessionIdleTimeoutBodySchema,
   updateThemeBodySchema,
   updateProfileBodySchema,
+  updateAvatarBodySchema,
 } from "../http/validation.js";
 import {
   addOneTimePreKeys,
@@ -59,6 +60,7 @@ import {
 import {
   createAttachmentStorage,
 } from "../services/attachments.js";
+import { clearUserAvatar, setUserAvatar } from "../services/avatars.js";
 import { deleteUserMoments, listUserMomentAttachmentIds } from "../services/moments.js";
 import {
   consumeRecoveryChallenge,
@@ -501,6 +503,37 @@ export function createAuthRouter(db: Database, config: Config): Router {
         userId: auth.userId,
         statusMessage: body.statusMessage,
       });
+      res.json({ user: authUser(user) });
+    }),
+  );
+
+  /**
+   * 공개 프로필 아바타 업로드.
+   * 상태 메시지와 같은 공개 메타데이터라 암호화하지 않고, 크기·형식만 제한한다.
+   */
+  router.put(
+    "/profile/avatar",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = updateAvatarBodySchema.parse(req.body);
+      await setUserAvatar(db, { userId: auth.userId, mime: body.mime, dataBase64: body.data });
+      const user = await findUserById(db, auth.userId);
+      if (!user) throw AppError.unauthorized();
+      res.json({ user: authUser(user) });
+    }),
+  );
+
+  router.delete(
+    "/profile/avatar",
+    session,
+    csrf,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      await clearUserAvatar(db, { userId: auth.userId });
+      const user = await findUserById(db, auth.userId);
+      if (!user) throw AppError.unauthorized();
       res.json({ user: authUser(user) });
     }),
   );

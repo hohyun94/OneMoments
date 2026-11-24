@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createTestContext, resetDatabase, type TestContext } from "./support/context.js";
 import { createIdentity, type Identity } from "./support/crypto.js";
 import { TestClient } from "./support/http.js";
+import { finishCallLog, startCallLog } from "../src/services/calls.js";
 import {
   closeSocket,
   connectAndCollect,
@@ -226,5 +227,34 @@ describe("voice call logs", () => {
       await closeSocket(aliceSocket.socket);
       await closeSocket(bobSocket.socket);
     }
+  });
+
+  it("returns the settled status so the caller can notify a missed call", async () => {
+    const alice = await registerAccount("alice");
+    const bob = await registerAccount("bob");
+    const conversationId = await createConversation(alice, bob);
+    const callId = randomUUID();
+
+    await startCallLog(ctx.db, {
+      callId,
+      conversationId,
+      callerUserId: alice.userId,
+      calleeUserId: bob.userId,
+      media: "video",
+    });
+    const missed = await finishCallLog(ctx.db, {
+      callId,
+      event: "cancel",
+      userId: alice.userId,
+    });
+    // 부재중 확정 → ws 는 이 값으로 수신자에게 푸시를 보낸다.
+    expect(missed).toEqual({ status: "missed", calleeUserId: bob.userId, media: "video" });
+
+    const unknown = await finishCallLog(ctx.db, {
+      callId: randomUUID(),
+      event: "cancel",
+      userId: alice.userId,
+    });
+    expect(unknown).toBeNull();
   });
 });

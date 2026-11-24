@@ -28,6 +28,7 @@ export function toPublicUser(row: UserRow): PublicUser {
     id: row.id,
     username: row.username,
     statusMessage: row.statusMessage,
+    avatarUpdatedAt: iso(row.avatarUpdatedAt),
     createdAt: row.createdAt.toISOString(),
     deleted: row.deletedAt !== null,
   };
@@ -39,6 +40,7 @@ export function toPeerUser(row: UserRow): PeerUser {
     id: row.id,
     username: deleted ? null : row.username,
     statusMessage: deleted ? null : row.statusMessage,
+    avatarUpdatedAt: deleted ? null : iso(row.avatarUpdatedAt),
     deleted,
   };
 }

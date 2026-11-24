@@ -15,6 +15,7 @@ import { touchDevice } from "../services/accounts.js";
 import { isParticipant, requireDirectCallPeer } from "../services/conversations.js";
 import { finishCallLog, markCallAnswered, startCallLog } from "../services/calls.js";
 import { sendEncryptedMessage } from "../services/messageFlow.js";
+import { sendMissedCallPushes } from "../services/push.js";
 import {
   WS_PATH,
   type CallServerFrame,
@@ -509,7 +510,18 @@ export function createRealtime(options: RealtimeOptions): RealtimeHandle {
                     : "end",
               userId: connection.userId,
               reason: "reason" in frame ? frame.reason : undefined,
-            }).catch(() => undefined);
+            })
+              .then((finished) => {
+                // 응답 전에 끝난 통화만 수신자에게 부재중 알림을 보낸다(거절·완료는 제외).
+                if (finished?.status !== "missed") return;
+                return sendMissedCallPushes(db, config, {
+                  calleeUserId: finished.calleeUserId,
+                  conversationId: frame.conversationId,
+                  callId: frame.callId,
+                  media: finished.media,
+                });
+              })
+              .catch(() => undefined);
           }
           return;
         }

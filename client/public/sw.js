@@ -113,17 +113,22 @@ self.addEventListener("push", (event) => {
   }
 
   const title = typeof payload.title === "string" ? payload.title : "OneMoments";
+  const isCall = payload.type === "call";
   const options = {
     body:
       typeof payload.body === "string"
         ? payload.body
-        : "새 메시지가 도착했습니다.",
+        : isCall
+          ? "부재중 전화가 있습니다."
+          : "새 메시지가 도착했습니다.",
     icon: "/icon.svg",
     badge: "/icon.svg",
     tag:
       typeof payload.tag === "string"
         ? payload.tag
-        : "onemoments-message",
+        : isCall
+          ? "onemoments-call"
+          : "onemoments-message",
     data: {
       conversationId:
         typeof payload.conversationId === "string" ? payload.conversationId : null,

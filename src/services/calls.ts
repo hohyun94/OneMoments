@@ -65,6 +65,8 @@ export async function markCallAnswered(
  * - decline → declined
  * - cancel  → 응답 전이면 missed, 응답 후면 completed
  * - end     → 실패 사유면 failed, 응답 전이면 missed, 그 외 completed
+ *
+ * 확정된 상태를 돌려주므로 호출측(예: 부재중 푸시)이 결과에 따라 후속 처리를 할 수 있다.
  */
 export async function finishCallLog(
   db: Database,
@@ -74,7 +76,7 @@ export async function finishCallLog(
     userId: string;
     reason?: string;
   },
-): Promise<void> {
+): Promise<{ status: CallLogStatus; calleeUserId: string; media: "audio" | "video" } | null> {
   const statusExpression =
     input.event === "decline"
       ? sql`'declined'`
@@ -82,7 +84,7 @@ export async function finishCallLog(
         ? sql`'failed'`
         : sql`case when ${callLogs.answeredAt} is null then 'missed' else 'completed' end`;
 
-  await db
+  const [row] = await db
     .update(callLogs)
     .set({
       status: statusExpression,
@@ -90,7 +92,18 @@ export async function finishCallLog(
       endedByUserId: input.userId,
       durationSeconds: sql`case when ${callLogs.answeredAt} is null then null else greatest(0, floor(extract(epoch from (now() - ${callLogs.answeredAt}))))::int end`,
     })
-    .where(eq(callLogs.callId, input.callId));
+    .where(eq(callLogs.callId, input.callId))
+    .returning({
+      status: callLogs.status,
+      calleeUserId: callLogs.calleeUserId,
+      media: callLogs.media,
+    });
+  if (!row) return null;
+  return {
+    status: row.status as CallLogStatus,
+    calleeUserId: row.calleeUserId,
+    media: row.media === "video" ? "video" : "audio",
+  };
 }
 
 /** 대화의 최근 통화 기록(최신순). */

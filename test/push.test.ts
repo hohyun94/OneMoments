@@ -19,6 +19,7 @@ import {
   listActiveSubscriptions,
   removePushSubscription,
   sendMessagePushes,
+  sendMissedCallPushes,
   upsertPushSubscription,
 } from "../src/services/push.js";
 import { createTestContext, resetDatabase, type TestContext } from "./support/context.js";
@@ -350,6 +351,68 @@ describe("web push", () => {
         senderDeviceId: randomUUID(),
       });
       expect(received).toBeNull();
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("delivers a missed call notification to the callee without caller metadata", async () => {
+    const calleeClient = new TestClient(ctx.baseUrl);
+    const registered = await calleeClient.register(
+      `callee${randomBytes(4).toString("hex")}`,
+      createIdentity(),
+    );
+    expect(registered.status).toBe(201);
+    const userId = registered.body.user.id as string;
+    const deviceId = registered.body.device.id as string;
+    const keys = subscriptionKeys();
+
+    let received: Buffer | null = null;
+    const server: Server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        received = Buffer.concat(chunks);
+        res.statusCode = 201;
+        res.end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    const endpoint = `http://127.0.0.1:${port}/push/call`;
+    await upsertPushSubscription(ctx.db, {
+      userId,
+      deviceId,
+      endpoint,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+    });
+
+    const conversationId = randomUUID();
+    const callId = randomUUID();
+
+    try {
+      await sendMissedCallPushes(ctx.db, vapidTestConfig(), {
+        calleeUserId: userId,
+        conversationId,
+        callId,
+        media: "video",
+      });
+      const body = received as Buffer | null;
+      if (!body) throw new Error("missing push body");
+      const decrypted = decryptWebPushBody(body, keys);
+      const payload = JSON.parse(
+        decrypted.subarray(0, decrypted.length - 1).toString("utf8"),
+      ) as { type: string; body: string; conversationId: string; callId: string; tag: string };
+      expect(payload.type).toBe("call");
+      expect(payload.body).toBe("부재중 영상 통화가 있습니다.");
+      expect(payload.conversationId).toBe(conversationId);
+      expect(payload.callId).toBe(callId);
+      expect(payload.tag).toBe(`onemoments-call-${conversationId}`);
+      // 발신자 식별자나 SDP 같은 시그널링 내용은 담지 않는다.
+      expect(JSON.stringify(payload)).not.toContain("sdp");
+      expect(JSON.stringify(payload)).not.toContain("caller");
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

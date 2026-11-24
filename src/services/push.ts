@@ -108,29 +108,43 @@ export function messagePushPayload(message: MessageRow): Buffer {
   );
 }
 
-export async function sendMessagePushes(
+export interface MissedCallPushInput {
+  calleeUserId: string;
+  conversationId: string;
+  callId: string;
+  media: "audio" | "video";
+}
+
+/**
+ * 부재중 통화 알림.
+ *
+ * 메시지 알림과 같은 원칙으로 발신자·대화 내용은 담지 않고 대화 ID 와 미디어 종류만 알린다.
+ */
+export function missedCallPushPayload(input: MissedCallPushInput): Buffer {
+  const label = input.media === "video" ? "영상" : "음성";
+  return Buffer.from(
+    JSON.stringify({
+      type: "call",
+      title: "OneMoments",
+      body: `부재중 ${label} 통화가 있습니다.`,
+      conversationId: input.conversationId,
+      callId: input.callId,
+      media: input.media,
+      tag: `onemoments-call-${input.conversationId}`,
+    }),
+    "utf8",
+  );
+}
+
+/** 구독 목록으로 암호화 푸시를 보내고, 만료된 구독을 정리한다. */
+async function deliverPushes(
   db: Database,
   config: Config,
-  input: {
-    message: MessageRow;
-    participantUserIds: string[];
-    mutedUserIds?: string[];
-    senderDeviceId: string;
-  },
+  subscriptions: PushSubscriptionRow[],
+  payload: Buffer,
 ): Promise<void> {
   const vapid = createVapidKeys(config);
   if (!vapid) return;
-
-  const muted = new Set(input.mutedUserIds ?? []);
-  const subscriptions = (
-    await listActiveSubscriptions(db, {
-      userIds: input.participantUserIds,
-      excludeDeviceId: input.senderDeviceId,
-    })
-  ).filter((subscription) => !muted.has(subscription.userId));
-  if (subscriptions.length === 0) return;
-
-  const payload = messagePushPayload(input.message);
   await Promise.allSettled(
     subscriptions.map(async (subscription) => {
       try {
@@ -170,4 +184,41 @@ export async function sendMessagePushes(
       }
     }),
   );
+}
+
+export async function sendMessagePushes(
+  db: Database,
+  config: Config,
+  input: {
+    message: MessageRow;
+    participantUserIds: string[];
+    mutedUserIds?: string[];
+    senderDeviceId: string;
+  },
+): Promise<void> {
+  const muted = new Set(input.mutedUserIds ?? []);
+  const subscriptions = (
+    await listActiveSubscriptions(db, {
+      userIds: input.participantUserIds,
+      excludeDeviceId: input.senderDeviceId,
+    })
+  ).filter((subscription) => !muted.has(subscription.userId));
+  if (subscriptions.length === 0) return;
+
+  await deliverPushes(db, config, subscriptions, messagePushPayload(input.message));
+}
+
+/**
+ * 부재중 통화(응답 없이 발신자가 취소·실패) 알림을 수신자의 모든 기기로 보낸다.
+ *
+ * 수신자가 이미 통화를 받은 경우에는 호출되지 않는다.
+ */
+export async function sendMissedCallPushes(
+  db: Database,
+  config: Config,
+  input: MissedCallPushInput,
+): Promise<void> {
+  const subscriptions = await listActiveSubscriptions(db, { userIds: [input.calleeUserId] });
+  if (subscriptions.length === 0) return;
+  await deliverPushes(db, config, subscriptions, missedCallPushPayload(input));
 }

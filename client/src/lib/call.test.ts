@@ -5,8 +5,15 @@ import {
   callDeclineNote,
   callEndNote,
   callLogLabel,
+  cameraFacingLabel,
+  cameraFlipLabel,
+  canShareScreen,
+  countVideoInputs,
   isCallFrame,
+  nextCameraFacing,
   normalizeIceServers,
+  screenShareLabel,
+  videoConstraints,
 } from "./call.ts";
 
 describe("call helpers", () => {
@@ -71,5 +78,66 @@ describe("call helpers", () => {
     expect(callLogLabel({ status: "missed", direction: "incoming", media: "video" })).toBe(
       "영상 부재중 전화",
     );
+  });
+
+  it("switches camera facing and labels the flip button", () => {
+    expect(nextCameraFacing("user")).toBe("environment");
+    expect(nextCameraFacing("environment")).toBe("user");
+    expect(cameraFacingLabel("user")).toBe("전면 카메라");
+    expect(cameraFacingLabel("environment")).toBe("후면 카메라");
+    expect(cameraFlipLabel("user")).toBe("후면 카메라로 전환");
+    expect(cameraFlipLabel("environment")).toBe("전면 카메라로 전환");
+  });
+
+  it("builds video constraints for the requested facing", () => {
+    expect(videoConstraints("user")).toEqual({
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+      facingMode: "user",
+    });
+    expect(videoConstraints("environment").facingMode).toBe("environment");
+  });
+
+  it("counts video inputs and only enables flipping with two or more", () => {
+    expect(countVideoInputs([])).toBe(0);
+    expect(
+      countVideoInputs([
+        { kind: "audioinput" },
+        { kind: "videoinput" },
+      ]),
+    ).toBe(1);
+    expect(
+      countVideoInputs([
+        { kind: "videoinput" },
+        { kind: "videoinput" },
+        { kind: "audioinput" },
+      ]),
+    ).toBe(2);
+  });
+
+  it("labels the screen share action", () => {
+    expect(screenShareLabel(false)).toBe("화면 공유");
+    expect(screenShareLabel(true)).toBe("화면 공유 중지");
+  });
+
+  it("reports screen sharing support from the browser API", () => {
+    const original = navigator.mediaDevices;
+    try {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: { getDisplayMedia: () => Promise.reject(new Error("unsupported")) },
+      });
+      expect(canShareScreen()).toBe(true);
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: {},
+      });
+      expect(canShareScreen()).toBe(false);
+    } finally {
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true,
+        value: original,
+      });
+    }
   });
 });

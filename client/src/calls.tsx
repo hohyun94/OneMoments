@@ -13,7 +13,16 @@ import {
 
 import { CallOverlay } from "./components/CallOverlay.tsx";
 import { api } from "./lib/api.ts";
-import { callDeclineNote, callEndNote, normalizeIceServers } from "./lib/call.ts";
+import {
+  callDeclineNote,
+  callEndNote,
+  canShareScreen,
+  countVideoInputs,
+  nextCameraFacing,
+  normalizeIceServers,
+  videoConstraints,
+  type CameraFacing,
+} from "./lib/call.ts";
 import { useRealtime } from "./realtime.tsx";
 import type {
   CallConfig,
@@ -36,6 +45,12 @@ export interface CallSession {
   muted: boolean;
   /** 영상 통화에서 카메라를 껐는지 */
   cameraOff: boolean;
+  /** 화면 공유 중인지(내 화면을 상대에게 보내는 중) */
+  screenSharing: boolean;
+  /** 현재 카메라 방향(모바일 전면/후면) */
+  facing: CameraFacing;
+  /** 비디오 입력 장치가 2개 이상이면 카메라 전환 버튼을 노출한다. */
+  canFlipCamera: boolean;
   /** 연결 완료 시각(ms). 통화 시간 표시에 쓴다. */
   connectedAt: number | null;
   /** 종료/거절 안내 문구. */
@@ -57,6 +72,10 @@ interface CallContextValue {
   hangup: () => void;
   toggleMute: () => void;
   toggleCamera: () => void;
+  /** 화면 공유 시작/중지(영상 통화 연결 후). */
+  toggleScreenShare: () => Promise<void>;
+  /** 전면/후면 카메라 전환(장치가 2개 이상일 때). */
+  flipCamera: () => Promise<void>;
   /** 원격/로컬 영상 표시용 엘리먼트 참조(영상 통화에서만 사용). */
   remoteVideoRef: RefObject<HTMLVideoElement | null>;
   localVideoRef: RefObject<HTMLVideoElement | null>;
@@ -93,6 +112,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const localStreamRef = useRef<MediaStream | null>(null);
   /** 발신 영상 통화에서 수락 전에 먼저 켜 두는 카메라 전용 스트림(마이크 없음). */
   const previewStreamRef = useRef<MediaStream | null>(null);
+  /** 화면 공유 중일 때의 디스플레이 스트림. */
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  /** 현재 카메라 트랙(화면 공유를 끝낼 때 되돌릴 대상). */
+  const cameraTrackRef = useRef<MediaStreamTrack | null>(null);
+  const facingRef = useRef<CameraFacing>("user");
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -140,6 +164,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     localStreamRef.current = null;
     previewStreamRef.current?.getTracks().forEach((track) => track.stop());
     previewStreamRef.current = null;
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+    cameraTrackRef.current = null;
+    facingRef.current = "user";
     if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
     if (localVideoRef.current) localVideoRef.current.srcObject = null;
     if (remoteAudioRef.current) remoteAudioRef.current.srcObject = null;
@@ -241,6 +269,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
     [sendSignal],
   );
 
+  /** 비디오 입력 장치 수를 세어 카메라 전환 버튼 노출 여부를 갱신한다. */
+  const refreshCameraDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const canFlip = countVideoInputs(devices) > 1;
+      setSession((value) =>
+        value && value.media === "video" ? { ...value, canFlipCamera: canFlip } : value,
+      );
+    } catch {
+      // 장치 열거 실패는 기능 저하일 뿐이라 무시한다.
+    }
+  }, []);
+
   const prepareConnection = useCallback(
     async (
       cfg: CallConfig,
@@ -269,15 +311,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         } else {
           stream = await navigator.mediaDevices.getUserMedia({
             audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-            ...(media === "video"
-              ? {
-                  video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    facingMode: "user",
-                  },
-                }
-              : {}),
+            ...(media === "video" ? { video: videoConstraints(facingRef.current) } : {}),
           });
         }
       } catch {
@@ -292,11 +326,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
       localStreamRef.current = stream;
       if (media === "video") {
+        cameraTrackRef.current = stream.getVideoTracks()[0] ?? null;
         setLocalVideoStream(stream);
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
           void localVideoRef.current.play().catch(() => undefined);
         }
+        void refreshCameraDevices();
       }
       const pc = new RTCPeerConnection({ iceServers: cfg.iceServers });
       pcRef.current = pc;
@@ -380,7 +416,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       };
       return pc;
     },
-    [attemptIceRestart, finish, sendFrame, sendSignal],
+    [attemptIceRestart, finish, refreshCameraDevices, sendFrame, sendSignal],
   );
 
   const ensureConfig = useCallback(async (): Promise<CallConfig | null> => {
@@ -427,9 +463,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (!navigator.mediaDevices?.getUserMedia) return false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
+        video: videoConstraints(facingRef.current),
       });
       previewStreamRef.current = stream;
+      cameraTrackRef.current = stream.getVideoTracks()[0] ?? null;
       setLocalVideoStream(stream);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
@@ -464,6 +501,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
           media,
           muted: false,
           cameraOff: false,
+          screenSharing: false,
+          facing: "user",
+          canFlipCamera: false,
           connectedAt: null,
           note: media === "video" ? "영상 통화를 사용할 수 없습니다." : "음성 통화를 사용할 수 없습니다.",
         });
@@ -481,6 +521,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
         media,
         muted: false,
         cameraOff: false,
+        screenSharing: false,
+        facing: "user",
+        canFlipCamera: false,
         connectedAt: null,
         note: null,
       });
@@ -496,6 +539,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           finish("카메라 권한이 필요합니다.");
           return;
         }
+        void refreshCameraDevices();
       }
       sendFrame({
         type: "call.invite",
@@ -510,7 +554,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         finish("응답이 없어 통화를 종료했습니다.");
       }, cfg.ringTimeoutSeconds * 1000);
     },
-    [clearTimers, ensureConfig, finish, releaseMedia, sendFrame, startVideoPreview],
+    [clearTimers, ensureConfig, finish, refreshCameraDevices, releaseMedia, sendFrame, startVideoPreview],
   );
   // 수락
   const accept = useCallback(async () => {
@@ -610,6 +654,137 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setSession((current) => (current ? { ...current, cameraOff: turningOff } : current));
   }, []);
 
+  /**
+   * 화면 공유 토글.
+   *
+   * 카메라 트랙을 유지한 채 송신 트랙만 디스플레이 트랙으로 교체한다(`replaceTrack`).
+   * 재협상(offer/answer)이 필요 없어 연결이 끊기지 않고, 중지하면 카메라로 되돌아간다.
+   */
+  const toggleScreenShare = useCallback(async () => {
+    const current = sessionRef.current;
+    if (!current || current.media !== "video") return;
+    if (current.phase !== "active" && current.phase !== "connecting") return;
+    const videoSender = () =>
+      pcRef.current?.getSenders().find((sender) => sender.track?.kind === "video") ?? null;
+
+    // 공유 중지
+    if (screenStreamRef.current) {
+      const display = screenStreamRef.current;
+      screenStreamRef.current = null;
+      display.getTracks().forEach((track) => {
+        track.onended = null;
+        track.stop();
+      });
+      const camera = cameraTrackRef.current;
+      const sender = videoSender();
+      if (sender && camera) await sender.replaceTrack(camera).catch(() => undefined);
+      if (localVideoRef.current && localStreamRef.current) {
+        localVideoRef.current.srcObject = localStreamRef.current;
+        void localVideoRef.current.play().catch(() => undefined);
+      }
+      setSession((value) => (value ? { ...value, screenSharing: false } : value));
+      return;
+    }
+
+    if (!canShareScreen()) return;
+    const sender = videoSender();
+    if (!sender) return;
+    try {
+      const display = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      const track = display.getVideoTracks()[0];
+      if (!track) {
+        display.getTracks().forEach((item) => item.stop());
+        return;
+      }
+      // 공유 도중 통화가 끝났다면 트랙만 정리한다.
+      if (sessionRef.current?.callId !== current.callId) {
+        display.getTracks().forEach((item) => item.stop());
+        return;
+      }
+      await sender.replaceTrack(track);
+      screenStreamRef.current = display;
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = display;
+        void localVideoRef.current.play().catch(() => undefined);
+      }
+      setSession((value) => (value ? { ...value, screenSharing: true } : value));
+      // 브라우저 자체의 "공유 중지" 버튼으로 끝내도 카메라로 복귀한다.
+      track.onended = () => {
+        if (screenStreamRef.current !== display) return;
+        screenStreamRef.current = null;
+        display.getTracks().forEach((item) => item.stop());
+        const camera = cameraTrackRef.current;
+        const activeSender =
+          pcRef.current?.getSenders().find((item) => item.track?.kind === "video") ?? null;
+        if (activeSender && camera) void activeSender.replaceTrack(camera).catch(() => undefined);
+        if (localVideoRef.current && localStreamRef.current) {
+          localVideoRef.current.srcObject = localStreamRef.current;
+          void localVideoRef.current.play().catch(() => undefined);
+        }
+        setSession((value) => (value ? { ...value, screenSharing: false } : value));
+      };
+    } catch {
+      // 사용자가 선택 창을 닫았거나 권한이 없으면 조용히 무시한다.
+    }
+  }, []);
+
+  /** 전면/후면 카메라 전환. 미리보기 단계에서는 미리보기만, 연결 후에는 송신 트랙을 교체한다. */
+  const flipCamera = useCallback(async () => {
+    const current = sessionRef.current;
+    if (!current || current.media !== "video") return;
+    const next = nextCameraFacing(facingRef.current);
+    try {
+      const incoming = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints(next),
+      });
+      const track = incoming.getVideoTracks()[0];
+      if (!track) {
+        incoming.getTracks().forEach((item) => item.stop());
+        return;
+      }
+      const latest = sessionRef.current;
+      if (!latest || latest.callId !== current.callId) {
+        incoming.getTracks().forEach((item) => item.stop());
+        return;
+      }
+      const previous = cameraTrackRef.current;
+      const local = localStreamRef.current;
+      // 발신 미리보기(연결 전)는 카메라 전용 스트림만 교체한다.
+      if (!local) {
+        previewStreamRef.current?.getTracks().forEach((item) => item.stop());
+        previewStreamRef.current = incoming;
+        cameraTrackRef.current = track;
+        facingRef.current = next;
+        setLocalVideoStream(incoming);
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = incoming;
+          void localVideoRef.current.play().catch(() => undefined);
+        }
+        setSession((value) => (value ? { ...value, facing: next } : value));
+        return;
+      }
+      cameraTrackRef.current = track;
+      facingRef.current = next;
+      // 화면 공유 중에는 송신 트랙을 건드리지 않는다(공유를 끝낼 때 새 카메라로 복귀).
+      if (!screenStreamRef.current) {
+        const sender =
+          pcRef.current?.getSenders().find((item) => item.track?.kind === "video") ?? null;
+        if (sender) await sender.replaceTrack(track).catch(() => undefined);
+      }
+      const merged = new MediaStream([...local.getAudioTracks(), track]);
+      localStreamRef.current = merged;
+      setLocalVideoStream(merged);
+      if (!screenStreamRef.current && localVideoRef.current) {
+        localVideoRef.current.srcObject = merged;
+        void localVideoRef.current.play().catch(() => undefined);
+      }
+      if (previous && previous !== track) previous.stop();
+      setSession((value) => (value ? { ...value, facing: next } : value));
+    } catch {
+      // 장치 전환 실패는 기존 카메라를 유지한다.
+    }
+  }, []);
+
   // 서버 시그널링 처리
   useEffect(() => {
     const handle = (frame: ServerFrame) => {
@@ -634,6 +809,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
           media: call.media,
           muted: false,
           cameraOff: false,
+          screenSharing: false,
+          facing: "user",
+          canFlipCamera: false,
           connectedAt: null,
           note: null,
         });
@@ -766,6 +944,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
       hangup,
       toggleMute,
       toggleCamera,
+      toggleScreenShare,
+      flipCamera,
       remoteVideoRef,
       localVideoRef,
       remoteVideoStream,
@@ -776,6 +956,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       config?.enabled,
       config?.videoEnabled,
       decline,
+      flipCamera,
       hangup,
       localVideoStream,
       remoteVideoStream,
@@ -783,6 +964,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       startCall,
       toggleCamera,
       toggleMute,
+      toggleScreenShare,
     ],
   );
 

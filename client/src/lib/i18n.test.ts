@@ -50,4 +50,18 @@ describe("i18n", () => {
       delete dictionaries.ko["test.greet"];
     }
   });
+
+  it("translates the chat surface with the same Korean wording as before", () => {
+    // 한국어는 기존 UI 문구 그대로여야 한다(E2E·스크린리더 라벨 회귀 방지).
+    expect(translate("ko", "sidebar.newConversation")).toBe("새 대화");
+    expect(translate("ko", "sidebar.search.placeholder")).toBe("메시지 검색 (2자 이상)");
+    expect(translate("ko", "newChat.username.label")).toBe("사용자 아이디");
+    expect(translate("ko", "sidebar.members", { count: 3 })).toBe("3명");
+    expect(translate("ko", "sidebar.missedCalls", { count: 2 })).toBe("부재중 전화 2건");
+    expect(translate("ko", "newChat.removeMember", { name: "bob" })).toBe("bob 제거");
+
+    expect(translate("en", "sidebar.newConversation")).toBe("New chat");
+    expect(translate("en", "sidebar.members", { count: 3 })).toBe("3 members");
+    expect(translate("en", "newChat.removeMember", { name: "bob" })).toBe("Remove bob");
+  });
 });

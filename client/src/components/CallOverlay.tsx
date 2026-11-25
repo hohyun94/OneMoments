@@ -1,3 +1,4 @@
+﻿import { useI18n } from "../i18n.tsx";
 import {
   Mic,
   MicOff,
@@ -18,6 +19,7 @@ import { Button, cn } from "./ui.tsx";
 
 /** 통화 상태를 화면 하단 카드(영상은 전체 화면 패널)로 보여준다. */
 export function CallOverlay() {
+  const { t } = useI18n();
   const {
     session,
     accept,
@@ -88,17 +90,17 @@ export function CallOverlay() {
   const status =
     session.phase === "incoming"
       ? isVideo
-        ? "영상 통화"
-        : "수신 전화"
+        ? t("call.videoTitle")
+        : t("call.incoming")
       : session.phase === "outgoing"
         ? isVideo
-          ? "영상 통화 발신 중…"
-          : "발신 중…"
+          ? t("call.dialingVideo")
+          : t("call.dialing")
         : session.phase === "connecting"
-          ? "연결 중…"
+          ? t("call.connecting")
           : session.phase === "active"
-            ? `통화 중 · ${formatDuration(elapsed)}`
-            : session.note ?? "통화 종료";
+            ? t("call.inProgress", { duration: formatDuration(elapsed) })
+            : session.note ?? t("call.ended");
 
   // 영상 통화: 발신(수락 전)에는 내 카메라를 크게, 이후에는 원격 영상 + 내 미리보기.
   if (
@@ -126,7 +128,7 @@ export function CallOverlay() {
               />
               {!localVideoStream ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
-                  카메라 준비 중…
+                  {t("call.cameraPreparing")}
                 </div>
               ) : null}
               <div
@@ -137,7 +139,7 @@ export function CallOverlay() {
                 <span className="max-w-full truncate text-[10px] text-white/80">
                   {session.peerLabel}
                 </span>
-                <span className="text-[10px] text-white/50">연결 대기</span>
+                <span className="text-[10px] text-white/50">{t("call.waitingConnection")}</span>
               </div>
             </>
           ) : (
@@ -151,7 +153,7 @@ export function CallOverlay() {
               />
               {session.phase === "connecting" ? (
                 <div className="absolute inset-0 flex items-center justify-center text-sm text-white/80">
-                  연결 중…
+{t("call.connecting")}
                 </div>
               ) : null}
               {remoteSharing ? (
@@ -203,7 +205,7 @@ export function CallOverlay() {
                     data-testid="screen-share-badge"
                     className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[10px] text-white"
                   >
-                    화면 공유 중
+                    {t("call.sharing")}
                   </span>
                 ) : null}
               </div>
@@ -221,9 +223,9 @@ export function CallOverlay() {
               type="button"
               size="icon"
               onClick={toggleMute}
-              aria-label={session.muted ? "음소거 해제" : "음소거"}
+              aria-label={t(session.muted ? "call.unmute" : "call.mute")}
               aria-pressed={session.muted}
-              title={session.muted ? "음소거 해제" : "음소거"}
+              title={t(session.muted ? "call.unmute" : "call.mute")}
               className="bg-white/10 text-white hover:bg-white/20"
             >
               {session.muted ? (
@@ -237,9 +239,9 @@ export function CallOverlay() {
             type="button"
             size="icon"
             onClick={toggleCamera}
-            aria-label={session.cameraOff ? "카메라 켜기" : "카메라 끄기"}
+            aria-label={t(session.cameraOff ? "call.cameraOn" : "call.cameraOff")}
             aria-pressed={session.cameraOff}
-            title={session.cameraOff ? "카메라 켜기" : "카메라 끄기"}
+            title={t(session.cameraOff ? "call.cameraOn" : "call.cameraOff")}
             className="bg-white/10 text-white hover:bg-white/20"
           >
             {session.cameraOff ? (
@@ -282,8 +284,8 @@ export function CallOverlay() {
             size="icon"
             variant="destructive"
             onClick={hangup}
-            aria-label={ringing ? "통화 취소" : "통화 종료"}
-            title={ringing ? "통화 취소" : "통화 종료"}
+            aria-label={t(ringing ? "call.cancel" : "call.end")}
+            title={t(ringing ? "call.cancel" : "call.end")}
           >
             <PhoneOff className="h-4 w-4" aria-hidden />
           </Button>
@@ -297,7 +299,7 @@ export function CallOverlay() {
       <div
         data-testid="call-overlay"
         role={session.phase === "incoming" ? "dialog" : undefined}
-        aria-label={session.phase === "incoming" ? "수신 전화" : undefined}
+        aria-label={session.phase === "incoming" ? t("call.incoming") : undefined}
         className={cn(
           "pointer-events-auto w-full max-w-sm rounded-2xl border bg-white p-3 shadow-xl",
           session.phase === "incoming" ? "border-accent-300" : "border-zinc-200",
@@ -327,9 +329,9 @@ export function CallOverlay() {
                 size="icon"
                 variant={session.muted ? "outline" : "ghost"}
                 onClick={toggleMute}
-                aria-label={session.muted ? "음소거 해제" : "음소거"}
+                aria-label={t(session.muted ? "call.unmute" : "call.mute")}
                 aria-pressed={session.muted}
-                title={session.muted ? "음소거 해제" : "음소거"}
+                title={t(session.muted ? "call.unmute" : "call.mute")}
               >
                 {session.muted ? (
                   <MicOff className="h-4 w-4" aria-hidden />
@@ -342,8 +344,8 @@ export function CallOverlay() {
                 size="icon"
                 variant="destructive"
                 onClick={hangup}
-                aria-label="통화 종료"
-                title="통화 종료"
+                aria-label={t("call.end")}
+                title={t("call.end")}
               >
                 <PhoneOff className="h-4 w-4" aria-hidden />
               </Button>
@@ -354,10 +356,10 @@ export function CallOverlay() {
         {session.phase === "incoming" ? (
           <div className="mt-3 flex gap-2">
             <Button type="button" variant="outline" className="flex-1" onClick={decline}>
-              거절
+{t("call.decline")}
             </Button>
             <Button type="button" className="flex-1" onClick={() => void accept()}>
-              수락
+{t("call.accept")}
             </Button>
           </div>
         ) : null}
@@ -365,7 +367,7 @@ export function CallOverlay() {
         {session.phase === "outgoing" || session.phase === "connecting" ? (
           <div className="mt-3 flex justify-end">
             <Button type="button" variant="outline" size="sm" onClick={hangup}>
-              통화 취소
+{t("call.cancel")}
             </Button>
           </div>
         ) : null}

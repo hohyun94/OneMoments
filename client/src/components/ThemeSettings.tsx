@@ -1,3 +1,4 @@
+﻿import { useI18n } from "../i18n.tsx";
 import { useEffect, useState } from "react";
 
 import {
@@ -13,6 +14,7 @@ import { Alert, Button, Input, Label, Spinner, cn } from "./ui.tsx";
 
 /** 모드·강조색·사용자 HEX 테마 설정. 계정에 저장된다. */
 export function ThemeSettings() {
+  const { t } = useI18n();
   const { theme, updateTheme } = useSession();
   const [customHex, setCustomHex] = useState(
     theme.accent.startsWith("#") ? theme.accent : resolveAccentColor(theme.accent),
@@ -36,9 +38,9 @@ export function ThemeSettings() {
     setMessage(null);
     try {
       await updateTheme(next);
-      setMessage("테마를 저장했습니다.");
+      setMessage(t("theme.saved"));
     } catch {
-      setError("서버에 저장하지 못했습니다. 이 브라우저에는 적용되었습니다.");
+      setError(t("theme.saveFailed"));
     } finally {
       setBusy(false);
     }
@@ -47,8 +49,8 @@ export function ThemeSettings() {
   return (
     <div className="mt-4 space-y-4">
       <div>
-        <Label>모드</Label>
-        <div role="group" aria-label="테마 모드" className="mt-1.5 flex flex-wrap gap-2">
+        <Label>{t("theme.mode")}</Label>
+        <div role="group" aria-label={t("theme.modeAria")} className="mt-1.5 flex flex-wrap gap-2">
           {THEME_MODES.map((mode) => {
             const selected = theme.mode === mode.id;
             return (
@@ -73,8 +75,8 @@ export function ThemeSettings() {
       </div>
 
       <div>
-        <Label>강조색</Label>
-        <div role="group" aria-label="강조색" className="mt-1.5 flex flex-wrap gap-2">
+        <Label>{t("theme.accent")}</Label>
+        <div role="group" aria-label={t("theme.accentAria")} className="mt-1.5 flex flex-wrap gap-2">
           {ACCENT_PRESETS.map((preset) => {
             const selected = theme.accent === preset.id;
             return (
@@ -104,11 +106,11 @@ export function ThemeSettings() {
       </div>
 
       <div>
-        <Label htmlFor="custom-accent">사용자 지정 색상</Label>
+        <Label htmlFor="custom-accent">{t("theme.custom")}</Label>
         <div className="mt-1.5 flex flex-wrap items-center gap-2">
           <input
             type="color"
-            aria-label="색상 선택"
+            aria-label={t("theme.pickColor")}
             value={preview ?? resolveAccentColor(theme.accent)}
             disabled={busy}
             onChange={(event) => setCustomHex(event.target.value)}
@@ -134,28 +136,28 @@ export function ThemeSettings() {
             }}
           >
             {busy ? <Spinner /> : null}
-            적용
+            {t("theme.apply")}
           </Button>
           {customSelected ? (
             <span
               className="flex items-center gap-1 text-xs text-zinc-500"
-              title={`강조색 위 글자색: ${accentContrastColor(theme.accent)}`}
+              title={t("theme.contrast", { color: accentContrastColor(theme.accent) })}
             >
               <span
                 className="h-3 w-3 rounded-full ring-1 ring-black/10"
                 style={{ backgroundColor: resolveAccentColor(theme.accent) }}
                 aria-hidden
               />
-              사용 중
+              {t("theme.inUse")}
             </span>
           ) : null}
         </div>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-          #RRGGBB 형식. 밝은 색을 고르면 버튼 글자색이 자동으로 어두워집니다.
+          {t("theme.customHint")}
         </p>
         {customHex.trim().length > 0 && !preview ? (
           <p className="mt-1 text-xs text-red-600">
-            #RRGGBB 형식으로 입력해 주세요.
+            {t("theme.invalidHex")}
           </p>
         ) : null}
       </div>

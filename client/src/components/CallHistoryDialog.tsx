@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react";
 
+import { useI18n } from "../i18n.tsx";
 import { api } from "../lib/api.ts";
 import { callLogLabel } from "../lib/call.ts";
 import { formatClock } from "../lib/format.ts";
@@ -28,6 +29,7 @@ export function CallHistoryDialog({
     staleTime: 10_000,
   });
   const calls = query.data ?? [];
+  const { locale } = useI18n();
 
   return (
     <Dialog open={open} onClose={onClose} title="통화 기록">
@@ -72,7 +74,7 @@ export function CallHistoryDialog({
                     {callLogLabel(entry)}
                   </span>
                   <span className="block text-[11px] text-zinc-500">
-                    {formatClock(entry.startedAt)}
+                    {formatClock(entry.startedAt, locale)}
                     {entry.durationSeconds !== null
                       ? ` · ${formatDuration(entry.durationSeconds)}`
                       : ""}

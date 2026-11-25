@@ -28,6 +28,7 @@ import { parseLinkMessage, previewHost, type LinkMessagePayload } from "../lib/l
 import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
 import { formatDuration, formatPlaybackRate, nextPlaybackRate } from "../lib/voice.ts";
+import { useI18n } from "../i18n.tsx";
 import { indexDecryptedMessage } from "../lib/search.ts";
 import { addBookmark, isBookmarked, removeBookmark } from "../lib/bookmarks.ts";
 import { viewOnceHint } from "../lib/viewOnce.ts";
@@ -591,6 +592,7 @@ export function MessageBubble({
   const [reactionOpen, setReactionOpen] = useState(false);
   const [replyText, setReplyText] = useState<string | null>(null);
   const [bookmarked, setBookmarked] = useState(false);
+  const { locale } = useI18n();
 
   // 저장함(북마크) 여부는 이 기기의 IndexedDB 에서 확인한다.
   useEffect(() => {
@@ -869,7 +871,7 @@ export function MessageBubble({
             own ? "text-accent-contrast/80" : "text-zinc-400",
           )}
         >
-          {formatClock(message.createdAt)}
+          {formatClock(message.createdAt, locale)}
           {message.viewOnce ? " · 한 번 보기" : ""}
           {edited ? " · 수정됨" : ""}
           {own && readLabel ? ` · ${readLabel}` : ""}

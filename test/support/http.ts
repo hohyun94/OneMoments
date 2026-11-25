@@ -91,12 +91,19 @@ export class TestClient {
   async register(
     username: string,
     identity: Identity,
-    options: { password?: string; deviceName?: string; platform?: string } = {},
+    options: {
+      password?: string;
+      deviceName?: string;
+      platform?: string;
+      /** `SIGNUP_MODE=invite` 일 때 필요한 가입 초대 코드 */
+      inviteCode?: string;
+    } = {},
   ): Promise<ApiResponse> {
     return this.request("POST", "/api/auth/register", {
       body: {
         username,
         password: options.password ?? "password-12345",
+        ...(options.inviteCode !== undefined ? { inviteCode: options.inviteCode } : {}),
         device: {
           name: options.deviceName ?? "test-device",
           ...(options.platform ? { platform: options.platform } : {}),

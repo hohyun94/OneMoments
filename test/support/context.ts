@@ -27,6 +27,8 @@ export interface TestContext {
 export interface TestContextOptions {
   /** ADMIN_USERNAMES allowlist (테스트용) */
   adminUsernames?: string[];
+  /** 가입 정책(기본 open). invite/closed 동작을 검증할 때 넘긴다. */
+  signupMode?: "open" | "invite" | "closed";
   /** 스텁 IdP 를 붙일 때 넘긴다. 넘기면 Google OAuth 가 활성화된다. */
   googleOAuth?: {
     authorizeUrl: string;
@@ -79,6 +81,7 @@ export async function createTestContext(
     ATTACHMENT_DIR: ".test-artifacts/attachments",
     METRICS_TOKEN: "test-metrics-token-0123456789",
     ADMIN_USERNAMES: (options.adminUsernames ?? []).join(","),
+    SIGNUP_MODE: options.signupMode ?? "open",
     ...(options.googleOAuth
       ? {
           GOOGLE_CLIENT_ID: options.googleOAuth.clientId ?? "test-google-client",

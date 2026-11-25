@@ -16,10 +16,12 @@ import {
   adminDeviceParamsSchema,
   adminUserIdParamsSchema,
   adminUserListQuerySchema,
+  createSignupInviteBodySchema,
   decoyCreateBodySchema,
   decoyDisabledBodySchema,
   decoyPasswordBodySchema,
   decoyProfileParamsSchema,
+  signupInviteParamsSchema,
 } from "../http/validation.js";
 import {
   getAdminDeviceSessions,
@@ -39,6 +41,11 @@ import {
   setDecoyProfileDisabled,
 } from "../services/decoyProfiles.js";
 import { listAuthEvents, recordAuthEvent } from "../services/authEvents.js";
+import {
+  createSignupInvite,
+  listSignupInvites,
+  revokeSignupInvite,
+} from "../services/signupInvites.js";
 
 /**
  * 관리자 전용 API. ADMIN_USERNAMES allowlist + 세션 + CSRF 를 모두 통과해야 한다.
@@ -57,6 +64,82 @@ export function createAdminRouter(db: Database, config: Config): Router {
   });
 
   router.use(session, admin);
+
+  router.get(
+    "/signup-invites",
+    asyncHandler(async (_req, res) => {
+      const invites = await listSignupInvites(db);
+      res.json({
+        invites: invites.map((invite) => ({
+          id: invite.id,
+          code: invite.code,
+          maxUses: invite.maxUses,
+          usedCount: invite.usedCount,
+          expiresAt: invite.expiresAt?.toISOString() ?? null,
+          revokedAt: invite.revokedAt?.toISOString() ?? null,
+          createdAt: invite.createdAt.toISOString(),
+          active:
+            invite.revokedAt === null &&
+            (invite.expiresAt === null || invite.expiresAt.getTime() > Date.now()) &&
+            invite.usedCount < invite.maxUses,
+        })),
+        signupMode: config.signupMode,
+      });
+    }),
+  );
+
+  router.post(
+    "/signup-invites",
+    csrf,
+    decoyLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const body = createSignupInviteBodySchema.parse(req.body);
+      const expiresAt =
+        body.expiresInDays != null
+          ? new Date(Date.now() + body.expiresInDays * 24 * 60 * 60 * 1000)
+          : null;
+      const invite = await createSignupInvite(db, {
+        createdByUserId: auth.userId,
+        maxUses: body.maxUses,
+        expiresAt,
+      });
+      await recordAuthEvent(db, {
+        userId: auth.userId,
+        event: "admin_signup_invite_created",
+        ip: req.ip ?? null,
+        userAgent: null,
+      });
+      res.status(201).json({
+        invite: {
+          id: invite.id,
+          code: invite.code,
+          maxUses: invite.maxUses,
+          usedCount: invite.usedCount,
+          expiresAt: invite.expiresAt?.toISOString() ?? null,
+          createdAt: invite.createdAt.toISOString(),
+        },
+      });
+    }),
+  );
+
+  router.delete(
+    "/signup-invites/:inviteId",
+    csrf,
+    decoyLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { inviteId } = signupInviteParamsSchema.parse(req.params);
+      const revoked = await revokeSignupInvite(db, { id: inviteId });
+      await recordAuthEvent(db, {
+        userId: auth.userId,
+        event: "admin_signup_invite_revoked",
+        ip: req.ip ?? null,
+        userAgent: null,
+      });
+      res.json({ revoked });
+    }),
+  );
 
   router.get(
     "/overview",

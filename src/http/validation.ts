@@ -61,6 +61,19 @@ export const registerBodySchema = z.object({
   username: usernameSchema,
   password: passwordSchema,
   device: deviceKeysSchema,
+  /** `SIGNUP_MODE=invite` 일 때 필수(서버가 정규화해 검증). */
+  inviteCode: z.string().trim().max(64).optional(),
+});
+
+/** 관리자: 가입 초대 코드 발급. */
+export const createSignupInviteBodySchema = z.object({
+  maxUses: z.number().int().min(1).max(100).default(1),
+  /** 만료까지 일수. null/미지정이면 무기한. */
+  expiresInDays: z.number().int().min(1).max(365).nullish(),
+});
+
+export const signupInviteParamsSchema = z.object({
+  inviteId: z.string().uuid(),
 });
 
 export const signedPreKeyBodySchema = z.object({

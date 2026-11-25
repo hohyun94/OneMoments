@@ -121,6 +121,10 @@ export function createGoogleOAuthRouter(db: Database, config: Config): Router {
           "Use /api/auth/google/start/link to link while signed in",
         );
       }
+      // 초대제/가입 중지 모드에서는 Google 신규 가입을 허용하지 않는다(초대 코드 우회 방지).
+      if (body.intent === "signup" && config.signupMode !== "open") {
+        throw AppError.forbidden("초대 코드로만 가입할 수 있습니다.");
+      }
       const created = await createOAuthState(db, {
         config: oauth,
         intent: body.intent,

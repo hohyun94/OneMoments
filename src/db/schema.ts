@@ -797,6 +797,36 @@ export const authEvents = pgTable(
   (table) => [index("auth_events_user_created_idx").on(table.userId, table.createdAt)],
 );
 
+/**
+ * 가입 초대 코드(관리자 발급).
+ *
+ * `SIGNUP_MODE=invite` 일 때만 사용되며, 코드는 대문자/숫자로 정규화해 저장한다.
+ * 사용 횟수·만료·폐기로 통제하고, 가입 트랜잭션 안에서 원자적으로 소모한다.
+ */
+export const signupInvites = pgTable(
+  "signup_invites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    /** 발급한 관리자(계정 삭제 시 null). */
+    createdByUserId: uuid("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    /** 사용 가능 횟수(1~100). */
+    maxUses: integer("max_uses").notNull().default(1),
+    usedCount: integer("used_count").notNull().default(0),
+    /** 만료 시각. null 이면 무기한. */
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("signup_invites_code_uq").on(table.code),
+    check("signup_invites_max_uses_chk", sql`${table.maxUses} >= 1 and ${table.maxUses} <= 100`),
+    check("signup_invites_used_count_chk", sql`${table.usedCount} >= 0`),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
@@ -814,6 +844,7 @@ export type MomentViewRow = typeof momentViews.$inferSelect;
 export type MomentAttachmentRow = typeof momentAttachments.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
 export type AuthEventRow = typeof authEvents.$inferSelect;
+export type SignupInviteRow = typeof signupInvites.$inferSelect;
 export type OAuthStateRow = typeof oauthStates.$inferSelect;
 export type OAuthTicketRow = typeof oauthTickets.$inferSelect;
 export type CallLogRow = typeof callLogs.$inferSelect;

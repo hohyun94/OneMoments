@@ -11,7 +11,9 @@ export type AuthEventType =
   | "device_logout"
   | "device_revoked"
   | "recover"
-  | "admin_sessions_revoked";
+  | "admin_sessions_revoked"
+  | "admin_signup_invite_created"
+  | "admin_signup_invite_revoked";
 
 export interface AuthEventInput {
   userId: string;

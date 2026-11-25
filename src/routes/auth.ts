@@ -63,6 +63,7 @@ import {
   createAttachmentStorage,
 } from "../services/attachments.js";
 import { clearUserAvatar, setUserAvatar } from "../services/avatars.js";
+import { normalizeInviteCode } from "../services/signupInvites.js";
 import { deleteUserMoments, listUserMomentAttachmentIds } from "../services/moments.js";
 import {
   consumeRecoveryChallenge,
@@ -108,6 +109,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
       res.json({
         oauthEnabled: config.googleOAuth !== null,
         mapTileUrl: config.mapTileUrl,
+        signupMode: config.signupMode,
       });
     }),
   );
@@ -116,13 +118,23 @@ export function createAuthRouter(db: Database, config: Config): Router {
     "/register",
     credentialLimiter,
     asyncHandler(async (req, res) => {
+      if (config.signupMode === "closed") {
+        throw AppError.forbidden("가입이 비활성화되어 있습니다.");
+      }
       const body = registerBodySchema.parse(req.body);
+      // invite 모드에서는 초대 코드가 필수이며, 계정 생성과 같은 트랜잭션에서 소모된다.
+      const inviteCode =
+        config.signupMode === "invite" ? body.inviteCode : undefined;
+      if (config.signupMode === "invite" && normalizeInviteCode(inviteCode ?? "").length === 0) {
+        throw AppError.badRequest("INVITE_REQUIRED", "초대 코드가 필요합니다.");
+      }
       const keys = normalizeDeviceKeys(body.device);
       const { user, device } = await registerAccount(db, {
         username: body.username,
         password: body.password,
         deviceName: body.device.name,
         platform: body.device.platform,
+        inviteCode,
         ...keys,
       });
 

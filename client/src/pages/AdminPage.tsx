@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AdminDecoyPanel } from "../components/AdminDecoyPanel.tsx";
+import { AdminSignupInvitesPanel } from "../components/AdminSignupInvitesPanel.tsx";
 import { AdminDevicesPanel } from "../components/AdminDevicesPanel.tsx";
 import { Alert, Avatar, Button, Card, Dialog, Input, Label, Spinner } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
@@ -23,6 +24,7 @@ const TABS = [
   { id: "users", label: "사용자" },
   { id: "devices", label: "기기" },
   { id: "decoy", label: "Decoy" },
+  { id: "invites", label: "가입 초대" },
   { id: "audit", label: "감사 로그" },
 ] as const;
 
@@ -155,6 +157,7 @@ export function AdminPage() {
         {tab === "users" ? <UsersTab /> : null}
         {tab === "devices" ? <AdminDevicesPanel /> : null}
         {tab === "decoy" ? <AdminDecoyPanel /> : null}
+      {tab === "invites" ? <AdminSignupInvitesPanel /> : null}
         {tab === "audit" ? <AuditTab /> : null}
       </main>
     </div>

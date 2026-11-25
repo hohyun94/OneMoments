@@ -418,7 +418,7 @@ export function ChatView({
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const anchorAttemptsRef = useRef(0);
 
-  // 검색 결과(?anchor=)로 넘어온 메시지로 스크롤한다. 아직 로드되지 않았으면 이전 메시지를 더 불러온다.
+  // 검색 결과(?anchor=)로 넘어온 메시지로 스크롤한다. 아직 로드되지 않았으면 {t("chat.loadPrevious")}를 더 불러온다.
   useEffect(() => {
     if (!anchorId) {
       anchorAttemptsRef.current = 0;
@@ -478,7 +478,7 @@ export function ChatView({
       setHighlightId(messageId);
       return;
     }
-    // 아직 로드되지 않은 이전 메시지면 앵커로 이동해 이어 불러온다.
+    // 아직 로드되지 않은 {t("chat.loadPrevious")}면 앵커로 이동해 이어 불러온다.
     setSearchParams({ anchor: messageId }, { replace: true });
   }
 
@@ -1585,7 +1585,7 @@ export function ChatView({
           size="icon"
           className="md:hidden"
           onClick={onBack}
-          aria-label="대화 목록으로"
+          aria-label={t("chat.back")}
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
@@ -1611,8 +1611,8 @@ export function ChatView({
                   setAliasDraft(peerAlias);
                   setAliasOpen(true);
                 }}
-                aria-label="별명 변경"
-                title="이 기기에서만 보이는 별명"
+                aria-label={t("chat.aliasChange")}
+                title={t("chat.aliasTitle")}
                 className="shrink-0 rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
               >
                 <Pencil className="h-3 w-3" aria-hidden />
@@ -1622,20 +1622,23 @@ export function ChatView({
           <p className="flex items-center gap-1.5 truncate text-xs text-zinc-500">
             {typingNames.length > 0 ? (
               <span className="text-accent-600">
-                {isGroup
-                  ? `${typingNames.slice(0, 2).join(", ")}${
-                      typingNames.length > 2 ? ` 외 ${typingNames.length - 2}명` : ""
-                    } 입력 중…`
-                  : "입력 중…"}
+                {isGroup && typingNames.length > 2
+                  ? t("chat.typingMany", {
+                      names: typingNames.slice(0, 2).join(", "),
+                      count: typingNames.length - 2,
+                    })
+                  : t("chat.typing")}
               </span>
             ) : peerDeleted ? (
-              <span>계정 삭제됨</span>
+              <span>{t("chat.deletedAccount")}</span>
             ) : isGroup ? (
               <>
                 <span className="h-1.5 w-1.5 rounded-full bg-accent-400" />
-                {conversation.memberCount}명
+                {t("chat.members", { count: conversation.memberCount })}
                 {conversation.autoDeleteAfterReadSeconds !== null
-                  ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
+                  ? t("chat.autoDeleteSuffix", {
+                      label: autoDeleteLabel(conversation.autoDeleteAfterReadSeconds),
+                    })
                   : ""}
               </>
             ) : (
@@ -1651,17 +1654,19 @@ export function ChatView({
                   )}
                 />
                 {blocked
-                  ? blocked === "me"
-                    ? "차단함"
-                    : "차단됨"
+                  ? t(blocked === "me" ? "chat.blockedByMe" : "chat.blockedByPeer")
                   : peerOnline
-                    ? "온라인"
+                    ? t("chat.online")
                     : peer?.lastSeenAt
-                      ? t("time.lastSeen", { time: formatRelativeTime(peer.lastSeenAt, Date.now(), locale) })
-                      : "오프라인"}
+                      ? t("time.lastSeen", {
+                          time: formatRelativeTime(peer.lastSeenAt, Date.now(), locale),
+                        })
+                      : t("chat.offline")}
                 {peer?.statusMessage ? ` · ${peer.statusMessage}` : ""}
                 {conversation.autoDeleteAfterReadSeconds !== null
-                  ? ` · 읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
+                  ? t("chat.autoDeleteSuffix", {
+                      label: autoDeleteLabel(conversation.autoDeleteAfterReadSeconds),
+                    })
                   : ""}
               </>
             )}
@@ -1671,18 +1676,18 @@ export function ChatView({
           variant="ghost"
           size="sm"
           onClick={() => setSearchOpen((open) => !open)}
-          aria-label="대화 내 검색"
+          aria-label={t("chat.searchLabel")}
           aria-pressed={searchOpen}
-          title="이 대화에서 검색"
+          title={t("chat.searchTitle")}
         >
           <Search className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">검색</span>
+          <span className="hidden sm:inline">{t("chat.searchButton")}</span>
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => muteMutation.mutate(!conversation.muted)}
-          aria-label={conversation.muted ? "대화 알림 켜기" : "대화 알림 끄기"}
+          aria-label={t(conversation.muted ? "chat.muteOff" : "chat.muteOn")}
           disabled={muteMutation.isPending}
         >
           {conversation.muted ? (
@@ -1691,32 +1696,34 @@ export function ChatView({
             <Bell className="h-4 w-4" aria-hidden />
           )}
           <span className="hidden sm:inline">
-            {conversation.muted ? "알림 꺼짐" : "알림 켜짐"}
+            {t(conversation.muted ? "chat.mutedOn" : "chat.mutedOff")}
           </span>
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setAutoDeleteOpen(true)}
-          aria-label="자동 삭제 설정"
+          aria-label={t("chat.autoDeleteLabel")}
           title={
             conversation.autoDeleteAfterReadSeconds === null
-              ? "자동 삭제 꺼짐"
-              : `읽은 뒤 ${autoDeleteLabel(conversation.autoDeleteAfterReadSeconds)} 삭제`
+              ? t("chat.autoDeleteOff")
+              : t("chat.autoDeleteSummary", {
+                  label: autoDeleteLabel(conversation.autoDeleteAfterReadSeconds),
+                })
           }
         >
           <Clock className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">자동 삭제</span>
+          <span className="hidden sm:inline">{t("chat.autoDeleteButton")}</span>
         </Button>
         {isGroup ? (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setSettingsOpen(true)}
-            aria-label="그룹 설정"
+            aria-label={t("chat.groupSettings")}
           >
             <Settings className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">그룹 설정</span>
+            <span className="hidden sm:inline">{t("chat.groupSettings")}</span>
           </Button>
         ) : null}
         {isGroup && conversation.isAdmin ? (
@@ -1724,30 +1731,30 @@ export function ChatView({
             variant="ghost"
             size="sm"
             onClick={() => setMembersOpen(true)}
-            aria-label="참여자 추가"
+            aria-label={t("chat.addMembers")}
           >
             <UserPlus className="h-4 w-4" aria-hidden />
-            <span className="hidden sm:inline">참여자 추가</span>
+            <span className="hidden sm:inline">{t("chat.addMembers")}</span>
           </Button>
         ) : null}
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setGalleryOpen(true)}
-          aria-label="첨부 모아보기"
+          aria-label={t("chat.mediaLabel")}
         >
           <Images className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">첨부</span>
+          <span className="hidden sm:inline">{t("chat.mediaButton")}</span>
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={() => setSafetyOpen(true)}
-          aria-label="안전번호"
+          aria-label={t("chat.safetyButton")}
           disabled={!safety}
         >
           <ShieldCheck className="h-4 w-4" aria-hidden />
-          <span className="hidden sm:inline">안전번호</span>
+          <span className="hidden sm:inline">{t("chat.safetyButton")}</span>
         </Button>
         {canCall ? (
           <Button
@@ -1757,11 +1764,11 @@ export function ChatView({
               void call.startCall({
                 conversationId: conversation.id,
                 peerUserId: peer?.id ?? "",
-                peerLabel: peer?.username ? `@${peer.username}` : "상대",
+                peerLabel: peer?.username ? `@${peer.username}` : t("chat.peerFallback"),
               })
             }
-            aria-label="음성 통화"
-            title="음성 통화"
+            aria-label={t("chat.callAudio")}
+            title={t("chat.callAudio")}
           >
             <Phone className="h-4 w-4" aria-hidden />
           </Button>
@@ -1774,12 +1781,12 @@ export function ChatView({
               void call.startCall({
                 conversationId: conversation.id,
                 peerUserId: peer?.id ?? "",
-                peerLabel: peer?.username ? `@${peer.username}` : "상대",
+                peerLabel: peer?.username ? `@${peer.username}` : t("chat.peerFallback"),
                 media: "video",
               })
             }
-            aria-label="영상 통화"
-            title="영상 통화"
+            aria-label={t("chat.callVideo")}
+            title={t("chat.callVideo")}
           >
             <Video className="h-4 w-4" aria-hidden />
           </Button>
@@ -1789,15 +1796,15 @@ export function ChatView({
             variant="ghost"
             size="sm"
             onClick={() => setCallHistoryOpen(true)}
-            aria-label="통화 기록"
-            title="통화 기록"
+            aria-label={t("chat.callHistory")}
+            title={t("chat.callHistory")}
           >
             <History className="h-4 w-4" aria-hidden />
           </Button>
         ) : null}
         {connection !== "open" ? (
           <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-            연결 중…
+            {t("chat.connecting")}
           </span>
         ) : null}
       </header>
@@ -1807,20 +1814,20 @@ export function ChatView({
             <Search className="h-4 w-4 text-zinc-400" aria-hidden />
             <input
               autoFocus
-              aria-label="대화 내 검색어"
+              aria-label={t("chat.searchInput")}
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Escape") setSearchOpen(false);
               }}
-              placeholder="이 대화에서 검색"
+              placeholder={t("chat.searchPlaceholder")}
               className="h-9 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-400"
             />
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setSearchOpen(false)}
-              aria-label="검색 닫기"
+              aria-label={t("chat.searchClose")}
             >
               <X className="h-4 w-4" aria-hidden />
             </Button>
@@ -1828,10 +1835,10 @@ export function ChatView({
           {searchQuery.trim().length > 0 ? (
             <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white">
               {searchPending ? (
-                <p className="px-3 py-2 text-xs text-zinc-500">검색 중…</p>
+                <p className="px-3 py-2 text-xs text-zinc-500">{t("chat.searching")}</p>
               ) : searchResults.length === 0 ? (
                 <p className="px-3 py-2 text-xs text-zinc-500">
-                  이 기기에 저장된 메시지에서 찾지 못했습니다.
+                  {t("chat.searchEmpty")}
                 </p>
               ) : (
                 <ul className="divide-y divide-zinc-100">
@@ -1858,18 +1865,18 @@ export function ChatView({
             </div>
           ) : (
             <p className="mt-1 text-[11px] text-zinc-500">
-              이 기기에서 복호화된 메시지만 검색합니다.
+              {t("chat.searchLocalHint")}
             </p>
           )}
         </div>
       ) : null}
 
-      <Dialog open={aliasOpen} onClose={() => setAliasOpen(false)} title="별명">
+      <Dialog open={aliasOpen} onClose={() => setAliasOpen(false)} title={t("chat.aliasDialogTitle")}>
         <p className="text-xs text-zinc-500">
-          이 기기에서만 보이는 이름입니다. 상대에게는 보이지 않고, 로그아웃하면 지워집니다.
+          {t("chat.aliasDialogHint")}
         </p>
         <input
-          aria-label="별명"
+          aria-label={t("chat.aliasInput")}
           value={aliasDraft}
           onChange={(event) => setAliasDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -1890,11 +1897,11 @@ export function ChatView({
                 setAliasOpen(false);
               }}
             >
-              별명 지우기
+              {t("chat.aliasClear")}
             </Button>
           ) : null}
           <Button variant="ghost" onClick={() => setAliasOpen(false)}>
-            취소
+            {t("chat.cancel")}
           </Button>
           <Button
             onClick={() => {
@@ -1902,7 +1909,7 @@ export function ChatView({
               setAliasOpen(false);
             }}
           >
-            저장
+            {t("chat.save")}
           </Button>
         </div>
       </Dialog>
@@ -1914,10 +1921,10 @@ export function ChatView({
         >
           <span className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" aria-hidden />
-            전송 대기 {outbox.length}건 · 연결되면 자동으로 전송됩니다.
+            {t("chat.outboxPending", { count: outbox.length })}
           </span>
           <Button size="sm" variant="outline" onClick={() => void flushOutbox()}>
-            지금 재시도
+            {t("chat.outboxRetry")}
           </Button>
         </div>
       ) : null}
@@ -1927,11 +1934,11 @@ export function ChatView({
           <span className="flex items-center gap-2">
             <AlertCircle className="h-4 w-4" aria-hidden />
             {isGroup
-              ? "참여자의 기기 키가 변경되었습니다. 안전번호를 확인하세요."
-              : "상대의 기기 키가 변경되었습니다. 안전번호를 확인하세요."}
+              ? t("chat.safetyChangedGroup")
+              : t("chat.safetyChangedDirect")}
           </span>
           <Button size="sm" variant="outline" onClick={acknowledgeSafetyChange}>
-            확인
+            {t("chat.confirm")}
           </Button>
         </div>
       ) : null}
@@ -1953,7 +1960,7 @@ export function ChatView({
               disabled={messagesQuery.isFetchingNextPage}
             >
               {messagesQuery.isFetchingNextPage ? <Spinner /> : null}
-              이전 메시지
+              {t("chat.loadPrevious")}
             </Button>
           </div>
         ) : null}
@@ -1962,7 +1969,7 @@ export function ChatView({
           <div className="mb-3 rounded-lg border border-accent-200 bg-accent-50/60 px-3 py-2">
             <p className="flex items-center gap-1.5 text-[11px] font-medium text-accent-700">
               <Pin className="h-3.5 w-3.5" aria-hidden />
-              고정된 메시지 {pinnedMessages.length}
+              {t("chat.pinnedTitle", { count: pinnedMessages.length })}
             </p>
             <ul className="mt-1 space-y-0.5">
               {pinnedMessages.slice(0, 3).map((message) => (
@@ -1972,7 +1979,7 @@ export function ChatView({
                     onClick={() => jumpToMessage(message.id)}
                     className="w-full truncate text-left text-xs text-zinc-700 hover:underline"
                   >
-                    {pinnedTexts[message.id] ?? "고정된 메시지"}
+                    {pinnedTexts[message.id] ?? t("chat.pinnedFallback")}
                   </button>
                 </li>
               ))}
@@ -1986,10 +1993,11 @@ export function ChatView({
               <span className="flex items-start gap-2">
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                 <span>
-                  키 백업으로 복구된 기기입니다. 백업 시점(
-                  {new Date(recoveredAt).toLocaleString("ko-KR")}) 이후 받은 메시지는 이
-                  기기에서 읽을 수 없으므로, 다른 기기에서 확인하거나 상대에게 새 메시지를
-                  받아야 합니다.
+                  {t("chat.recoveryNotice", {
+                    time: new Date(recoveredAt).toLocaleString(
+                      locale === "en" ? "en-US" : "ko-KR",
+                    ),
+                  })}
                 </span>
               </span>
             </Alert>
@@ -1997,25 +2005,25 @@ export function ChatView({
         ) : null}
 
         {messagesQuery.isLoading ? (
-          <p className="py-10 text-center text-sm text-zinc-500">메시지를 불러오는 중…</p>
+          <p className="py-10 text-center text-sm text-zinc-500">{t("chat.loading")}</p>
         ) : messagesQuery.isError ? (
           <Alert variant="error">
             <span className="flex items-center justify-between gap-3">
-              메시지를 불러오지 못했습니다.
+              {t("chat.loadFailed")}
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 onClick={() => void messagesQuery.refetch()}
               >
-                다시 시도
+                {t("chat.retry")}
               </Button>
             </span>
           </Alert>
         ) : chronological.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-zinc-500">
-            <p>첫 메시지를 보내보세요.</p>
-            <p className="text-xs">메시지는 이 기기에서 암호화되어 전송됩니다.</p>
+            <p>{t("chat.firstTitle")}</p>
+            <p className="text-xs">{t("chat.firstHint")}</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -2031,7 +2039,7 @@ export function ChatView({
                     {message.id === firstUnreadId ? (
                       <div className="flex items-center gap-3 py-1 text-[11px] font-medium text-accent-600">
                         <span className="h-px flex-1 bg-accent-200" />
-                        여기부터 새 메시지
+                        {t("chat.unreadDivider")}
                         <span className="h-px flex-1 bg-accent-200" />
                       </div>
                     ) : null}
@@ -2113,7 +2121,7 @@ export function ChatView({
         <div className="flex justify-center bg-white pb-1">
           <Button variant="outline" size="sm" onClick={() => jumpToMessage(firstUnreadId)}>
             <ArrowDown className="h-3.5 w-3.5" aria-hidden />
-            새 메시지부터 보기
+            {t("chat.jumpToNew")}
           </Button>
         </div>
       ) : null}
@@ -2140,7 +2148,7 @@ export function ChatView({
                       if (pending) void deliver(pending);
                     }}
                   >
-                    다시 시도
+                    {t("chat.retry")}
                   </Button>
                 ) : null}
               </span>
@@ -2153,7 +2161,7 @@ export function ChatView({
             <Pencil className="mt-0.5 h-4 w-4 shrink-0 text-accent-700" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block text-[11px] font-medium text-accent-700">
-                메시지 수정 중
+                {t("chat.editing")}
               </span>
               <span className="block truncate text-xs text-zinc-600">{editing.text}</span>
             </span>
@@ -2163,7 +2171,7 @@ export function ChatView({
                 setEditing(null);
                 setDraft("");
               }}
-              aria-label="수정 취소"
+              aria-label={t("chat.editCancel")}
               className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
             >
               <X className="h-4 w-4" />
@@ -2174,16 +2182,16 @@ export function ChatView({
             <Reply className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
             <span className="min-w-0 flex-1">
               <span className="block text-[11px] font-medium text-zinc-600">
-                {senderLabel(replyTarget.message.senderUserId)}에게 답장
+                {t("chat.replyTo", { name: senderLabel(replyTarget.message.senderUserId) })}
               </span>
               <span className="block truncate text-xs text-zinc-500">
-                {replyTarget.text || "첨부 메시지"}
+                {replyTarget.text || t("chat.attachmentLabel")}
               </span>
             </span>
             <button
               type="button"
               onClick={() => setReplyTarget(null)}
-              aria-label="답장 취소"
+              aria-label={t("chat.replyCancel")}
               className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
             >
               <X className="h-4 w-4" />
@@ -2195,14 +2203,14 @@ export function ChatView({
           <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
             <span className="flex items-center gap-1.5 text-sm font-medium text-red-700">
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" aria-hidden />
-              녹음 중 {formatDuration(recordingSeconds)}
+              {t("chat.recording", { time: formatDuration(recordingSeconds) })}
             </span>
             <span className="text-[11px] text-red-600">
-              최대 {formatDuration(MAX_VOICE_SECONDS)}
+              {t("chat.recordingMax", { time: formatDuration(MAX_VOICE_SECONDS) })}
             </span>
             <span className="ml-auto flex items-center gap-1">
               <Button type="button" size="sm" variant="outline" onClick={cancelRecording}>
-                취소
+                {t("chat.cancel")}
               </Button>
               <Button type="button" size="sm" onClick={stopRecording}>
                 완료
@@ -2224,7 +2232,7 @@ export function ChatView({
                     value={item.name}
                     onChange={(event) => renameAttachment(item.id, event.target.value)}
                     aria-label={
-                      attachments.length > 1 ? `파일 이름 ${index + 1}` : "파일 이름"
+                      attachments.length > 1 ? t("chat.fileNameIndexed", { index: index + 1 }) : t("chat.fileName")
                     }
                     maxLength={ATTACHMENT_NAME_MAX}
                     className="min-w-0 flex-1 truncate bg-transparent text-sm text-zinc-800 focus:outline-none"
@@ -2235,7 +2243,7 @@ export function ChatView({
                   <button
                     type="button"
                     onClick={() => removeAttachment(item.id)}
-                    aria-label={`첨부 제거 ${index + 1}`}
+                    aria-label={t("chat.removeAttachment", { index: index + 1 })}
                     className="rounded-md p-1 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-700"
                   >
                     <X className="h-4 w-4" />
@@ -2243,14 +2251,14 @@ export function ChatView({
                 </div>
                 {isTemporaryFileName(item.file.name) ? (
                   <p className="mt-1 text-[11px] text-zinc-500">
-                    브라우저가 원본 파일명을 제공하지 않았습니다. 보낼 이름을 입력해 주세요.
+                    {t("chat.renameNotice")}
                   </p>
                 ) : null}
               </div>
             ))}
             {attachments.length > 1 ? (
               <p className="text-[11px] text-zinc-500">
-                첨부 {attachments.length}개 · 파일마다 별도 메시지로 전송됩니다.
+                {t("chat.attachmentsNote", { count: attachments.length })}
               </p>
             ) : null}
             {attachmentError ? (
@@ -2261,13 +2269,13 @@ export function ChatView({
 
         {peerDeleted ? (
           <p className="py-2 text-center text-sm text-zinc-500">
-            이 사용자는 계정을 삭제했습니다.
+            {t("chat.peerDeletedNotice")}
           </p>
         ) : blocked ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-center text-sm leading-relaxed text-amber-900">
             {blocked === "me"
-              ? "이 사용자를 차단했습니다. 연락처에서 차단을 해제하면 다시 메시지를 보낼 수 있습니다."
-              : "차단된 대화입니다. 메시지를 보낼 수 없습니다."}
+              ? t("chat.blockedNoticeMe")
+              : t("chat.blockedNoticePeer")}
           </div>
         ) : (
           <>
@@ -2311,12 +2319,12 @@ export function ChatView({
                         )}
                       >
                         {upload.phase === "encrypting"
-                          ? "암호화 중…"
+                          ? t("chat.uploadEncrypting")
                           : upload.phase === "uploading"
-                            ? `전송 중 ${upload.percent}%`
+                            ? t("chat.uploadSending", { percent: upload.percent })
                             : upload.phase === "failed"
-                              ? (upload.error ?? "전송 실패")
-                              : "취소됨"}
+                              ? (upload.error ?? t("chat.uploadFailed"))
+                              : t("chat.uploadCancelled")}
                       </p>
                     </div>
                     {upload.phase === "failed" || upload.phase === "cancelled" ? (
@@ -2328,12 +2336,12 @@ export function ChatView({
                           onClick={() => void retryUpload(upload)}
                           disabled={sending}
                         >
-                          다시 시도
+                          {t("chat.retry")}
                         </Button>
                         <button
                           type="button"
                           onClick={() => removeUpload(upload.id)}
-                          aria-label="목록에서 제거"
+                          aria-label={t("chat.removeFromTray")}
                           className="text-zinc-400 hover:text-zinc-600"
                         >
                           <X className="h-3.5 w-3.5" aria-hidden />
@@ -2346,7 +2354,7 @@ export function ChatView({
                         size="sm"
                         onClick={() => cancelUpload(upload.id)}
                       >
-                        취소
+                        {t("chat.cancel")}
                       </Button>
                     )}
                   </div>
@@ -2356,7 +2364,7 @@ export function ChatView({
             {viewOnce ? (
               <p className="mb-1.5 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
                 <EyeOff className="h-3 w-3" aria-hidden />
-                한 번 보기: 상대가 열면 양쪽에서 삭제됩니다.
+                {t("chat.viewOnceNote")}
               </p>
             ) : null}
             {draftUrl && !linkPreview && attachments.length === 0 ? (
@@ -2367,7 +2375,7 @@ export function ChatView({
                 className="mb-1.5 inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
               >
                 <Link2 className="h-3 w-3" aria-hidden />
-                {linkPreviewBusy ? "미리보기 불러오는 중…" : "링크 미리보기"}
+                {linkPreviewBusy ? t("chat.linkPreviewLoading") : t("chat.linkPreviewTitle")}
               </button>
             ) : null}
             {linkPreview ? (
@@ -2383,7 +2391,7 @@ export function ChatView({
                 <button
                   type="button"
                   onClick={() => setLinkPreview(null)}
-                  aria-label="링크 미리보기 제거"
+                  aria-label={t("chat.linkPreviewRemove")}
                   className="text-zinc-400 hover:text-zinc-600"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden />
@@ -2399,7 +2407,7 @@ export function ChatView({
                 type="file"
                 multiple
                 className="hidden"
-                aria-label="파일 선택"
+                aria-label={t("chat.pickFile")}
                 onChange={handleAttachmentChange}
               />
               {voiceSupported ? (
@@ -2409,8 +2417,8 @@ export function ChatView({
                   size="icon"
                   onClick={() => void startRecording()}
                   disabled={sending || editing !== null || recordingSeconds !== null}
-                  aria-label="음성 녹음"
-                  title="음성 메시지 녹음 (최대 5분)"
+                  aria-label={t("chat.voiceRecord")}
+                  title={t("chat.voiceRecordTitle")}
                 >
                   <Mic className="h-4 w-4" />
                 </Button>
@@ -2421,8 +2429,8 @@ export function ChatView({
                 size="icon"
                 onClick={() => setLocationOpen(true)}
                 disabled={sending || editing !== null || recordingSeconds !== null}
-                aria-label="위치 공유"
-                title="현재 위치 보내기"
+                aria-label={t("chat.locationShare")}
+                title={t("chat.locationTitle")}
               >
                 <MapPin className="h-4 w-4" />
               </Button>
@@ -2432,9 +2440,9 @@ export function ChatView({
                 size="icon"
                 onClick={() => setViewOnce((value) => !value)}
                 disabled={sending || editing !== null || recordingSeconds !== null}
-                aria-label="한 번 보기"
+                aria-label={t("chat.viewOnceToggle")}
                 aria-pressed={viewOnce}
-                title={viewOnce ? "한 번 보기 끄기" : "한 번 보기(상대가 열면 양쪽에서 삭제)"}
+                title={t(viewOnce ? "chat.viewOnceOnTitle" : "chat.viewOnceOffTitle")}
               >
                 <EyeOff className="h-4 w-4" />
               </Button>
@@ -2444,7 +2452,7 @@ export function ChatView({
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={sending || editing !== null}
-                aria-label="파일 첨부"
+                aria-label={t("chat.attachFile")}
               >
                 <Paperclip className="h-4 w-4" />
               </Button>
@@ -2454,7 +2462,7 @@ export function ChatView({
                 rows={1}
                 className="max-h-40 min-h-10"
                 placeholder={
-                  editing ? "수정할 메시지" : replyTarget ? "답장 입력" : "메시지 입력"
+                  editing ? t("chat.placeholderEdit") : replyTarget ? t("chat.placeholderReply") : t("chat.inputLabel")
                 }
                 value={draft}
                 onChange={(event) =>
@@ -2462,7 +2470,7 @@ export function ChatView({
                 }
                 onPaste={handleAttachmentPaste}
                 onKeyDown={handleKeyDown}
-                aria-label="메시지 입력"
+                aria-label={t("chat.inputLabel")}
               />
               <Button
                 type="submit"
@@ -2471,7 +2479,7 @@ export function ChatView({
                   sending ||
                   (editing ? !draft.trim() : !draft.trim() && attachments.length === 0)
                 }
-                aria-label={editing ? "수정 저장" : "전송"}
+                aria-label={t(editing ? "chat.saveEdit" : "chat.send")}
               >
                 {sending ? <Spinner /> : <Send className="h-4 w-4" />}
               </Button>
@@ -2479,7 +2487,7 @@ export function ChatView({
           </>
         )}
         <p className="mt-1 text-[11px] text-zinc-400">
-          Enter 전송 · Shift+Enter 줄바꿈
+          {t("chat.enterHint")}
         </p>
       </form>
 
@@ -2537,7 +2545,7 @@ export function ChatView({
         </p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={() => setDeleteTarget(null)}>
-            취소
+            {t("chat.cancel")}
           </Button>
           <Button
             variant="ghost"

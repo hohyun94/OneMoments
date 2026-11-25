@@ -332,7 +332,7 @@ export function ChatView({
     },
     onError: (error) => {
       setSendError(
-        error instanceof ApiError ? error.message : "메시지를 삭제하지 못했습니다.",
+        error instanceof ApiError ? error.message : t("chat.deleteMessageFailed"),
       );
     },
   });
@@ -600,8 +600,8 @@ export function ChatView({
   }
   const peer = conversation.peer;
   const peerName = isGroup
-    ? (conversation.name ?? "그룹")
-    : (peer?.username ?? "삭제된 사용자");
+    ? (conversation.name ?? t("sidebar.group"))
+    : (peer?.username ?? t("sidebar.deletedUser"));
   // 로컬 별명(이 기기에서만). 1:1 대화에서만 표시/편집한다.
   const aliases = useSyncExternalStore(subscribeAliases, loadAliases);
   const peerAlias = !isGroup && peer ? (aliases[peer.id] ?? "") : "";
@@ -629,7 +629,7 @@ export function ChatView({
       new Map(
         conversation.members.map((member) => [
           member.id,
-          member.username ?? "삭제된 사용자",
+          member.username ?? t("sidebar.deletedUser"),
         ]),
       ),
     [conversation.members],
@@ -903,7 +903,7 @@ export function ChatView({
     });
     setOutbox(await listOutgoing(conversation.id));
     if (pendingRef.current === pending) pendingRef.current = null;
-    setSendError("오프라인입니다. 연결되면 자동으로 전송됩니다.");
+    setSendError(t("chat.sendErrorOffline"));
   }
 
   async function deliver(
@@ -946,14 +946,14 @@ export function ChatView({
         if (options.queueOnNetworkError !== false) {
           await enqueuePending(pending);
         } else {
-          setSendError("오프라인입니다. 연결되면 자동으로 전송됩니다.");
+          setSendError(t("chat.sendErrorOffline"));
         }
         return "queued";
       }
       if (error.code === "PEER_DELETED") {
-        setSendError("상대가 계정을 삭제했습니다.");
+        setSendError(t("chat.sendErrorPeerDeleted"));
       } else if (error.code === "USER_BLOCKED") {
-        setSendError("차단된 대화입니다. 연락처에서 차단 상태를 확인하세요.");
+        setSendError(t("chat.sendErrorBlocked"));
       } else {
         setSendError(error.message);
       }
@@ -1007,15 +1007,15 @@ export function ChatView({
 
     for (const file of files) {
       if (remaining <= 0) {
-        error = `첨부는 한 번에 ${MAX_ATTACHMENT_COUNT}개까지 가능합니다.`;
+        error = t("chat.attachmentLimit", { max: MAX_ATTACHMENT_COUNT });
         break;
       }
       if (file.size === 0) {
-        error = "빈 파일은 첨부할 수 없습니다.";
+        error = t("chat.attachmentEmpty");
         continue;
       }
       if (file.size > MAX_ATTACHMENT_BYTES) {
-        error = "파일은 5MB 이하만 첨부할 수 있습니다.";
+        error = t("chat.attachmentTooBig");
         continue;
       }
       accepted.push({
@@ -1073,7 +1073,7 @@ export function ChatView({
   async function startRecording(): Promise<void> {
     if (recordingSeconds !== null) return;
     if (!voiceSupported) {
-      setAttachmentError("이 브라우저는 음성 녹음을 지원하지 않습니다.");
+      setAttachmentError(t("chat.voiceUnsupported"));
       return;
     }
     setAttachmentError(null);
@@ -1082,7 +1082,7 @@ export function ChatView({
       const mime = pickVoiceMimeType((type) => MediaRecorder.isTypeSupported(type));
       if (!mime) {
         stream.getTracks().forEach((track) => track.stop());
-        setAttachmentError("지원되는 음성 녹음 형식이 없습니다.");
+        setAttachmentError(t("chat.voiceFormat"));
         return;
       }
       const recorder = new MediaRecorder(stream, { mimeType: mime });
@@ -1104,7 +1104,7 @@ export function ChatView({
         setRecordingSeconds(null);
         if (blob.size === 0) return;
         if (blob.size > MAX_ATTACHMENT_BYTES) {
-          setAttachmentError("음성이 너무 큽니다. 5MB 이하만 보낼 수 있습니다.");
+          setAttachmentError(t("chat.voiceTooBig"));
           return;
         }
         const name = voiceFileName(mime);
@@ -1136,7 +1136,7 @@ export function ChatView({
         }
       }, 500);
     } catch {
-      setAttachmentError("마이크 권한을 허용해야 음성을 보낼 수 있습니다.");
+      setAttachmentError(t("chat.micPermission"));
     }
   }
 
@@ -1253,11 +1253,11 @@ export function ChatView({
       } else if (error instanceof ApiError) {
         setSendError(
           error.code === "PAYLOAD_TOO_LARGE"
-            ? "첨부 파일이 너무 큽니다."
+            ? t("chat.attachmentTooLarge")
             : error.message,
         );
       } else {
-        setSendError("첨부 파일을 보낼 수 없습니다. 잠시 후 다시 시도해 주세요.");
+        setSendError(t("chat.attachmentSendFailed"));
       }
     } finally {
       setSending(false);
@@ -1343,7 +1343,7 @@ export function ChatView({
           ? error.message
           : error instanceof ApiError
             ? error.message
-            : "첨부 파일을 보낼 수 없습니다.";
+            : t("chat.attachmentSendFailedShort");
       setUploads((current) =>
         current.map((upload) =>
           upload.id === item.id
@@ -1396,10 +1396,10 @@ export function ChatView({
       if (response.preview) {
         setLinkPreview(response.preview);
       } else {
-        setLinkPreviewError("미리보기를 가져올 수 없습니다.");
+        setLinkPreviewError(t("chat.linkPreviewFailed"));
       }
     } catch {
-      setLinkPreviewError("미리보기를 가져올 수 없습니다.");
+      setLinkPreviewError(t("chat.linkPreviewFailed"));
     } finally {
       setLinkPreviewBusy(false);
     }
@@ -1472,7 +1472,7 @@ export function ChatView({
         }
       } catch (error) {
         setSendError(
-          error instanceof ApiError ? error.message : "지도 이미지를 보낼 수 없습니다.",
+          error instanceof ApiError ? error.message : t("chat.mapImageFailed"),
         );
       } finally {
         setSending(false);
@@ -1556,8 +1556,8 @@ export function ChatView({
 
   function senderLabel(userId: string): string {
     return userId === currentUserId
-      ? "나"
-      : (memberNames.get(userId) ?? "알 수 없는 사용자");
+      ? t("chat.you")
+      : (memberNames.get(userId) ?? t("chat.unknownUser"));
   }
 
   function reactionsFor(messageId: string): ReactionSummary[] {
@@ -2213,7 +2213,7 @@ export function ChatView({
                 {t("chat.cancel")}
               </Button>
               <Button type="button" size="sm" onClick={stopRecording}>
-                완료
+                {t("chat.done")}
               </Button>
             </span>
           </div>
@@ -2510,11 +2510,11 @@ export function ChatView({
         mapTileUrl={mapTileUrl}
       />
 
-      <Dialog open={safetyOpen} onClose={() => setSafetyOpen(false)} title="안전번호">
+      <Dialog open={safetyOpen} onClose={() => setSafetyOpen(false)} title={t("chat.safetyTitle")}>
         <p className="text-sm leading-relaxed text-zinc-600">
           {isGroup
-            ? `그룹 참여자 ${conversation.memberCount}명의 기기 키로 만든 번호입니다. 참여자가 기기를 추가하거나 바꾸면 번호도 바뀝니다.`
-            : `${peerName}님과 대면 또는 음성으로 아래 숫자를 대조하세요. 기기 키가 바뀌면 번호도 바뀝니다.`}
+            ? t("chat.safetyGroupNote", { count: conversation.memberCount })
+            : t("chat.safetyDirectNote", { name: peerName })}
         </p>
         {safety ? (
           <div
@@ -2526,22 +2526,22 @@ export function ChatView({
             ))}
           </div>
         ) : (
-          <p className="mt-3 text-sm text-zinc-500">기기 정보를 불러오는 중…</p>
+          <p className="mt-3 text-sm text-zinc-500">{t("chat.safetyLoading")}</p>
         )}
         <p className="mt-3 text-xs text-zinc-500">
-          번호가 예상과 다르면 대화를 중단하고 상대에게 직접 확인하세요.
+          {t("chat.safetyWarning")}
         </p>
       </Dialog>
 
       <Dialog
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        title="메시지 삭제"
+        title={t("chat.deleteTitle")}
       >
         <p className="text-sm leading-relaxed text-zinc-600">
           {deleteTarget?.senderUserId === currentUserId
-            ? "모두에게서 전송을 취소하면 대화 참여자 전원의 화면에서 사라지고, 반응·수정 기록·첨부 파일도 함께 삭제됩니다. 나에게만 삭제하면 내 화면과 내 다른 기기에서만 숨겨집니다."
-            : "나에게만 삭제하면 내 화면과 내 다른 기기에서만 이 메시지가 숨겨집니다. 상대방의 화면에서는 그대로 유지됩니다."}
+            ? t("chat.deleteRevokeNote")
+            : t("chat.deleteMineNote")}
         </p>
         <div className="mt-5 flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={() => setDeleteTarget(null)}>
@@ -2557,7 +2557,7 @@ export function ChatView({
             }}
           >
             {deleteMutation.isPending ? <Spinner /> : null}
-            나에게만 삭제
+            {t("chat.deleteForMe")}
           </Button>
           {deleteTarget?.senderUserId === currentUserId ? (
             <Button
@@ -2570,7 +2570,7 @@ export function ChatView({
               }}
             >
               {deleteMutation.isPending ? <Spinner /> : <Trash2 className="h-4 w-4" />}
-              모두에게서 전송 취소
+              {t("chat.deleteForEveryone")}
             </Button>
           ) : null}
         </div>
@@ -2601,7 +2601,7 @@ export function ChatView({
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
           conversationId={conversation.id}
-          currentName={conversation.name ?? "그룹"}
+          currentName={conversation.name ?? t("sidebar.group")}
           canRename={conversation.isAdmin}
           onUpdated={() => {
             void queryClient.invalidateQueries({ queryKey: ["conversations"] });

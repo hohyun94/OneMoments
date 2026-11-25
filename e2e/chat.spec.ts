@@ -1334,3 +1334,32 @@ test("메시지를 저장하면 저장함에서 원문으로 이동한다", asyn
   await ownContext.close();
   await peerContext.close();
 });
+
+test("메시지는 오프라인이면 큐에 저장되고 연결되면 자동 전송된다", async ({ browser }) => {
+  const peerContext = await browser.newContext();
+  const peer = await peerContext.newPage();
+  const peerName = uniqueName("offpeer");
+  await register(peer, peerName);
+
+  const ownContext = await browser.newContext();
+  const own = await ownContext.newPage();
+  await register(own, uniqueName("offown"));
+  await startConversation(own, peerName);
+
+  // 기기 키를 캐시에 올려 두기 위해 온라인에서 한 번 보낸다.
+  await sendMessage(own, "온라인 확인");
+  await expect(own.getByText("온라인 확인")).toBeVisible();
+
+  const body = `오프라인${Date.now().toString(36)}`;
+  await ownContext.setOffline(true);
+  await sendMessage(own, body);
+  await expect(own.getByText(/전송 대기 1건/)).toBeVisible();
+
+  // 연결이 돌아오면 자동으로 전송된다.
+  await ownContext.setOffline(false);
+  await expect(own.getByText(body)).toBeVisible();
+  await expect(own.getByText(/전송 대기/)).toBeHidden();
+
+  await ownContext.close();
+  await peerContext.close();
+});

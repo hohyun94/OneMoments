@@ -23,7 +23,7 @@
 - **성능**: 동시성 부하 테스트(Node/k6), 클라이언트 DR·첨부 암복호화 벤치마크
 - **운영**: 프로덕션 UI 서빙 + CSP, `/metrics`(Prometheus), Redis/Dragonfly 다중 인스턴스 팬아웃, 마이그레이션 일회성 실행, 백업/복구 스크립트, 부하 테스트, 슬림 런타임 이미지
 - **관리자 콘솔**: `ADMIN_USERNAMES` allowlist 전용 `/admin` — 개요 통계, 사용자·기기·세션 조회, 세션 강제 종료, decoy 프로필 웹 관리, 감사 로그(메타데이터만)
-- **테스트 323개**: 서버 162(161 passed·1 skipped: 단위·API·WS·버스·푸시(부재중 통화 포함)·초대·첨부 정리·첨부 삭제 정책·CSP/Permissions-Policy·decoy·관리자·자동 로그아웃·자동 삭제·테마·대화 UX·Moments·프로필/연락처·프로필 아바타·Google OAuth·기기 플랫폼·음성/영상 통화·통화 기록) + 클라이언트 140(DR·X3DH/OPK·Sender Keys·첨부·음성·파형·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션·테마·검색·Moments·비밀번호 표시 토글·기기/마이크 감지·통화 헬퍼·화면 공유(동시 전송)/카메라 전환·통화 미리보기·아바타·초대 메일·읽음 상세·i18n·위치 페이로드/권한) + 브라우저 E2E 21(그룹·초대·이미지·반응·음성 녹음/재생·위치 공유·1:1 음성 통화·1:1 영상 통화·프로필 아바타·부재중 배지·Google 가입/로그인·로그인 테마·자동 로그아웃·오프라인)
+- **테스트 328개**: 서버 167(166 passed·1 skipped: 단위·API·WS·버스·푸시(부재중 통화 포함)·초대·첨부 정리·첨부 삭제 정책·CSP/Permissions-Policy·decoy·관리자·자동 로그아웃·자동 삭제·테마·대화 UX·Moments·프로필/연락처·프로필 아바타·Google OAuth·기기 플랫폼·음성/영상 통화·통화 기록) + 클라이언트 140(DR·X3DH/OPK·Sender Keys·첨부·음성·파형·백업·프로필 저장·자동 로그아웃 정책·자동 삭제 옵션·테마·검색·Moments·비밀번호 표시 토글·기기/마이크 감지·통화 헬퍼·화면 공유(동시 전송)/카메라 전환·통화 미리보기·아바타·초대 메일·읽음 상세·i18n·위치 페이로드/권한) + 브라우저 E2E 21(그룹·초대·이미지·반응·음성 녹음/재생·위치 공유·1:1 음성 통화·1:1 영상 통화·프로필 아바타·부재중 배지·Google 가입/로그인·로그인 테마·자동 로그아웃·오프라인)
 
 ## 빠른 시작
 
@@ -75,6 +75,7 @@ docker exec onemoments-postgres psql -U onemoments -d onemoments -c "CREATE DATA
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | — | Google OAuth 클라이언트(웹). 세 값이 모두 있어야 활성화 |
 | `GOOGLE_REDIRECT_URL` | — | `https://<도메인>/api/auth/google/callback` (콘솔 등록값과 동일) |
 | `APP_ORIGIN` | — | OAuth 완료 후 돌아갈 SPA 주소(기본: 리디렉션 URL 의 origin) |
+| `SIGNUP_MODE` | `open` | 가입 정책. `invite` 면 관리자 콘솔에서 발급한 **초대 코드**가 필요하고, `closed` 면 가입을 막는다 |
 | `LINK_PREVIEW_ENABLED` | `true` | 링크 미리보기(서버가 OG 메타데이터를 대신 가져옴, SSRF 방어 적용) |
 | `MAP_TILE_URL` | — | 지도 타일 템플릿(예: `https://tile.openstreetmap.org/{z}/{x}/{y}.png`). 설정 시 위치 공유가 **지도 이미지**를 함께 보낸다(발신자 브라우저에서 합성, CSP `img-src` 에 해당 오리진 추가) |
 | `CALL_ENABLED` | `true` | 1:1 통화 on/off(끄면 통화 버튼·시그널링 비활성) |
@@ -154,6 +155,7 @@ pnpm moments:cleanup   # 만료된 Moments·고아 이미지 정리(크론 권�
 - [대화 UX](docs/24-conversation-ux.md) — 반응·답장·수정·삭제, 로컬 검색
 - [Moments](docs/25-moments.md) — 24시간 선택 공개 스토리, 암호화 이미지, 조회
 - [프로필·연락처](docs/26-contacts-profile.md) — 상태 메시지, 즐겨찾기, 1:1 차단/해제와 한계
+- [가입 정책(초대 코드)](docs/34-signup-invites.md) — SIGNUP_MODE, 발급·폐기·소모 규칙, Google 가입 차단
 - [링크 미리보기](docs/33-link-preview.md) — OG 메타데이터 수집, 암호문 내 저장, SSRF 방어와 한계
 - [프로필 아바타](docs/31-profile-avatar.md) — 공개 이미지 결정, 업로드·서빙 API, 크기/캐시, 프라이버시 한계
 - [기기·마이크 감지](docs/28-device-capabilities.md) — 플랫폼 메타데이터, 마이크 권한 확인, 프라이버시와 한계

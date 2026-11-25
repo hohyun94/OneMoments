@@ -246,6 +246,13 @@
       "when": 1795532581026,
       "tag": "0034_known_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795607010455,
+      "tag": "0035_heavy_karnak",
+      "breakpoints": true
     }
   ]
 }

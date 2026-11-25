@@ -106,6 +106,8 @@ const envSchema = z.object({
   GOOGLE_USERINFO_URL: z.string().url().default("https://openidconnect.googleapis.com/v1/userinfo"),
   OAUTH_STATE_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
   OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
+  // 가입 정책: open(누구나) / invite(초대 코드 필요) / closed(가입 중지)
+  SIGNUP_MODE: z.enum(["open", "invite", "closed"]).default("open"),
   // 링크 미리보기: 서버가 외부 OG 메타데이터를 대신 가져온다(SSRF 방어 적용).
   LINK_PREVIEW_ENABLED: z.enum(["true", "false"]).default("true"),
   // 지도 타일 템플릿(예: https://tile.openstreetmap.org/{z}/{x}/{y}.png).
@@ -141,6 +143,8 @@ export interface Config {
   cookieSecure: boolean;
   corsOrigins: string[];
   adminUsernames: string[];
+  /** 가입 정책(open/invite/closed). invite 면 관리자 발급 초대 코드가 필요하다. */
+  signupMode: "open" | "invite" | "closed";
   /** 링크 미리보기(서버가 외부 OG 메타데이터를 대신 가져옴) */
   linkPreviewEnabled: boolean;
   /** 지도 타일 템플릿(없으면 지도 이미지 기능 비활성). */
@@ -311,6 +315,7 @@ export function loadConfig(env: Env = process.env): Config {
     adminUsernames: value.ADMIN_USERNAMES.split(",")
       .map((username) => username.trim().toLowerCase())
       .filter((username) => username.length > 0),
+    signupMode: value.SIGNUP_MODE,
     linkPreviewEnabled: value.LINK_PREVIEW_ENABLED === "true",
     mapTileUrl: value.MAP_TILE_URL.trim() === "" ? null : value.MAP_TILE_URL.trim(),
     mapTileOrigin: tileOriginOf(value.MAP_TILE_URL.trim()),

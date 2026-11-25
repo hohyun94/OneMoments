@@ -64,7 +64,8 @@ interface SessionContextValue {
   session: Session | null;
   identity: StoredIdentity | null;
   lastUsername: string;
-  register: (username: string, password: string) => Promise<void>;
+  /** 가입. `SIGNUP_MODE=invite` 면 초대 코드가 필요하다. */
+  register: (username: string, password: string, inviteCode?: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   recover: (username: string, passphrase: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -78,6 +79,8 @@ interface SessionContextValue {
   updateDeviceIdleTimeout: (seconds: number) => Promise<void>;
   /** 이번 로그인에만 적용할 값을 변경한다. null 이면 오버라이드 해제. */
   updateSessionIdleTimeout: (seconds: number | null) => Promise<void>;
+  /** 가입 정책. invite 면 초대 코드가 필요하고, closed 면 가입 탭을 숨긴다. */
+  signupMode: "open" | "invite" | "closed";
   /** 서버에 Google OAuth 설정이 있는지. */
   oauthEnabled: boolean;
   /** 지도 타일 템플릿(서버 설정). null 이면 위치 공유에서 지도 이미지를 쓰지 않는다. */
@@ -215,6 +218,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [oauthEnabled, setOauthEnabled] = useState(false);
   /** 지도 타일 템플릿(서버 설정). null 이면 지도 이미지 기능을 숨긴다. */
   const [mapTileUrl, setMapTileUrl] = useState<string | null>(null);
+  /** 가입 정책(open/invite/closed). 로그인 전 공개 설정에서 읽는다. */
+  const [signupMode, setSignupMode] = useState<"open" | "invite" | "closed">("open");
   const [googleLinked, setGoogleLinked] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
   const idleTimeoutSeconds = effectiveIdleTimeoutSeconds(
@@ -240,11 +245,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 로그인 전에도 Google 버튼 노출 여부를 알 수 있게 공개 설정을 읽는다.
     let cancelled = false;
-    api<{ oauthEnabled: boolean; mapTileUrl: string | null }>("/api/auth/config")
+    api<{ oauthEnabled: boolean; mapTileUrl: string | null; signupMode?: string }>(
+      "/api/auth/config",
+    )
       .then((value) => {
         if (cancelled) return;
         setOauthEnabled(Boolean(value.oauthEnabled));
         setMapTileUrl(typeof value.mapTileUrl === "string" ? value.mapTileUrl : null);
+        setSignupMode(
+          value.signupMode === "invite" || value.signupMode === "closed"
+            ? value.signupMode
+            : "open",
+        );
       })
       .catch(() => undefined);
     return () => {
@@ -309,7 +321,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const register = useCallback(async (username: string, password: string) => {
+  const register = useCallback(async (username: string, password: string, inviteCode?: string) => {
     const generated = await createIdentity();
     const response = await api<AuthResponse>("/api/auth/register", {
       method: "POST",
@@ -317,6 +329,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       body: {
         username,
         password,
+        ...(inviteCode ? { inviteCode } : {}),
         device: {
           name: deviceName(),
           platform: currentPlatform(),
@@ -770,6 +783,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateLastSeenVisibility,
       oauthEnabled,
       mapTileUrl,
+      signupMode,
       googleLinked,
       hasPassword,
       startGoogle,
@@ -800,6 +814,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateLastSeenVisibility,
       oauthEnabled,
       mapTileUrl,
+      signupMode,
       googleLinked,
       hasPassword,
       startGoogle,

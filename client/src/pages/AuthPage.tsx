@@ -5,7 +5,7 @@ import { ApiError } from "../lib/api.ts";
 import { BackupError } from "../lib/crypto/index.ts";
 import { GoogleButton } from "../components/GoogleButton.tsx";
 import { LanguageToggle } from "../components/LanguageToggle.tsx";
-import { Alert, Button, Card, Input, Label, PasswordInput, Spinner } from "../components/ui.tsx";
+import { Alert, Button, Card, Input, Label, PasswordInput, Spinner, cn } from "../components/ui.tsx";
 import { useI18n } from "../i18n.tsx";
 import { useSession } from "../session.tsx";
 
@@ -47,12 +47,15 @@ function messageOf(
 }
 
 export function AuthPage() {
-  const { login, register, recover, lastUsername, oauthEnabled, startGoogle } = useSession();
+  const { login, register, recover, lastUsername, oauthEnabled, startGoogle, signupMode } =
+    useSession();
   const { t } = useI18n();
   const [mode, setMode] = useState<"login" | "register" | "recover">("login");
   const [username, setUsername] = useState(lastUsername);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  /** 초대제(invite)에서만 사용하는 가입 코드. */
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -68,7 +71,8 @@ export function AuthPage() {
     setBusy(true);
     try {
       if (mode === "login") await login(username, password);
-      else if (mode === "register") await register(username, password);
+      else if (mode === "register")
+        await register(username, password, inviteCode.trim() || undefined);
       else await recover(username, password);
     } catch (caught) {
       if (
@@ -102,11 +106,18 @@ export function AuthPage() {
         </div>
 
         <Card className="p-6">
-          <div className="mb-5 grid grid-cols-3 gap-1 rounded-lg bg-zinc-100 p-1">
+          <div
+            className={cn(
+              "mb-5 grid gap-1 rounded-lg bg-zinc-100 p-1",
+              signupMode === "closed" ? "grid-cols-2" : "grid-cols-3",
+            )}
+          >
             {(
               [
                 { value: "login", label: t("auth.tab.login") },
-                { value: "register", label: t("auth.tab.register") },
+                ...(signupMode === "closed"
+                  ? []
+                  : [{ value: "register" as const, label: t("auth.tab.register") }]),
                 { value: "recover", label: t("auth.tab.recover") },
               ] as const
             ).map((item) => (
@@ -129,7 +140,9 @@ export function AuthPage() {
             ))}
           </div>
 
-          {oauthEnabled && mode !== "recover" ? (
+          {oauthEnabled &&
+          mode !== "recover" &&
+          (mode !== "register" || signupMode === "open") ? (
             <div className="mb-5 space-y-3">
               <GoogleButton
                 label={mode === "register" ? t("auth.google.signup") : t("auth.google.login")}
@@ -207,6 +220,27 @@ export function AuthPage() {
                   value={confirm}
                   onChange={(event) => setConfirm(event.target.value)}
                 />
+              </div>
+            ) : null}
+
+            {mode === "register" && signupMode === "invite" ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="invite-code">초대 코드</Label>
+                <Input
+                  id="invite-code"
+                  name="inviteCode"
+                  autoComplete="off"
+                  autoCapitalize="characters"
+                  spellCheck={false}
+                  required
+                  maxLength={32}
+                  value={inviteCode}
+                  onChange={(event) => setInviteCode(event.target.value)}
+                  placeholder="관리자에게 받은 코드"
+                />
+                <p className="text-[11px] text-zinc-400">
+                  현재는 초대받은 사람만 가입할 수 있습니다.
+                </p>
               </div>
             ) : null}
 

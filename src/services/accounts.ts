@@ -1,4 +1,4 @@
-import {
+﻿import {
   and,
   desc,
   eq,
@@ -24,6 +24,7 @@ import {
   type UserRow,
 } from "../db/schema.js";
 import { AppError } from "../http/errors.js";
+import { consumeSignupInvite } from "./signupInvites.js";
 import type { DevicePlatform, ThemeMode } from "../types/protocol.js";
 
 export interface DeviceKeys {
@@ -42,6 +43,8 @@ export interface RegisterAccountInput extends DeviceKeys {
   password: string;
   deviceName: string;
   platform: DevicePlatform;
+  /** `SIGNUP_MODE=invite` 일 때 필수. 트랜잭션 안에서 원자적으로 소모된다. */
+  inviteCode?: string | undefined;
 }
 
 export interface RegisterOAuthAccountInput extends DeviceKeys {
@@ -118,6 +121,10 @@ export async function registerAccount(
   const passwordHash = await hashPassword(input.password);
   try {
     return await db.transaction(async (tx) => {
+      // 초대 코드는 계정 생성과 같은 트랜잭션에서 소모한다(실패 시 사용 횟수도 롤백).
+      if (input.inviteCode !== undefined) {
+        await consumeSignupInvite(tx as unknown as Database, input.inviteCode);
+      }
       const [user] = await tx
         .insert(users)
         .values({ username: input.username, passwordHash })

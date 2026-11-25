@@ -3,15 +3,17 @@ import { describe, expect, it } from "vitest";
 import { AUTO_DELETE_OPTIONS, autoDeleteAt, autoDeleteLabel } from "./autoDelete.ts";
 
 describe("auto delete options", () => {
-  it("offers off, 1 day, 7 days and 30 days", () => {
+  it("offers off, 1 hour, 1 day, 7 days and 30 days", () => {
     expect(AUTO_DELETE_OPTIONS.map((option) => option.label)).toEqual([
       "끔",
+      "1시간",
       "1일",
       "7일",
       "30일",
     ]);
     expect(AUTO_DELETE_OPTIONS.map((option) => option.seconds)).toEqual([
       null,
+      3_600,
       86_400,
       604_800,
       2_592_000,

@@ -1,6 +1,7 @@
 /** 대화별 자동 삭제 옵션(서버 허용 범위: 1시간~30일). */
 export const AUTO_DELETE_OPTIONS = [
   { seconds: null, label: "끔" },
+  { seconds: 60 * 60, label: "1시간" },
   { seconds: 24 * 60 * 60, label: "1일" },
   { seconds: 7 * 24 * 60 * 60, label: "7일" },
   { seconds: 30 * 24 * 60 * 60, label: "30일" },

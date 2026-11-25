@@ -1211,3 +1211,32 @@ test("offline: 오프라인 앱 셸과 서비스 워커 캐시 버전을 검증�
   ).toBeVisible();
 });
 
+
+test("대화 초안은 새로고침해도 남고 전송하면 지워진다", async ({ browser }) => {
+  const peerContext = await browser.newContext();
+  const peer = await peerContext.newPage();
+  const peerName = uniqueName("draftpeer");
+  await register(peer, peerName);
+
+  const ownContext = await browser.newContext();
+  const own = await ownContext.newPage();
+  await register(own, uniqueName("draftown"));
+  await startConversation(own, peerName);
+
+  const composer = own.getByLabel("메시지 입력");
+  await composer.fill("임시저장 확인");
+  await own.waitForTimeout(300);
+
+  // 새로고침해도 대화별 초안이 복원된다.
+  await own.reload();
+  await expect(composer).toHaveValue("임시저장 확인");
+
+  // 전송하면 초안이 지워지고, 다시 새로고침해도 비어 있다.
+  await sendMessage(own, "임시저장 확인");
+  await expect(composer).toHaveValue("");
+  await own.reload();
+  await expect(composer).toHaveValue("");
+
+  await ownContext.close();
+  await peerContext.close();
+});

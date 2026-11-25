@@ -538,6 +538,7 @@ export function MessageBubble({
   onDelete,
   pinned = false,
   onTogglePin,
+  onJumpToTarget,
   viewOnceLocked = false,
   onOpenViewOnce,
   mentionNames = [],
@@ -562,6 +563,8 @@ export function MessageBubble({
   onDelete?: (message: MessageView) => void;
   pinned?: boolean;
   onTogglePin?: (message: MessageView) => void;
+  /** 답장 인용을 눌렀을 때 원문 메시지로 이동한다. */
+  onJumpToTarget?: (targetMessageId: string) => void;
   /** 한 번 보기 메시지에서 수신자가 아직 열지 않은 상태 */
   viewOnceLocked?: boolean;
   onOpenViewOnce?: (message: MessageView) => void;
@@ -638,21 +641,23 @@ export function MessageBubble({
         )}
       >
         {replyTarget !== undefined && replyTarget !== null ? (
-          <div
+          <button
+            type="button"
+            onClick={() => onJumpToTarget?.(replyTarget.id)}
+            aria-label="원문 메시지로 이동"
+            title="원문으로 이동"
             className={cn(
-              "mb-1.5 rounded-lg border-l-2 px-2 py-1 text-[11px]",
+              "mb-1.5 block w-full rounded-lg border-l-2 px-2 py-1 text-left text-[11px]",
               own
-                ? "border-accent-contrast/60 bg-white/10 text-accent-contrast/90"
-                : "border-accent-400 bg-zinc-50 text-zinc-600",
+                ? "border-accent-contrast/60 bg-white/10 text-accent-contrast/90 hover:bg-white/20"
+                : "border-accent-400 bg-zinc-50 text-zinc-600 hover:bg-zinc-100",
             )}
           >
-            <p className="font-medium">{replyTargetName ?? "메시지"}</p>
-            <p className="line-clamp-2 break-words">
-              {replyText === null
-                ? "원문을 불러오는 중…"
-                : replyText || "첨부 메시지"}
-            </p>
-          </div>
+            <span className="block font-medium">{replyTargetName ?? "메시지"}</span>
+            <span className="line-clamp-2 block break-words">
+              {replyText === null ? "원문을 불러오는 중…" : replyText || "첨부 메시지"}
+            </span>
+          </button>
         ) : null}
 
         {!own ? (

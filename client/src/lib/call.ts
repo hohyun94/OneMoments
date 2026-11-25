@@ -1,3 +1,4 @@
+import { DEFAULT_LOCALE, translate, type Locale } from "./i18n.ts";
 import type { CallServerFrame, ServerFrame } from "../types.ts";
 
 const CALL_FRAME_TYPES = new Set<string>([
@@ -27,39 +28,66 @@ export function normalizeIceServers(raw: RTCIceServer[] | undefined): RTCIceServ
 export function callEndNote(
   reason: "hangup" | "failed" | "timeout" | undefined,
   byPeer: boolean,
+  locale: Locale = DEFAULT_LOCALE,
 ): string {
-  if (reason === "timeout") return "응답이 없어 통화를 종료했습니다.";
-  if (reason === "failed") return "연결에 실패했습니다.";
-  return byPeer ? "상대가 통화를 종료했습니다." : "통화를 종료했습니다.";
+  if (reason === "timeout") return translate(locale, "call.note.timeout");
+  if (reason === "failed") return translate(locale, "call.note.failed");
+  return translate(locale, byPeer ? "call.note.peerEnded" : "call.note.ended");
 }
 
 /** 거절 사유 문구. */
-export function callDeclineNote(reason: "declined" | "busy" | "unsupported" | undefined): string {
-  if (reason === "busy") return "상대가 다른 통화 중입니다.";
-  if (reason === "unsupported") return "상대가 음성 통화를 지원하지 않습니다.";
-  return "상대가 통화를 거절했습니다.";
+export function callDeclineNote(
+  reason: "declined" | "busy" | "unsupported" | undefined,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  if (reason === "busy") return translate(locale, "call.note.busy");
+  if (reason === "unsupported") return translate(locale, "call.note.unsupported");
+  return translate(locale, "call.note.declined");
 }
 
 /** 통화 기록 한 줄의 표시 문구(내 기준 방향 + 최종 상태 + 미디어). */
-export function callLogLabel(entry: {
-  status: "ringing" | "completed" | "missed" | "declined" | "cancelled" | "failed";
-  direction: "outgoing" | "incoming";
-  media?: "audio" | "video";
-}): string {
-  const media = entry.media === "video" ? "영상 " : "";
+export function callLogLabel(
+  entry: {
+    status: "ringing" | "completed" | "missed" | "declined" | "cancelled" | "failed";
+    direction: "outgoing" | "incoming";
+    media?: "audio" | "video";
+  },
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  const media = entry.media === "video" ? translate(locale, "call.label.videoPrefix") : "";
   switch (entry.status) {
     case "missed":
-      return entry.direction === "incoming" ? `${media}부재중 전화` : `${media}응답 없음`;
+      return translate(
+        locale,
+        entry.direction === "incoming" ? "call.log.missedIncoming" : "call.log.missedOutgoing",
+        { media },
+      );
     case "declined":
-      return entry.direction === "incoming" ? `${media}거절한 통화` : `${media}거절됨`;
+      return translate(
+        locale,
+        entry.direction === "incoming"
+          ? "call.log.declinedIncoming"
+          : "call.log.declinedOutgoing",
+        { media },
+      );
     case "cancelled":
-      return entry.direction === "incoming" ? `${media}취소된 통화` : `${media}취소함`;
+      return translate(
+        locale,
+        entry.direction === "incoming"
+          ? "call.log.cancelledIncoming"
+          : "call.log.cancelledOutgoing",
+        { media },
+      );
     case "failed":
-      return `${media}연결 실패`;
+      return translate(locale, "call.log.failed", { media });
     case "ringing":
-      return `${media}연결 중`;
+      return translate(locale, "call.log.ringing", { media });
     default:
-      return entry.direction === "incoming" ? `${media}수신 통화` : `${media}발신 통화`;
+      return translate(
+        locale,
+        entry.direction === "incoming" ? "call.log.incoming" : "call.log.outgoing",
+        { media },
+      );
   }
 }
 
@@ -72,13 +100,19 @@ export function nextCameraFacing(current: CameraFacing): CameraFacing {
 }
 
 /** 현재 사용 중인 카메라 방향의 표시 이름. */
-export function cameraFacingLabel(facing: CameraFacing): string {
-  return facing === "user" ? "전면 카메라" : "후면 카메라";
+export function cameraFacingLabel(
+  facing: CameraFacing,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  return translate(locale, facing === "user" ? "call.label.frontCamera" : "call.label.backCamera");
 }
 
 /** 카메라 전환 버튼 문구(누르면 바뀔 방향을 알려준다). */
-export function cameraFlipLabel(current: CameraFacing): string {
-  return current === "user" ? "후면 카메라로 전환" : "전면 카메라로 전환";
+export function cameraFlipLabel(
+  current: CameraFacing,
+  locale: Locale = DEFAULT_LOCALE,
+): string {
+  return translate(locale, current === "user" ? "call.label.toBack" : "call.label.toFront");
 }
 
 /** 영상 트랙 제약. 발신 미리보기와 연결 시점이 같은 화질을 쓰도록 한 곳에 둔다. */
@@ -98,8 +132,8 @@ export function canShareScreen(): boolean {
 }
 
 /** 화면 공유 버튼 문구. */
-export function screenShareLabel(sharing: boolean): string {
-  return sharing ? "화면 공유 중지" : "화면 공유";
+export function screenShareLabel(sharing: boolean, locale: Locale = DEFAULT_LOCALE): string {
+  return translate(locale, sharing ? "call.label.shareStop" : "call.label.share");
 }
 
 /**
@@ -113,7 +147,7 @@ export function videoTransceiverRole(videoIndex: number): "camera" | "screen" {
 }
 
 /** 상대가 화면을 공유 중일 때의 안내 문구(아니면 빈 문자열). */
-export function remoteScreenLabel(sharing: boolean): string {
-  return sharing ? "상대가 화면 공유 중" : "";
+export function remoteScreenLabel(sharing: boolean, locale: Locale = DEFAULT_LOCALE): string {
+  return sharing ? translate(locale, "call.label.remoteSharing") : "";
 }
 

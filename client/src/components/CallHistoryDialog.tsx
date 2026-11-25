@@ -71,7 +71,7 @@ export function CallHistoryDialog({
                       missed ? "text-red-600" : "text-zinc-900",
                     )}
                   >
-                    {callLogLabel(entry)}
+                    {callLogLabel(entry, locale)}
                   </span>
                   <span className="block text-[11px] text-zinc-500">
                     {formatClock(entry.startedAt, locale)}

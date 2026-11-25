@@ -437,6 +437,23 @@ test("암호화된 파일 첨부를 보내고 상대가 내려받는다", async 
     await bob.keyboard.press("Escape");
     await expect(lightbox).toHaveCount(0);
 
+    // 첨부 모아보기에서도 같은 사진을 볼 수 있다.
+    await bob.getByRole("button", { name: "첨부 모아보기" }).click();
+    const gallery = bob.getByTestId("media-gallery");
+    await expect(gallery).toBeVisible();
+    await gallery.getByRole("button", { name: `${fileName} 크게 보기` }).click();
+    const galleryLightbox = bob.getByTestId("image-lightbox");
+    await expect(galleryLightbox).toBeVisible();
+    // 라이트박스만 닫고(갤러리는 유지), 갤러리 헤더 X로 닫는다.
+    await galleryLightbox.getByRole("button", { name: "닫기" }).click();
+    await expect(galleryLightbox).toHaveCount(0);
+    await bob
+      .getByRole("dialog", { name: "첨부 모아보기" })
+      .getByRole("button", { name: "닫기" })
+      .first()
+      .click();
+    await expect(gallery).toHaveCount(0);
+
     const downloadPromise = bob.waitForEvent("download");
     await bob.getByRole("button", { name: "다운로드" }).click();
     const download = await downloadPromise;
@@ -645,6 +662,18 @@ test("음성 첨부를 보내면 오디오 플레이어로 표시된다", async 
     await expect(bobConversation).toBeVisible({ timeout: 25_000 });
     await bobConversation.click();
     await expect(bob.locator("audio")).toHaveCount(1);
+
+    // 재생 배속을 누르면 1x → 1.25x 로 바뀐다.
+    const rate = alice.getByTestId("voice-rate").first();
+    await expect(rate).toHaveText("1x");
+    await rate.click();
+    await expect(rate).toHaveText("1.25x");
+    expect(
+      await alice
+        .locator("audio")
+        .first()
+        .evaluate((node) => (node as HTMLAudioElement).playbackRate),
+    ).toBe(1.25);
   } finally {
     await aliceContext.close();
     await bobContext.close();

@@ -14,7 +14,7 @@ import { formatCoordinates, locationMapLink, parseLocationPayload, type Location
 import { parseLinkMessage, previewHost, type LinkMessagePayload } from "../lib/linkPreviewMessage.ts";
 import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
-import { formatDuration } from "../lib/voice.ts";
+import { formatDuration, formatPlaybackRate, nextPlaybackRate } from "../lib/voice.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
 import { viewOnceHint } from "../lib/viewOnce.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
@@ -98,6 +98,8 @@ function AttachmentCard({
   const [elapsed, setElapsed] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [loadedDuration, setLoadedDuration] = useState<number | null>(null);
+  /** 음성 재생 배속(1 → 1.25 → 1.5 → 2 → 1). */
+  const [rate, setRate] = useState(1);
   // WebM 은 메타데이터에 길이가 없어 duration 이 Infinity 인 브라우저가 있다.
   // 그때는 송신자가 암호문에 담아 보낸 길이로 진행 표시·이동을 계산한다.
   const totalSeconds =
@@ -109,7 +111,13 @@ function AttachmentCard({
     if (audio && Number.isFinite(audio.duration) && audio.duration > 0) {
       setLoadedDuration(audio.duration);
     }
+    // 배속을 바꾼 뒤 다시 마운트되어도 유지한다.
+    if (audio) audio.playbackRate = rate;
   }
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.playbackRate = rate;
+  }, [rate]);
 
   function handleTimeUpdate(): void {
     const audio = audioRef.current;
@@ -303,6 +311,19 @@ function AttachmentCard({
                   <span className="shrink-0 tabular-nums">
                     {formatDuration(elapsed)} / {formatDuration(totalSeconds)}
                   </span>
+                  <button
+                    type="button"
+                    data-testid="voice-rate"
+                    onClick={() => setRate((value) => nextPlaybackRate(value))}
+                    aria-label={`재생 속도 ${formatPlaybackRate(rate)} (누르면 변경)`}
+                    title="재생 속도 변경"
+                    className={cn(
+                      "shrink-0 rounded px-1 font-medium tabular-nums",
+                      own ? "hover:bg-white/20" : "hover:bg-zinc-200",
+                    )}
+                  >
+                    {formatPlaybackRate(rate)}
+                  </button>
                   <span className="ml-auto shrink-0">{formatBytes(attachment.size)}</span>
                 </span>
               </div>
@@ -484,6 +505,15 @@ export async function decryptMessageText(
   if (result.status !== "ok") return null;
   if (result.location) return "위치 공유";
   return result.text;
+}
+
+/** 첨부 메타데이터(파일명·MIME·키)를 복호화해 돌려준다(첨부 모아보기에서 사용). */
+export async function decryptAttachmentPayload(
+  identity: StoredIdentity,
+  message: MessageView,
+): Promise<AttachmentPayload | null> {
+  const result = await decryptCached(identity, message);
+  return result.status === "ok" ? result.attachment : null;
 }
 
 function parseAttachment(text: string): AttachmentPayload | null {

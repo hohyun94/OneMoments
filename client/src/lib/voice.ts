@@ -52,3 +52,17 @@ export function formatDuration(totalSeconds: number): string {
   if (hours > 0) return `${hours}:${pad(minutes)}:${pad(rest)}`;
   return `${minutes}:${pad(rest)}`;
 }
+
+/** 음성 재생 배속 후보. 길게 듣기 싫은 음성 메시지를 빨리 넘길 때 쓴다. */
+export const PLAYBACK_RATES = [1, 1.25, 1.5, 2] as const;
+
+/** 다음 배속(마지막이면 1x 로 돌아온다). */
+export function nextPlaybackRate(current: number): number {
+  const index = PLAYBACK_RATES.indexOf(current as (typeof PLAYBACK_RATES)[number]);
+  return PLAYBACK_RATES[(index + 1) % PLAYBACK_RATES.length] ?? 1;
+}
+
+/** 배속 표시(1 → "1x"). */
+export function formatPlaybackRate(rate: number): string {
+  return `${rate}x`;
+}

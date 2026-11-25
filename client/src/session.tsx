@@ -1,4 +1,4 @@
-import {
+﻿import {
   createContext,
   useCallback,
   useContext,
@@ -80,6 +80,8 @@ interface SessionContextValue {
   updateSessionIdleTimeout: (seconds: number | null) => Promise<void>;
   /** 서버에 Google OAuth 설정이 있는지. */
   oauthEnabled: boolean;
+  /** 지도 타일 템플릿(서버 설정). null 이면 위치 공유에서 지도 이미지를 쓰지 않는다. */
+  mapTileUrl: string | null;
   /** 현재 계정에 Google 계정이 연결되었는지. */
   googleLinked: boolean;
   /** 비밀번호 로그인 가능 여부(Google 전용 계정은 false). */
@@ -211,6 +213,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
   // Google OAuth 상태(서버 설정·계정 연결·비밀번호 유무).
   const [oauthEnabled, setOauthEnabled] = useState(false);
+  /** 지도 타일 템플릿(서버 설정). null 이면 지도 이미지 기능을 숨긴다. */
+  const [mapTileUrl, setMapTileUrl] = useState<string | null>(null);
   const [googleLinked, setGoogleLinked] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
   const idleTimeoutSeconds = effectiveIdleTimeoutSeconds(
@@ -236,9 +240,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 로그인 전에도 Google 버튼 노출 여부를 알 수 있게 공개 설정을 읽는다.
     let cancelled = false;
-    api<{ oauthEnabled: boolean }>("/api/auth/config")
+    api<{ oauthEnabled: boolean; mapTileUrl: string | null }>("/api/auth/config")
       .then((value) => {
-        if (!cancelled) setOauthEnabled(Boolean(value.oauthEnabled));
+        if (cancelled) return;
+        setOauthEnabled(Boolean(value.oauthEnabled));
+        setMapTileUrl(typeof value.mapTileUrl === "string" ? value.mapTileUrl : null);
       })
       .catch(() => undefined);
     return () => {
@@ -763,6 +769,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       removeAvatar,
       updateLastSeenVisibility,
       oauthEnabled,
+      mapTileUrl,
       googleLinked,
       hasPassword,
       startGoogle,
@@ -792,6 +799,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       removeAvatar,
       updateLastSeenVisibility,
       oauthEnabled,
+      mapTileUrl,
       googleLinked,
       hasPassword,
       startGoogle,

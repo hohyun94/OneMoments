@@ -1,4 +1,4 @@
-import { Download, EyeOff, FileText, Pause, Pencil, Pin, Play, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
+﻿import { Download, EyeOff, FileText, Pause, Pencil, Pin, Play, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type MouseEvent } from "react";
 
 import {
@@ -10,7 +10,7 @@ import {
   type StoredIdentity,
 } from "../lib/crypto/index.ts";
 import { formatBytes, formatClock } from "../lib/format.ts";
-import { parseLocationPayload, type LocationPayload } from "../lib/location.ts";
+import { formatCoordinates, locationMapLink, parseLocationPayload, type LocationPayload } from "../lib/location.ts";
 import { parseLinkMessage, previewHost, type LinkMessagePayload } from "../lib/linkPreviewMessage.ts";
 import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
@@ -363,6 +363,21 @@ function AttachmentCard({
             downloading={downloading}
             onClick={() => void download()}
           />
+        </div>
+      ) : null}
+      {attachment.location ? (
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[11px]">
+          <span className={cn("min-w-0 truncate", own ? "text-accent-contrast/85" : "text-zinc-600")}>
+            {attachment.location.label ?? formatCoordinates(attachment.location)}
+          </span>
+          <a
+            href={locationMapLink(attachment.location)}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className={cn("shrink-0 underline underline-offset-2", own ? "text-white" : "text-accent-700")}
+          >
+            지도에서 열기
+          </a>
         </div>
       ) : null}
       {error ? (

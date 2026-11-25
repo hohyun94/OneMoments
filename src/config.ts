@@ -108,6 +108,15 @@ const envSchema = z.object({
   OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
   // 링크 미리보기: 서버가 외부 OG 메타데이터를 대신 가져온다(SSRF 방어 적용).
   LINK_PREVIEW_ENABLED: z.enum(["true", "false"]).default("true"),
+  // 지도 타일 템플릿(예: https://tile.openstreetmap.org/{z}/{x}/{y}.png).
+  // 비어 있으면 위치 공유는 기존 좌표 카드만 쓰고, 지도 이미지 기능은 숨겨진다.
+  MAP_TILE_URL: z
+    .string()
+    .default("")
+    .refine(
+      (value) => value === "" || /^https?:\/\/\S+$/.test(value),
+      "MAP_TILE_URL must be an http(s) URL template",
+    ),
   // 1:1 음성 통화(WebRTC). 시그널링은 기존 WS 로, 미디어는 P2P(불가 시 TURN) 로 흐른다.
   CALL_ENABLED: z.enum(["true", "false"]).default("true"),
   CALL_VIDEO_ENABLED: z.enum(["true", "false"]).default("true"),
@@ -134,6 +143,10 @@ export interface Config {
   adminUsernames: string[];
   /** 링크 미리보기(서버가 외부 OG 메타데이터를 대신 가져옴) */
   linkPreviewEnabled: boolean;
+  /** 지도 타일 템플릿(없으면 지도 이미지 기능 비활성). */
+  mapTileUrl: string | null;
+  /** CSP img-src 에 허용할 타일 오리진. */
+  mapTileOrigin: string | null;
   maxCiphertextBytes: number;
   maxEnvelopes: number;
   authRateLimitMax: number;
@@ -216,6 +229,18 @@ function parseUrlList(raw: string, schemes: string[], name: string): string[] {
   return urls;
 }
 
+/** 타일 템플릿에서 CSP 에 넣을 오리진을 뽑는다(플레이스홀더는 0 으로 치환). */
+function tileOriginOf(template: string): string | null {
+  if (template.length === 0) return null;
+  try {
+    const url = new URL(template.replace(/\{[a-z]\}/g, "0"));
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 export function loadConfig(env: Env = process.env): Config {
   const parsed = envSchema.safeParse(env);
   if (!parsed.success) {
@@ -287,6 +312,8 @@ export function loadConfig(env: Env = process.env): Config {
       .map((username) => username.trim().toLowerCase())
       .filter((username) => username.length > 0),
     linkPreviewEnabled: value.LINK_PREVIEW_ENABLED === "true",
+    mapTileUrl: value.MAP_TILE_URL.trim() === "" ? null : value.MAP_TILE_URL.trim(),
+    mapTileOrigin: tileOriginOf(value.MAP_TILE_URL.trim()),
     maxCiphertextBytes: value.MAX_CIPHERTEXT_BYTES,
     maxEnvelopes: value.MAX_ENVELOPES,
     authRateLimitMax: value.AUTH_RATE_LIMIT_MAX,

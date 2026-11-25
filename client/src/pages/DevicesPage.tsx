@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Bell,
@@ -22,6 +22,7 @@ import {
   PasswordInput,
   Spinner,
 } from "../components/ui.tsx";
+import { useI18n } from "../i18n.tsx";
 import { ApiError, api } from "../lib/api.ts";
 import { currentPlatform, platformLabel } from "../lib/device.ts";
 import {
@@ -49,6 +50,7 @@ import { ThemeSettings } from "../components/ThemeSettings.tsx";
 import { GoogleAccountSection } from "../components/GoogleAccountSection.tsx";
 
 export function DevicesPage() {
+  const { t, locale } = useI18n();
   const {
     session,
     identity,
@@ -115,15 +117,15 @@ export function DevicesPage() {
       if (pushState === "subscribed") {
         await disablePush();
         setPushState("unsubscribed");
-        setPushMessage("알림을 껐습니다.");
+        setPushMessage(t("devices.pushOff"));
       } else {
         await enablePush();
         setPushState("subscribed");
-        setPushMessage("알림을 켰습니다. 새 메시지가 오면 브라우저 알림으로 알려드립니다.");
+        setPushMessage(t("devices.pushOn"));
       }
     } catch (error) {
       setPushError(
-        error instanceof Error ? error.message : "알림 설정을 변경하지 못했습니다.",
+        error instanceof Error ? error.message : t("devices.pushFailed"),
       );
     } finally {
       setPushBusy(false);
@@ -143,13 +145,13 @@ export function DevicesPage() {
     try {
       await updateDeviceIdleTimeout(seconds);
       setIdleMessage(
-        `이 기기의 기본 자동 로그아웃을 ${idleTimeoutLabel(seconds)}로 저장했습니다.`,
+        t("devices.idleDeviceSaved", { label: idleTimeoutLabel(seconds) }),
       );
     } catch (error) {
       setIdleError(
         error instanceof ApiError
           ? error.message
-          : "자동 로그아웃 설정을 변경하지 못했습니다.",
+          : t("devices.idleDeviceFailed"),
       );
     } finally {
       setIdleBusy(false);
@@ -163,13 +165,13 @@ export function DevicesPage() {
     try {
       await updateSessionIdleTimeout(seconds);
       setIdleMessage(
-        `이번 로그인에만 ${idleTimeoutLabel(seconds)} 자동 로그아웃을 적용합니다.`,
+        t("devices.idleSessionSaved", { label: idleTimeoutLabel(seconds) }),
       );
     } catch (error) {
       setIdleError(
         error instanceof ApiError
           ? error.message
-          : "세션 자동 로그아웃 설정을 변경하지 못했습니다.",
+          : t("devices.idleSessionFailed"),
       );
     } finally {
       setIdleBusy(false);
@@ -187,14 +189,14 @@ export function DevicesPage() {
       setSessionOverrideEnabled(enabled);
       setIdleMessage(
         enabled
-          ? "이번 로그인에만 적용할 자동 로그아웃 시간을 저장했습니다."
-          : "세션 전용 설정을 해제하고 기기 기본값을 사용합니다.",
+          ? t("devices.idleSessionOnlySaved")
+          : t("devices.idleSessionCleared"),
       );
     } catch (error) {
       setIdleError(
         error instanceof ApiError
           ? error.message
-          : "세션 자동 로그아웃 설정을 변경하지 못했습니다.",
+          : t("devices.idleSessionFailed"),
       );
     } finally {
       setIdleBusy(false);
@@ -248,15 +250,15 @@ export function DevicesPage() {
     setBackupMessage(null);
 
     if (!identity) {
-      setBackupError("이 기기의 키를 찾을 수 없습니다. 다시 로그인해 주세요.");
+      setBackupError(t("devices.keyMissing"));
       return;
     }
     if (backupPassphrase.length < 10) {
-      setBackupError("복구 암호는 10자 이상이어야 합니다.");
+      setBackupError(t("devices.passTooShort"));
       return;
     }
     if (backupPassphrase !== backupConfirm) {
-      setBackupError("복구 암호가 서로 다릅니다.");
+      setBackupError(t("devices.passMismatch"));
       return;
     }
 
@@ -270,7 +272,7 @@ export function DevicesPage() {
         rawBody: new Blob([JSON.stringify(blob)], { type: "text/plain" }),
       });
       setBackupMessage(
-        `백업이 저장되었습니다 (${new Date(response.updatedAt).toLocaleString("ko-KR")})`,
+        t("devices.backupSaved", { date: new Date(response.updatedAt).toLocaleString(locale === "en" ? "en-US" : "ko-KR") }),
       );
       setBackupPassphrase("");
       setBackupConfirm("");
@@ -281,13 +283,13 @@ export function DevicesPage() {
       setBackupError(
         error instanceof BackupError
           ? error.reason === "format"
-            ? "이 기기의 키는 백업을 지원하지 않습니다(이전 버전 키). 새 기기에서 다시 로그인해 주세요."
-            : "백업을 만들 수 없습니다."
+            ? t("devices.backupUnsupported")
+            : t("devices.backupCreateFailed")
           : error instanceof ApiError
             ? error.status === 413
-              ? "백업 데이터가 너무 큽니다. 기기 관리에서 다시 백업하거나 관리자에게 문의하세요."
+              ? t("devices.backupTooLarge")
               : error.message
-            : "백업을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요.",
+            : t("devices.backupSaveFailed"),
       );
     } finally {
       setBackupBusy(false);
@@ -304,8 +306,8 @@ export function DevicesPage() {
     } catch (error) {
       setDeleteError(
         error instanceof ApiError && error.status === 401
-          ? "비밀번호가 올바르지 않습니다."
-          : "계정을 삭제할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+          ? t("devices.wrongPassword")
+          : t("devices.accountDeleteFailed"),
       );
     } finally {
       setDeleting(false);
@@ -334,15 +336,15 @@ export function DevicesPage() {
         <header className="flex items-center gap-3">
           <Link
             to="/"
-            aria-label="대화로 돌아가기"
+            aria-label={t("devices.back")}
             className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <div>
-            <h1 className="text-lg font-semibold text-zinc-900">기기 관리</h1>
+            <h1 className="text-lg font-semibold text-zinc-900">{t("devices.title")}</h1>
             <p className="text-xs text-zinc-500">
-              기기 키는 각 브라우저에만 저장됩니다.
+              {t("devices.subtitle")}
             </p>
           </div>
         </header>
@@ -354,7 +356,7 @@ export function DevicesPage() {
             </div>
           ) : devicesQuery.isError ? (
             <div className="p-5">
-              <Alert variant="error">기기 목록을 불러오지 못했습니다.</Alert>
+              <Alert variant="error">{t("devices.loadFailed")}</Alert>
             </div>
           ) : (
             devices.map((device) => {
@@ -370,21 +372,21 @@ export function DevicesPage() {
                       <span className="truncate">{device.name}</span>
                       {current ? (
                         <span className="rounded-full bg-accent-50 px-2 py-0.5 text-[11px] font-medium text-accent-700">
-                          현재 기기
+                          {t("devices.current")}
                         </span>
                       ) : null}
                       {revoked ? (
                         <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-500">
-                          폐기됨
+                          {t("devices.revoked")}
                         </span>
                       ) : null}
                     </p>
                     <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
                       <ShieldCheck className="h-3 w-3" aria-hidden />
                       {platformLabel(device.platform)} ·{" "}
-                      {new Date(device.createdAt).toLocaleDateString("ko-KR")} 등록
+                      {t("devices.registeredAt", { date: new Date(device.createdAt).toLocaleDateString(locale === "en" ? "en-US" : "ko-KR") })}
                       {device.lastSeenAt
-                        ? ` · 최근 접속 ${new Date(device.lastSeenAt).toLocaleDateString("ko-KR")}`
+                        ? t("devices.lastSeenAt", { date: new Date(device.lastSeenAt).toLocaleDateString(locale === "en" ? "en-US" : "ko-KR") })
                         : ""}
                     </p>
                   </div>
@@ -394,13 +396,13 @@ export function DevicesPage() {
                       size="sm"
                       disabled={revoke.isPending}
                       onClick={() => {
-                        if (window.confirm("이 기기를 폐기할까요? 해당 기기의 세션이 즉시 종료됩니다.")) {
+                        if (window.confirm(t("devices.revokeConfirm"))) {
                           revoke.mutate(device.id);
                         }
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                      폐기
+                      {t("devices.revoke")}
                     </Button>
                   ) : null}
                 </div>
@@ -410,46 +412,43 @@ export function DevicesPage() {
         </Card>
 
         {revoke.isError ? (
-          <Alert variant="error">기기를 폐기하지 못했습니다.</Alert>
+          <Alert variant="error">{t("devices.revokeFailed")}</Alert>
         ) : null}
 
         <p className="text-xs leading-relaxed text-zinc-500">
-          새 기기에서 로그인하면 그 기기의 키가 새로 만들어집니다. 이전 대화는 그 키로
-          복호화할 수 없으므로, 다른 기기에서 계속 확인해야 합니다.
+          {t("devices.keyNote")}
         </p>
 
         <Card className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-900">키 백업</h2>
+              <h2 className="text-sm font-semibold text-zinc-900">{t("devices.backupTitle")}</h2>
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                복구 암호로 이 기기의 키를 암호화해 서버에 저장합니다. 복구 암호는
-                서버로 전송되지 않으며, 새 브라우저의 로그인 화면 → 복구 탭에서 이
-                백업으로 대화 이력을 이어갈 수 있습니다.
+                {t("devices.backupNote")}
               </p>
             </div>
             <span className="shrink-0 text-[11px] text-zinc-500">
               {lastBackupAt
-                ? `마지막 백업 ${new Date(lastBackupAt).toLocaleDateString("ko-KR")}`
-                : "백업 없음"}
+                ? t("devices.lastBackup", { date: new Date(lastBackupAt).toLocaleDateString(locale === "en" ? "en-US" : "ko-KR") })
+                : t("devices.noBackup")}
             </span>
           </div>
 
           <form className="mt-4 space-y-3" onSubmit={saveBackup}>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="backup-passphrase">복구 암호</Label>
+                <Label htmlFor="backup-passphrase">{t("devices.passphrase")}</Label>
                 <PasswordInput
                   id="backup-passphrase"
                   autoComplete="new-password"
                   minLength={10}
                   value={backupPassphrase}
                   onChange={(event) => setBackupPassphrase(event.target.value)}
-                  placeholder="10자 이상"
+                  placeholder={t("devices.passphraseMin")}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="backup-confirm">복구 암호 확인</Label>
+                <Label htmlFor="backup-confirm">{t("devices.passphraseConfirm")}</Label>
                 <PasswordInput
                   id="backup-confirm"
                   autoComplete="new-password"
@@ -465,33 +464,31 @@ export function DevicesPage() {
 
             <Button type="submit" size="sm" disabled={backupBusy}>
               {backupBusy ? <Spinner /> : <KeyRound className="h-4 w-4" aria-hidden />}
-              백업 저장
+              {t("devices.saveBackup")}
             </Button>
           </form>
 
           <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-            복구 암호를 잊으면 백업을 복원할 수 없습니다. 백업을 갱신하면 이전 백업은
-            덮어써집니다.
+            {t("devices.backupWarning")}
           </p>
         </Card>
 
         <Card className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold text-zinc-900">알림</h2>
+              <h2 className="text-sm font-semibold text-zinc-900">{t("devices.pushTitle")}</h2>
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                새 메시지가 도착하면 브라우저 알림으로 알려줍니다. 알림에는 대화 ID만
-                포함되고 메시지 내용·발신자·파일 정보는 서버 푸시에 담기지 않습니다.
+                {t("devices.pushNote")}
               </p>
             </div>
             <span className="shrink-0 text-[11px] text-zinc-500">
               {pushState === "loading"
-                ? "확인 중"
+                ? t("devices.checking")
                 : pushState === "subscribed"
-                  ? "켜짐"
+                  ? t("devices.on")
                   : pushState === "unsupported"
-                    ? "미지원"
-                    : "꺼짐"}
+                    ? t("devices.unsupported")
+                    : t("devices.off")}
             </span>
           </div>
 
@@ -508,8 +505,7 @@ export function DevicesPage() {
 
           {pushState === "unsupported" ? (
             <p className="mt-3 text-xs text-zinc-500">
-              이 브라우저에서는 푸시 알림을 사용할 수 없습니다. HTTPS(또는 localhost)에서
-              다시 시도해 주세요.
+              {t("devices.pushUnavailable")}
             </p>
           ) : (
             <Button
@@ -526,13 +522,12 @@ export function DevicesPage() {
               ) : (
                 <Bell className="h-4 w-4" aria-hidden />
               )}
-              {pushState === "subscribed" ? "알림 끄기" : "알림 켜기"}
+              {t(pushState === "subscribed" ? "devices.disablePush" : "devices.enablePush")}
             </Button>
           )}
 
           <p className="mt-3 text-xs leading-relaxed text-zinc-500">
-            iOS는 홈 화면에 추가한 PWA에서만 Web Push를 지원합니다. 알림 권한은
-            브라우저 사이트 설정에서 언제든지 해제할 수 있습니다.
+            {t("devices.iosNote")}
           </p>
         </Card>
 
@@ -541,12 +536,10 @@ export function DevicesPage() {
             <div>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
                 <Mic className="h-4 w-4 text-zinc-500" aria-hidden />
-                마이크 확인
+                {t("devices.micTitle")}
               </h2>
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                이 브라우저에서 마이크를 사용할 수 있는지 확인합니다. 버튼을 누르면
-                브라우저가 마이크 권한을 요청하며, 성공하면 즉시 트랙을 중지합니다. 확인
-                결과는 서버에 저장하지 않습니다.
+                {t("devices.micNote")}
               </p>
             </div>
             <span className="shrink-0 text-[11px] text-zinc-500">
@@ -566,26 +559,25 @@ export function DevicesPage() {
               ) : (
                 <Mic className="h-4 w-4" aria-hidden />
               )}
-              마이크 확인
+              {t("devices.micTitle")}
             </Button>
             <span className="text-xs text-zinc-600" role="status">
               {micState === "idle"
-                ? "아직 확인하지 않았습니다."
+                ? t("devices.micIdle")
                 : micState === "checking"
-                  ? "권한과 장치를 확인하는 중…"
+                  ? t("devices.micChecking")
                   : microphoneStatusLabel(micState)}
             </span>
           </div>
 
           {micState === "denied" ? (
             <p className="mt-2 text-xs text-zinc-500">
-              브라우저 주소창의 사이트 설정에서 마이크 권한을 허용한 뒤 다시 확인해
-              주세요.
+              {t("devices.micDenied")}
             </p>
           ) : null}
           {micState === "insecure" ? (
             <p className="mt-2 text-xs text-zinc-500">
-              마이크는 HTTPS 또는 localhost에서만 사용할 수 있습니다.
+              {t("devices.micHttps")}
             </p>
           ) : null}
         </Card>
@@ -595,22 +587,20 @@ export function DevicesPage() {
             <div>
               <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
                 <Timer className="h-4 w-4 text-zinc-500" aria-hidden />
-                자동 로그아웃
+                {t("devices.idleTitle")}
               </h2>
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                무활동이 이어지면 자동으로 로그아웃해 화면의 대화 내용을 지웁니다. 기기
-                기본값과 이번 로그인에만 적용할 값을 따로 둘 수 있으며, 1~30분 범위에서만
-                설정할 수 있습니다(끄기 불가).
+                {t("devices.idleNote")}
               </p>
             </div>
             <span className="shrink-0 text-[11px] text-zinc-500">
-              현재 {idleTimeoutLabel(idleTimeoutSeconds)}
+              {t("devices.idleCurrent", { label: idleTimeoutLabel(idleTimeoutSeconds) })}
             </span>
           </div>
 
           <div className="mt-4 space-y-3">
             <div className="space-y-1.5">
-              <Label htmlFor="device-idle-timeout">이 기기 기본값</Label>
+              <Label htmlFor="device-idle-timeout">{t("devices.idleDeviceLabel")}</Label>
               <select
                 id="device-idle-timeout"
                 className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100 disabled:opacity-50"
@@ -625,8 +615,7 @@ export function DevicesPage() {
                 ))}
               </select>
               <p className="text-xs leading-relaxed text-zinc-500">
-                같은 기기에서 다시 로그인해도 유지됩니다. 세션 설정이 있으면 세션 설정이
-                우선합니다.
+                {t("devices.idleDeviceNote")}
               </p>
             </div>
 
@@ -638,12 +627,12 @@ export function DevicesPage() {
                 disabled={idleBusy}
                 onChange={(event) => void toggleSessionOverride(event.target.checked)}
               />
-              이번 로그인에만 다른 값 적용
+              {t("devices.idleUseSession")}
             </label>
 
             {sessionOverrideEnabled ? (
               <div className="space-y-1.5">
-                <Label htmlFor="session-idle-timeout">이번 로그인</Label>
+                <Label htmlFor="session-idle-timeout">{t("devices.idleSessionLabel")}</Label>
                 <select
                   id="session-idle-timeout"
                   className="h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100 disabled:opacity-50"
@@ -660,8 +649,7 @@ export function DevicesPage() {
                   ))}
                 </select>
                 <p className="text-xs leading-relaxed text-zinc-500">
-                  로그아웃하거나 다시 로그인하면 세션 설정은 사라지고 기기 기본값으로
-                  돌아갑니다.
+                  {t("devices.idleSessionNote")}
                 </p>
               </div>
             ) : null}
@@ -682,19 +670,17 @@ export function DevicesPage() {
         <GoogleAccountSection />
 
         <Card className="p-5">
-          <h2 className="text-sm font-semibold text-zinc-900">화면 설정</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">{t("devices.themeTitle")}</h2>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            테마는 계정에 저장됩니다. 다른 기기에서는 새로고침하거나 다시 로그인할 때
-            적용되며, 로그인 전에는 이 브라우저의 마지막 설정을 사용합니다.
+            {t("devices.themeNote")}
           </p>
           <ThemeSettings />
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-sm font-semibold text-zinc-900">이 기기 키</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">{t("devices.keyTitle")}</h2>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            이 브라우저에 저장된 기기 키를 삭제하고 로그아웃합니다. 삭제 후에는 이
-            기기에서 과거 대화를 복호화할 수 없습니다.
+            {t("devices.keyNote2")}
           </p>
           <Button
             variant="destructive"
@@ -703,16 +689,14 @@ export function DevicesPage() {
             onClick={() => setKeyDeleteOpen(true)}
           >
             <KeyRound className="h-4 w-4" aria-hidden />
-            이 기기에서 키 삭제
+            {t("devices.deleteKey")}
           </Button>
         </Card>
 
         <Card className="border-red-200 p-5">
-          <h2 className="text-sm font-semibold text-zinc-900">계정 삭제</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">{t("devices.accountTitle")}</h2>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            계정을 삭제하면 로그인·기기·세션이 무효화되고 계정이 익명화됩니다. 상대의
-            대화 이력에는 내 메시지가 &quot;삭제된 사용자&quot;로 남으며, username은
-            재사용할 수 없습니다.
+            {t("devices.accountNote")}
           </p>
           <Button
             variant="destructive"
@@ -725,7 +709,7 @@ export function DevicesPage() {
             }}
           >
             <Trash2 className="h-4 w-4" aria-hidden />
-            계정 삭제
+            {t("devices.accountTitle")}
           </Button>
         </Card>
       </div>
@@ -733,32 +717,29 @@ export function DevicesPage() {
       <Dialog
         open={keyDeleteOpen}
         onClose={() => setKeyDeleteOpen(false)}
-        title="이 기기에서 키 삭제"
+        title={t("devices.deleteKey")}
       >
         <p className="text-sm leading-relaxed text-zinc-600">
-          이 기기의 비밀키를 삭제하고 로그아웃합니다. 같은 계정으로 다시 로그인하면 새
-          기기 키가 만들어지며, 과거 메시지는 복호화되지 않습니다.
+          {t("devices.deleteKeyNote")}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setKeyDeleteOpen(false)}>
-            취소
+            {t("chat.cancel")}
           </Button>
           <Button variant="destructive" onClick={() => void deleteLocalKeys()}>
             <Trash2 className="h-4 w-4" aria-hidden />
-            삭제하고 로그아웃
+            {t("devices.deleteAndSignOut")}
           </Button>
         </div>
       </Dialog>
 
-      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} title="계정 삭제">
+      <Dialog open={deleteOpen} onClose={() => setDeleteOpen(false)} title={t("devices.accountTitle")}>
         <form className="space-y-3" onSubmit={confirmAccountDeletion}>
           <p className="text-sm leading-relaxed text-zinc-600">
-            계정을 삭제하면 로그인·기기·세션이 무효화되고 계정이 익명화됩니다. 상대의
-            대화 이력에는 내 메시지가 &quot;삭제된 사용자&quot;로 남습니다. 이 작업은
-            되돌릴 수 없습니다.
+            {t("devices.accountNoteShort")}
           </p>
           <div className="space-y-1.5">
-            <Label htmlFor="delete-account-password">비밀번호 확인</Label>
+            <Label htmlFor="delete-account-password">{t("devices.passwordConfirm")}</Label>
             <PasswordInput
               id="delete-account-password"
               autoComplete="current-password"
@@ -770,11 +751,11 @@ export function DevicesPage() {
           {deleteError ? <Alert variant="error">{deleteError}</Alert> : null}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setDeleteOpen(false)}>
-              취소
+              {t("chat.cancel")}
             </Button>
             <Button type="submit" variant="destructive" disabled={deleting}>
               {deleting ? <Spinner /> : <Trash2 className="h-4 w-4" aria-hidden />}
-              계정 삭제
+              {t("devices.deleteAccount")}
             </Button>
           </div>
         </form>

@@ -71,13 +71,14 @@ function DownloadIconButton({
   downloading: boolean;
   onClick: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={downloading}
-      aria-label="다운로드"
-      title="다운로드"
+      aria-label={t("msg.download")}
+      title={t("msg.download")}
       className={cn(
         "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-50",
         own
@@ -101,6 +102,7 @@ function AttachmentCard({
   attachment: AttachmentPayload;
   own: boolean;
 }) {
+  const { t } = useI18n();
   const isImage = attachment.mime.toLowerCase().startsWith("image/");
   const isAudio = attachment.mime.toLowerCase().startsWith("audio/");
   const needsPreview = isImage || isAudio;
@@ -179,7 +181,7 @@ function AttachmentCard({
       })
       .catch((caught) => {
         if (!cancelled) {
-          setError(caught instanceof Error ? caught.message : "미디어를 열 수 없습니다.");
+          setError(caught instanceof Error ? caught.message : t("msg.mediaOpenFailed"));
         }
       })
       .finally(() => {
@@ -206,7 +208,7 @@ function AttachmentCard({
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "첨부 파일을 열 수 없습니다.",
+        caught instanceof Error ? caught.message : t("msg.attachmentOpenFailed"),
       );
     } finally {
       setDownloading(false);
@@ -228,7 +230,7 @@ function AttachmentCard({
               type="button"
               className="block w-full"
               onClick={() => setLightboxOpen(true)}
-              aria-label={`${attachment.name} 크게 보기`}
+              aria-label={t("msg.openLarger", { name: attachment.name })}
             >
               <img
                 src={previewUrl}
@@ -239,7 +241,7 @@ function AttachmentCard({
             </button>
           ) : previewLoading ? (
             <div className="flex h-32 items-center justify-center text-xs text-zinc-500">
-              이미지 복호화 중…
+              {t("msg.imageDecrypting")}
             </div>
           ) : null}
         </div>
@@ -251,8 +253,8 @@ function AttachmentCard({
               <button
                 type="button"
                 onClick={() => void togglePlay()}
-                aria-label={playing ? "일시정지" : "재생"}
-                title={playing ? "일시정지" : "재생"}
+                aria-label={t(playing ? "msg.pause" : "msg.play")}
+                title={t(playing ? "msg.pause" : "msg.play")}
                 className={cn(
                   "flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors",
                   own
@@ -271,7 +273,7 @@ function AttachmentCard({
                   type="button"
                   data-testid="waveform"
                   onClick={seekFromWaveform}
-                  aria-label="재생 위치로 이동"
+                  aria-label={t("msg.seek")}
                   className="relative flex h-9 w-full cursor-pointer items-center"
                 >
                   {/* 진행 트랙: 조용한 음성(점선처럼 보이는 파형)에서도 진행률이 또렷하게 보인다. */}
@@ -330,8 +332,8 @@ function AttachmentCard({
                     type="button"
                     data-testid="voice-rate"
                     onClick={() => setRate((value) => nextPlaybackRate(value))}
-                    aria-label={`재생 속도 ${formatPlaybackRate(rate)} (누르면 변경)`}
-                    title="재생 속도 변경"
+                    aria-label={t("msg.playbackRate", { rate: formatPlaybackRate(rate) })}
+                    title={t("msg.playbackRateTitle")}
                     className={cn(
                       "shrink-0 rounded px-1 font-medium tabular-nums",
                       own ? "hover:bg-white/20" : "hover:bg-zinc-200",
@@ -364,7 +366,7 @@ function AttachmentCard({
               />
             </>
           ) : previewLoading ? (
-            <div className="flex h-9 items-center text-xs text-zinc-500">음성 복호화 중…</div>
+            <div className="flex h-9 items-center text-xs text-zinc-500">{t("msg.voiceDecrypting")}</div>
           ) : null}
         </div>
       ) : null}
@@ -412,7 +414,7 @@ function AttachmentCard({
             rel="noopener noreferrer nofollow"
             className={cn("shrink-0 underline underline-offset-2", own ? "text-white" : "text-accent-700")}
           >
-            지도에서 열기
+            {t("msg.openInMap")}
           </a>
         </div>
       ) : null}
@@ -585,14 +587,14 @@ export function MessageBubble({
   onOpenViewOnce?: (message: MessageView) => void;
   /** 참여자 username 목록(멘션 강조용) */
   mentionNames?: string[];
-  /** 현재 사용자 username. 이 값이 멘션되면 '나를 멘션' 배지를 표시한다. */
+  /** 현재 사용자 username. 이 값이 멘션되면 '{t("msg.mentionedYou")}' 배지를 표시한다. */
   mentionUser?: string;
 }) {
   const [result, setResult] = useState<Result | null>(() => cache.get(message.id) ?? null);
   const [reactionOpen, setReactionOpen] = useState(false);
   const [replyText, setReplyText] = useState<string | null>(null);
   const [bookmarked, setBookmarked] = useState(false);
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
 
   // 저장함(북마크) 여부는 이 기기의 IndexedDB 에서 확인한다.
   useEffect(() => {
@@ -690,8 +692,8 @@ export function MessageBubble({
           <button
             type="button"
             onClick={() => onJumpToTarget?.(replyTarget.id)}
-            aria-label="원문 메시지로 이동"
-            title="원문으로 이동"
+            aria-label={t("msg.replyJump")}
+            title={t("msg.replyJumpTitle")}
             className={cn(
               "mb-1.5 block w-full rounded-lg border-l-2 px-2 py-1 text-left text-[11px]",
               own
@@ -699,9 +701,9 @@ export function MessageBubble({
                 : "border-accent-400 bg-zinc-50 text-zinc-600 hover:bg-zinc-100",
             )}
           >
-            <span className="block font-medium">{replyTargetName ?? "메시지"}</span>
+            <span className="block font-medium">{replyTargetName ?? t("msg.replyFallback")}</span>
             <span className="line-clamp-2 block break-words">
-              {replyText === null ? "원문을 불러오는 중…" : replyText || "첨부 메시지"}
+              {replyText === null ? t("msg.replyLoading") : replyText || t("chat.attachmentLabel")}
             </span>
           </button>
         ) : null}
@@ -711,7 +713,7 @@ export function MessageBubble({
             {senderName}
             {mentionsMe ? (
               <span className="rounded bg-accent-100 px-1 text-[10px] font-medium text-accent-700">
-                나를 멘션
+                {t("msg.mentionedYou")}
               </span>
             ) : null}
           </p>
@@ -726,7 +728,7 @@ export function MessageBubble({
               )}
             >
               <EyeOff className="h-3.5 w-3.5" aria-hidden />
-              한 번 보기
+                {t("msg.viewOnce")}
             </p>
             <p
               className={cn(
@@ -747,7 +749,7 @@ export function MessageBubble({
                   : "bg-accent-600 text-accent-contrast hover:bg-accent-700",
               )}
             >
-              열기
+                {t("msg.open")}
             </button>
           </div>
         ) : result?.status === "ok" ? (
@@ -860,7 +862,7 @@ export function MessageBubble({
           </p>
         ) : (
           <p className={cn("text-xs", own ? "text-accent-contrast/80" : "text-zinc-400")}>
-            복호화 중…
+            {t("msg.decrypting")}
           </p>
         )}
 
@@ -872,8 +874,8 @@ export function MessageBubble({
           )}
         >
           {formatClock(message.createdAt, locale)}
-          {message.viewOnce ? " · 한 번 보기" : ""}
-          {edited ? " · 수정됨" : ""}
+          {message.viewOnce ? t("msg.suffixViewOnce") : ""}
+          {edited ? t("msg.suffixEdited") : ""}
           {own && readLabel ? ` · ${readLabel}` : ""}
         </p>
       </div>
@@ -907,7 +909,7 @@ export function MessageBubble({
           <button
             type="button"
             onClick={() => setReactionOpen((value) => !value)}
-            aria-label="반응"
+            aria-label={t("msg.react")}
             className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
           >
             <Smile className="h-3.5 w-3.5" />
@@ -918,7 +920,7 @@ export function MessageBubble({
               if (result?.status !== "ok") return;
               onReply?.(message, result.location ? "위치 공유" : result.text);
             }}
-            aria-label="답장"
+            aria-label={t("msg.reply")}
             className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
           >
             <Reply className="h-3.5 w-3.5" />
@@ -929,7 +931,7 @@ export function MessageBubble({
               onClick={() => {
                 if (result?.status === "ok") onEdit?.(message, result.text);
               }}
-              aria-label="수정"
+              aria-label={t("msg.edit")}
               className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
             >
               <Pencil className="h-3.5 w-3.5" />
@@ -938,8 +940,8 @@ export function MessageBubble({
           <button
             type="button"
             onClick={() => onTogglePin?.(message)}
-            aria-label={pinned ? "고정 해제" : "고정"}
-            title={pinned ? "고정 해제" : "고정"}
+            aria-label={t(pinned ? "msg.unpin" : "msg.pin")}
+            title={t(pinned ? "msg.unpin" : "msg.pin")}
             className={cn(
               "rounded-md p-1 hover:bg-zinc-100",
               pinned ? "text-accent-600" : "text-zinc-400 hover:text-zinc-700",
@@ -950,8 +952,8 @@ export function MessageBubble({
           <button
             type="button"
             onClick={() => void toggleBookmark()}
-            aria-label={bookmarked ? "북마크 해제" : "북마크"}
-            title={bookmarked ? "저장함에서 빼기" : "저장함에 저장"}
+            aria-label={t(bookmarked ? "msg.unbookmark" : "msg.bookmark")}
+            title={t(bookmarked ? "msg.bookmarkRemoveTitle" : "msg.bookmarkAddTitle")}
             className={cn(
               "rounded-md p-1 hover:bg-zinc-100",
               bookmarked ? "text-accent-600" : "text-zinc-400 hover:text-zinc-700",
@@ -962,8 +964,8 @@ export function MessageBubble({
           <button
             type="button"
             onClick={() => onDelete?.(message)}
-            aria-label={own ? "전송 취소 또는 삭제" : "나에게만 삭제"}
-            title={own ? "전송 취소 또는 삭제" : "나에게만 삭제"}
+            aria-label={t(own ? "msg.deleteOwn" : "msg.deleteMine")}
+            title={t(own ? "msg.deleteOwn" : "msg.deleteMine")}
             className="rounded-md p-1 text-zinc-400 hover:bg-red-50 hover:text-red-600"
           >
             <Trash2 className="h-3.5 w-3.5" />
@@ -974,7 +976,7 @@ export function MessageBubble({
                 <button
                   key={emoji}
                   type="button"
-                  aria-label={`${emoji} 반응`}
+                  aria-label={t("msg.reaction", { emoji })}
                   onClick={() => {
                     setReactionOpen(false);
                     onReact?.(message, emoji);

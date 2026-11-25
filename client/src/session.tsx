@@ -38,6 +38,8 @@ import { disablePush } from "./lib/push.ts";
 import { markDeviceRecovered } from "./lib/recovery.ts";
 import { clearSearchIndex } from "./lib/search.ts";
 import { clearAllDrafts } from "./lib/drafts.ts";
+import { clearAliases } from "./lib/aliases.ts";
+import { clearBookmarks } from "./lib/bookmarks.ts";
 import {
   THEME_STORAGE_KEY,
   applyTheme,
@@ -636,9 +638,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionIdleTimeoutSeconds(null);
     queryClient.clear();
     clearDecryptedMessageCache();
-    // 로컬 초안에는 평문이 남으므로 로그아웃 시 함께 지운다.
+    // 로컬 초안·별명·저장한 메시지에는 평문이 남으므로 로그아웃 시 함께 지운다.
     clearAllDrafts();
-    await Promise.all([serverLogout, pushOff, clearSearchIndex()]);
+    clearAliases();
+    await Promise.all([serverLogout, pushOff, clearSearchIndex(), clearBookmarks()]);
   }, [queryClient]);
 
   /** 기기 기본값을 서버에 저장하고 이 화면의 타이머에 즉시 반영한다. */

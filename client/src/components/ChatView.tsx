@@ -38,6 +38,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ChangeEvent,
   type ClipboardEvent,
   type DragEvent,
@@ -74,6 +75,7 @@ import { describeReads, readersFor } from "../lib/readReceipts.ts";
 import { isViewOnceLocked } from "../lib/viewOnce.ts";
 import { loadDraft, saveDraft } from "../lib/drafts.ts";
 import { searchMessages, type SearchableMessage } from "../lib/search.ts";
+import { loadAliases, saveAlias, subscribeAliases } from "../lib/aliases.ts";
 import {
   encodeLinkMessage,
   extractFirstUrl,
@@ -368,6 +370,9 @@ export function ChatView({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchableMessage[]>([]);
   const [searchPending, setSearchPending] = useState(false);
+  // 상대 별명 편집 다이얼로그.
+  const [aliasOpen, setAliasOpen] = useState(false);
+  const [aliasDraft, setAliasDraft] = useState("");
   const [replyTarget, setReplyTarget] = useState<{
     message: MessageView;
     text: string;
@@ -585,6 +590,10 @@ export function ChatView({
   const peerName = isGroup
     ? (conversation.name ?? "그룹")
     : (peer?.username ?? "삭제된 사용자");
+  // 로컬 별명(이 기기에서만). 1:1 대화에서만 표시/편집한다.
+  const aliases = useSyncExternalStore(subscribeAliases, loadAliases);
+  const peerAlias = !isGroup && peer ? (aliases[peer.id] ?? "") : "";
+  const peerDisplayName = peerAlias || peerName;
   const peerDeleted = !isGroup && Boolean(peer?.deleted);
   const blocked = isGroup ? null : conversation.blocked;
   const call = useCall();
@@ -647,6 +656,8 @@ export function ChatView({
     setSearchQuery("");
     setSearchResults([]);
     setSearchPending(false);
+    setAliasOpen(false);
+    setAliasDraft("");
     setAttachments([]);
     setAttachmentError(null);
     setSendError(null);
@@ -1474,16 +1485,36 @@ export function ChatView({
         >
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Avatar name={peerName} userId={peer?.id} avatarUpdatedAt={peer?.avatarUpdatedAt} />
+        <Avatar
+          name={peerDisplayName}
+          userId={peer?.id}
+          avatarUpdatedAt={peer?.avatarUpdatedAt}
+        />
         <div className="min-w-0 flex-1">
-          <h2
-            className={cn(
-              "truncate text-sm font-semibold",
-              peerDeleted ? "text-zinc-400" : "text-zinc-900",
-            )}
-          >
-            {peerName}
-          </h2>
+          <div className="flex items-center gap-1">
+            <h2
+              className={cn(
+                "truncate text-sm font-semibold",
+                peerDeleted ? "text-zinc-400" : "text-zinc-900",
+              )}
+            >
+              {peerDisplayName}
+            </h2>
+            {!isGroup && peer && !peerDeleted ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setAliasDraft(peerAlias);
+                  setAliasOpen(true);
+                }}
+                aria-label="별명 변경"
+                title="이 기기에서만 보이는 별명"
+                className="shrink-0 rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                <Pencil className="h-3 w-3" aria-hidden />
+              </button>
+            ) : null}
+          </div>
           <p className="flex items-center gap-1.5 truncate text-xs text-zinc-500">
             {typingNames.length > 0 ? (
               <span className="text-accent-600">
@@ -1729,6 +1760,49 @@ export function ChatView({
         </div>
       ) : null}
 
+      <Dialog open={aliasOpen} onClose={() => setAliasOpen(false)} title="별명">
+        <p className="text-xs text-zinc-500">
+          이 기기에서만 보이는 이름입니다. 상대에게는 보이지 않고, 로그아웃하면 지워집니다.
+        </p>
+        <input
+          aria-label="별명"
+          value={aliasDraft}
+          onChange={(event) => setAliasDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || !peer) return;
+            saveAlias(peer.id, aliasDraft);
+            setAliasOpen(false);
+          }}
+          maxLength={40}
+          placeholder={peerName}
+          className="mt-3 h-10 w-full rounded-lg border border-zinc-200 px-3 text-sm outline-none focus:border-accent-400"
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          {peerAlias ? (
+            <Button
+              variant="ghost"
+              onClick={() => {
+                if (peer) saveAlias(peer.id, "");
+                setAliasOpen(false);
+              }}
+            >
+              별명 지우기
+            </Button>
+          ) : null}
+          <Button variant="ghost" onClick={() => setAliasOpen(false)}>
+            취소
+          </Button>
+          <Button
+            onClick={() => {
+              if (peer) saveAlias(peer.id, aliasDraft);
+              setAliasOpen(false);
+            }}
+          >
+            저장
+          </Button>
+        </div>
+      </Dialog>
+
       {safetyChanged ? (
         <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
           <span className="flex items-center gap-2">
@@ -1844,6 +1918,7 @@ export function ChatView({
                     ) : null}
                     <div
                       id={`message-${message.id}`}
+                      data-highlighted={highlightId === message.id ? "true" : undefined}
                       className={cn(
                         "scroll-mt-24 rounded-2xl transition-shadow",
                         highlightId === message.id &&

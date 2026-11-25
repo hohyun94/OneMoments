@@ -1,5 +1,6 @@
 import {
   BellOff,
+  Bookmark,
   Contact,
   LogOut,
   MessageSquarePlus,
@@ -14,14 +15,16 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { loadAliases, subscribeAliases } from "../lib/aliases.ts";
+import { listBookmarks, removeBookmark, type BookmarkRecord } from "../lib/bookmarks.ts";
 import { sortPinnedFirst } from "../lib/conversationPins.ts";
 import { formatListTime } from "../lib/format.ts";
 import { searchMessages, type SearchableMessage } from "../lib/search.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
 import type { ConversationSummary } from "../types.ts";
-import { Avatar, Button, cn } from "./ui.tsx";
+import { Avatar, Button, Dialog, cn } from "./ui.tsx";
 
 export function ConversationSidebar({
   conversations,
@@ -58,6 +61,30 @@ export function ConversationSidebar({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchableMessage[]>([]);
+  // 로컬 별명(이 기기에서만)과 저장한 메시지.
+  const aliases = useSyncExternalStore(subscribeAliases, loadAliases);
+  const [savedOpen, setSavedOpen] = useState(false);
+  const [saved, setSaved] = useState<BookmarkRecord[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+
+  function openSavedMessages() {
+    setSavedOpen(true);
+    setSavedLoading(true);
+    void listBookmarks().then((rows) => {
+      setSaved(rows);
+      setSavedLoading(false);
+    });
+  }
+
+  function displayNameOf(conversation: ConversationSummary | undefined): string {
+    if (!conversation) return "대화";
+    if (conversation.kind === "group") return conversation.name ?? "그룹";
+    return (
+      aliases[conversation.peer?.id ?? ""] ||
+      conversation.peer?.username ||
+      "삭제된 사용자"
+    );
+  }
 
   useEffect(() => {
     const text = query.trim();
@@ -78,11 +105,7 @@ export function ConversationSidebar({
   }, [query]);
 
   function conversationLabel(conversationId: string): string {
-    const conversation = conversations.find((item) => item.id === conversationId);
-    if (!conversation) return "대화";
-    return conversation.kind === "group"
-      ? (conversation.name ?? "그룹")
-      : (conversation.peer?.username ?? "삭제된 사용자");
+    return displayNameOf(conversations.find((item) => item.id === conversationId));
   }
 
   return (
@@ -173,9 +196,7 @@ export function ConversationSidebar({
           <ul className="space-y-1">
             {sortPinnedFirst(conversations, pinnedIds).map((conversation) => {
               const isGroup = conversation.kind === "group";
-              const name = isGroup
-                ? (conversation.name ?? "그룹")
-                : (conversation.peer?.username ?? "삭제된 사용자");
+              const name = displayNameOf(conversation);
               const deleted = !isGroup && Boolean(conversation.peer?.deleted);
               const active = conversation.id === selectedId;
               const unread = conversation.unreadCount;
@@ -281,6 +302,10 @@ export function ConversationSidebar({
       </nav>
 
       <footer className="border-t border-zinc-100 p-2">
+        <Button variant="ghost" className="w-full justify-start" onClick={openSavedMessages}>
+          <Bookmark className="h-4 w-4" aria-hidden />
+          저장한 메시지
+        </Button>
         <Button
           variant="ghost"
           className="w-full justify-start"
@@ -312,6 +337,56 @@ export function ConversationSidebar({
           로그아웃
         </Button>
       </footer>
+
+      <Dialog open={savedOpen} onClose={() => setSavedOpen(false)} title="저장한 메시지">
+        <p className="text-xs text-zinc-500">
+          이 기기에만 저장됩니다. 항목을 누르면 원문으로 이동합니다.
+        </p>
+        {savedLoading ? (
+          <p className="mt-4 text-sm text-zinc-500">불러오는 중…</p>
+        ) : saved.length === 0 ? (
+          <p className="mt-4 text-sm leading-relaxed text-zinc-500">
+            저장한 메시지가 없습니다. 메시지 아래의 북마크 아이콘을 누르면 여기에 모입니다.
+          </p>
+        ) : (
+          <ul className="mt-3 max-h-80 divide-y divide-zinc-100 overflow-y-auto">
+            {saved.map((row) => (
+              <li key={row.messageId} className="flex items-start gap-2 py-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSavedOpen(false);
+                    onSelectMessage(row.conversationId, row.messageId);
+                  }}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block text-[11px] text-zinc-500">
+                    {conversationLabel(row.conversationId)} · {formatListTime(row.createdAt)}
+                  </span>
+                  <span className="line-clamp-2 block break-words text-xs text-zinc-700">
+                    {row.text || "첨부 메시지"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="저장 취소"
+                  title="저장 취소"
+                  onClick={() => {
+                    void removeBookmark(row.messageId).then(() => {
+                      setSaved((rows) =>
+                        rows.filter((item) => item.messageId !== row.messageId),
+                      );
+                    });
+                  }}
+                  className="shrink-0 rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  <X className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Dialog>
     </aside>
   );
 }

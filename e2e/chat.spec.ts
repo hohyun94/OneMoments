@@ -1240,3 +1240,33 @@ test("대화 초안은 새로고침해도 남고 전송하면 지워진다", asy
   await ownContext.close();
   await peerContext.close();
 });
+
+test("대화 내 검색으로 원문을 찾아 이동한다", async ({ browser }) => {
+  const peerContext = await browser.newContext();
+  const peer = await peerContext.newPage();
+  const peerName = uniqueName("searchpeer");
+  await register(peer, peerName);
+
+  const ownContext = await browser.newContext();
+  const own = await ownContext.newPage();
+  await register(own, uniqueName("searchown"));
+  await startConversation(own, peerName);
+
+  const marker = `사과주문${Date.now().toString(36)}`;
+  const body = `${marker} 확인 부탁해`;
+  await sendMessage(own, body);
+  await expect(own.getByText(body)).toBeVisible();
+  // 복호화 직후 로컬 검색 인덱스 기록을 기다린다.
+  await own.waitForTimeout(400);
+
+  await own.getByRole("button", { name: "대화 내 검색" }).click();
+  await own.getByLabel("대화 내 검색어").fill(marker);
+
+  const result = own.getByRole("button", { name: new RegExp(body) });
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(own).toHaveURL(/anchor=/);
+
+  await ownContext.close();
+  await peerContext.close();
+});

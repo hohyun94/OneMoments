@@ -222,3 +222,45 @@ export async function sendMissedCallPushes(
   if (subscriptions.length === 0) return;
   await deliverPushes(db, config, subscriptions, missedCallPushPayload(input));
 }
+
+export interface NewDeviceLoginPushInput {
+  userId: string;
+  /** 방금 로그인한 기기 — 알림 대상에서 제외한다. */
+  newDeviceId: string;
+  deviceName: string;
+  platform: string;
+}
+
+/**
+ * 새 기기 로그인 알림.
+ *
+ * 본문·대화 정보는 담지 않고 기기 이름(사용자가 붙인 값)만 알린다.
+ * 알림을 누르면 기기 관리 화면(`/devices`)으로 이동해 바로 폐기할 수 있다.
+ */
+export function newDeviceLoginPushPayload(input: NewDeviceLoginPushInput): Buffer {
+  const name = input.deviceName.trim().slice(0, 40) || input.platform || "알 수 없는 기기";
+  return Buffer.from(
+    JSON.stringify({
+      type: "security",
+      title: "OneMoments",
+      body: `새 기기에서 로그인했습니다: ${name}`,
+      tag: "onemoments-security",
+      url: "/devices",
+    }),
+    "utf8",
+  );
+}
+
+/** 새 기기 로그인 시 사용자의 **다른** 기기로 보안 알림을 보낸다. */
+export async function sendNewDeviceLoginPushes(
+  db: Database,
+  config: Config,
+  input: NewDeviceLoginPushInput,
+): Promise<void> {
+  const subscriptions = await listActiveSubscriptions(db, {
+    userIds: [input.userId],
+    excludeDeviceId: input.newDeviceId,
+  });
+  if (subscriptions.length === 0) return;
+  await deliverPushes(db, config, subscriptions, newDeviceLoginPushPayload(input));
+}

@@ -16,7 +16,7 @@ import type { Database } from "../db/client.js";
 import type { UserRow } from "../db/schema.js";
 import { AppError, asyncHandler } from "../http/errors.js";
 import { recordAuthEvent } from "../services/authEvents.js";
-import { removePushSubscriptionsForDevice } from "../services/push.js";
+import { removePushSubscriptionsForDevice, sendNewDeviceLoginPushes } from "../services/push.js";
 import {
   createRateLimiter,
   getAuth,
@@ -177,11 +177,17 @@ export function createAuthRouter(db: Database, config: Config): Router {
 
       // 쿠키 세션은 항상 기기에 묶는다. 새 브라우저는 device 를 함께 보내 등록한다.
       let device;
+      /** 기존 활성 기기가 있는데 새 기기를 등록한 경우(= 새 기기 로그인). */
+      let newDeviceLogin = false;
       if (body.deviceId) {
         device = await findActiveDevice(db, { userId: user.id, deviceId: body.deviceId });
         if (!device) throw AppError.unauthorized("Device revoked or unknown");
       } else if (body.device) {
         const keys = normalizeDeviceKeys(body.device);
+        const activeDevices = (await listDevices(db, user.id)).filter(
+          (row) => row.revokedAt === null,
+        );
+        newDeviceLogin = activeDevices.length > 0;
         device = await registerDevice(db, {
           userId: user.id,
           name: body.device.name,
@@ -210,6 +216,15 @@ export function createAuthRouter(db: Database, config: Config): Router {
         ip: req.ip ?? null,
         userAgent: userAgent(req),
       });
+      if (newDeviceLogin) {
+        // 기존 기기들에 보안 알림을 보낸다(전송 실패가 로그인을 막지 않게 기다리지 않는다).
+        void sendNewDeviceLoginPushes(db, config, {
+          userId: user.id,
+          newDeviceId: device.id,
+          deviceName: device.name,
+          platform: device.platform,
+        });
+      }
       res.cookie(SESSION_COOKIE, issued.token, sessionCookieOptions(config));
       res.json({
         user: authUser(user),

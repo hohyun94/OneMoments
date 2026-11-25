@@ -504,6 +504,39 @@ const ko: Dictionary = {
   "moments.emptyTitle": "아직 공유된 순간이 없습니다.",
   "moments.emptyHint": "첫 순간을 남겨보세요.",
 
+  "media.title": "첨부 모아보기",
+  "media.loading": "불러오는 중…",
+  "media.empty": "이 대화에서 불러온 첨부가 없습니다.",
+  "media.images": "사진",
+  "media.files": "파일·음성",
+  "media.imagesAria": "사진",
+  "media.filesAria": "파일과 음성",
+  "media.toMessage": "메시지로",
+  "media.note":
+    "이 기기에서 복호화한 최근 {count}개 메시지의 첨부만 표시합니다. 이전 메시지를 더 불러오면 범위가 넓어집니다.",
+  "media.close": "닫기",
+
+  "locate.failed": "현재 위치를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+  "locate.mapFailed": "지도 이미지를 만들 수 없습니다. 좌표로만 보냅니다.",
+  "locate.title": "현재 위치 보내기",
+  "locate.locating": "위치 확인 중…",
+  "locate.retry": "다시 시도",
+  "locate.mapAlt": "현재 위치 지도 미리보기",
+  "locate.mapPreparing": " · 지도 준비 중…",
+  "locate.includeMap": "지도 이미지 함께 보내기",
+  "locate.includeMapNote":
+    "이 브라우저에서 지도를 그려 암호화해 보냅니다. 상대는 지도 서비스에 접속하지 않습니다.",
+  "locate.labelLabel": "장소 이름 (선택)",
+  "locate.labelPlaceholder": "예: 집, 회사",
+  "locate.privacyNote":
+    "이 좌표는 대화 상대에게만 보이며, 메시지와 함께 종단간 암호화되어 저장됩니다. 서버는 위치를 해독할 수 없습니다.",
+  "locate.send": "보내기",
+
+  "lightbox.open": "이미지 크게 보기",
+  "lightbox.close": "닫기",
+  "card.sharedLocation": "공유한 위치",
+  "call.empty": "통화 기록이 없습니다.",
+
 
   "newChat.title": "새 대화",
   "newChat.kind.label": "대화 종류",
@@ -1039,6 +1072,39 @@ const en: Dictionary = {
   "moments.loadFailed": "Could not load moments.",
   "moments.emptyTitle": "No moments shared yet.",
   "moments.emptyHint": "Share your first moment.",
+
+  "media.title": "Media gallery",
+  "media.loading": "Loading…",
+  "media.empty": "No attachments loaded from this chat yet.",
+  "media.images": "Photos",
+  "media.files": "Files & voice",
+  "media.imagesAria": "Photos",
+  "media.filesAria": "Files and voice",
+  "media.toMessage": "To message",
+  "media.note":
+    "Shows only attachments from the latest {count} messages decrypted on this device. Loading older messages widens the range.",
+  "media.close": "Close",
+
+  "locate.failed": "Could not get your current location. Please try again.",
+  "locate.mapFailed": "Could not build a map image, so coordinates are sent without it.",
+  "locate.title": "Send current location",
+  "locate.locating": "Locating…",
+  "locate.retry": "Try again",
+  "locate.mapAlt": "Map preview of current location",
+  "locate.mapPreparing": " · preparing map…",
+  "locate.includeMap": "Include a map image",
+  "locate.includeMapNote":
+    "The map is drawn in this browser and sent encrypted. The other person does not contact any map service.",
+  "locate.labelLabel": "Place name (optional)",
+  "locate.labelPlaceholder": "e.g. Home, Office",
+  "locate.privacyNote":
+    "These coordinates are visible only to the other person and are stored end-to-end encrypted with the message. The server cannot read the location.",
+  "locate.send": "Send",
+
+  "lightbox.open": "View image larger",
+  "lightbox.close": "Close",
+  "card.sharedLocation": "Shared location",
+  "call.empty": "No call history yet.",
 
   "newChat.title": "New chat",
   "newChat.kind.label": "Chat type",

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+﻿import { useQuery } from "@tanstack/react-query";
 import { PhoneIncoming, PhoneMissed, PhoneOutgoing, Video } from "lucide-react";
 
 import { useI18n } from "../i18n.tsx";
@@ -29,16 +29,16 @@ export function CallHistoryDialog({
     staleTime: 10_000,
   });
   const calls = query.data ?? [];
-  const { locale } = useI18n();
+  const { t, locale } = useI18n();
 
   return (
-    <Dialog open={open} onClose={onClose} title="통화 기록">
+    <Dialog open={open} onClose={onClose} title={t("chat.callHistory")}>
       {query.isLoading ? (
         <div className="flex justify-center py-6">
           <Spinner />
         </div>
       ) : calls.length === 0 ? (
-        <p className="py-6 text-center text-sm text-zinc-500">통화 기록이 없습니다.</p>
+        <p className="py-6 text-center text-sm text-zinc-500">{t("call.empty")}</p>
       ) : (
         <ul className="max-h-80 space-y-2 overflow-y-auto">
           {calls.map((entry) => {

@@ -7,6 +7,7 @@ import { formatDuration } from "../lib/voice.ts";
 import type { MessageView } from "../types.ts";
 import { ImageLightbox } from "./ImageLightbox.tsx";
 import { decryptAttachmentBlob, decryptAttachmentPayload } from "./MessageBubble.tsx";
+import { useI18n } from "../i18n.tsx";
 import { Button, Dialog, Spinner } from "./ui.tsx";
 
 /** 한 번에 복호화해 보여줄 첨부 수(메모리·CPU 보호). */
@@ -18,6 +19,7 @@ interface GalleryItem {
 }
 
 function GalleryImage({ item }: { item: GalleryItem }) {
+  const { t } = useI18n();
   const [url, setUrl] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -49,7 +51,7 @@ function GalleryImage({ item }: { item: GalleryItem }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        aria-label={`${item.attachment.name} 크게 보기`}
+        aria-label={t("msg.openLarger", { name: item.attachment.name })}
         className="aspect-square overflow-hidden rounded-lg bg-zinc-100"
       >
         <img src={url} alt={item.attachment.name} className="h-full w-full object-cover" />
@@ -86,6 +88,7 @@ export function MediaGalleryDialog({
 }) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const { t } = useI18n();
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
   /** 메시지 배열은 렌더마다 새 객체이므로, 내용 기준 시그니처로만 다시 계산한다. */
@@ -126,20 +129,20 @@ export function MediaGalleryDialog({
   );
 
   return (
-    <Dialog open={open} onClose={onClose} title="첨부 모아보기">
+    <Dialog open={open} onClose={onClose} title={t("media.title")}>
       <div className="space-y-4" data-testid="media-gallery">
         {loading ? (
           <p className="flex items-center gap-2 text-sm text-zinc-500">
-            <Spinner /> 불러오는 중…
+            <Spinner /> {t("media.loading")}
           </p>
         ) : items.length === 0 ? (
-          <p className="text-sm text-zinc-500">이 대화에서 불러온 첨부가 없습니다.</p>
+          <p className="text-sm text-zinc-500">{t("media.empty")}</p>
         ) : (
           <>
             {images.length > 0 ? (
-              <section aria-label="사진">
+              <section aria-label={t("media.imagesAria")}>
                 <h3 className="mb-2 text-xs font-semibold text-zinc-700">
-                  사진 <span className="text-zinc-400">{images.length}</span>
+                  {t("media.images")} <span className="text-zinc-400">{images.length}</span>
                 </h3>
                 <div className="grid grid-cols-3 gap-1.5">
                   {images.map((item) => (
@@ -149,9 +152,9 @@ export function MediaGalleryDialog({
               </section>
             ) : null}
             {voices.length + files.length > 0 ? (
-              <section aria-label="파일과 음성">
+              <section aria-label={t("media.filesAria")}>
                 <h3 className="mb-2 text-xs font-semibold text-zinc-700">
-                  파일·음성 <span className="text-zinc-400">{voices.length + files.length}</span>
+                  {t("media.files")} <span className="text-zinc-400">{voices.length + files.length}</span>
                 </h3>
                 <ul className="space-y-1">
                   {[...voices, ...files].map((item) => {
@@ -184,7 +187,7 @@ export function MediaGalleryDialog({
                               {formatBytes(item.attachment.size)}
                             </span>
                           </span>
-                          <span className="shrink-0 text-accent-700">메시지로</span>
+                          <span className="shrink-0 text-accent-700">{t("media.toMessage")}</span>
                         </button>
                       </li>
                     );
@@ -193,14 +196,13 @@ export function MediaGalleryDialog({
               </section>
             ) : null}
             <p className="text-[11px] leading-relaxed text-zinc-400">
-              이 기기에서 복호화한 최근 {MAX_GALLERY_ITEMS}개 메시지의 첨부만 표시합니다.
-              이전 메시지를 더 불러오면 범위가 넓어집니다.
+              {t("media.note", { count: MAX_GALLERY_ITEMS })}
             </p>
           </>
         )}
         <div className="flex justify-end">
           <Button type="button" variant="outline" onClick={onClose}>
-            닫기
+            {t("media.close")}
           </Button>
         </div>
       </div>

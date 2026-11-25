@@ -1,7 +1,8 @@
-import { Link2, LogOut, Mail, Settings } from "lucide-react";
+﻿import { Link2, LogOut, Mail, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ApiError, api } from "../lib/api.ts";
+import { useI18n } from "../i18n.tsx";
 import { inviteMailto } from "../lib/inviteMail.ts";
 import type { ConversationSummary } from "../types.ts";
 import { Alert, Button, Dialog, Input, Label, Spinner } from "./ui.tsx";
@@ -25,6 +26,7 @@ export function GroupSettingsDialog({
 }) {
   const [name, setName] = useState(currentName);
   const [busy, setBusy] = useState(false);
+  const { t } = useI18n();
   const [error, setError] = useState<string | null>(null);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [inviteUrl, setInviteUrl] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export function GroupSettingsDialog({
       onUpdated(response.conversation.name ?? trimmed);
       onClose();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "그룹 이름을 바꾸지 못했습니다.");
+      setError(caught instanceof ApiError ? caught.message : t("group.renameFailed"));
     } finally {
       setBusy(false);
     }
@@ -69,7 +71,7 @@ export function GroupSettingsDialog({
       });
       onLeft();
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "그룹에서 나가지 못했습니다.");
+      setError(caught instanceof ApiError ? caught.message : t("group.leaveFailed"));
       setBusy(false);
     }
   }
@@ -88,7 +90,7 @@ export function GroupSettingsDialog({
       await navigator.clipboard.writeText(url).catch(() => undefined);
     } catch (caught) {
       setError(
-        caught instanceof ApiError ? caught.message : "초대 링크를 만들지 못했습니다.",
+        caught instanceof ApiError ? caught.message : t("group.inviteFailed"),
       );
     } finally {
       setInviteBusy(false);
@@ -96,9 +98,9 @@ export function GroupSettingsDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="그룹 설정">
+    <Dialog open={open} onClose={onClose} title={t("group.title")}>
       <div className="space-y-1.5">
-        <Label htmlFor="group-settings-name">그룹 이름</Label>
+        <Label htmlFor="group-settings-name">{t("group.nameLabel")}</Label>
         {canRename ? (
           <div className="flex gap-2">
             <Input
@@ -119,7 +121,7 @@ export function GroupSettingsDialog({
               className="shrink-0"
             >
               {busy ? <Spinner /> : <Settings className="h-4 w-4" aria-hidden />}
-              이름 저장
+              {t("group.saveName")}
             </Button>
           </div>
         ) : (
@@ -128,7 +130,7 @@ export function GroupSettingsDialog({
               {currentName}
             </p>
             <p className="text-xs text-zinc-500">
-              그룹 이름 변경과 참여자 추가는 그룹 소유자만 할 수 있습니다.
+              {t("group.ownerNote")}
             </p>
           </>
         )}
@@ -142,22 +144,21 @@ export function GroupSettingsDialog({
 
       {canRename ? (
         <div className="mt-5 border-t border-zinc-100 pt-4">
-          <p className="text-sm font-medium text-zinc-900">초대 링크</p>
+          <p className="text-sm font-medium text-zinc-900">{t("group.inviteTitle")}</p>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            7일 동안 최대 10명이 사용할 수 있는 링크를 만듭니다. 링크를 아는 사람은
-            그룹에 참여할 수 있으니 신뢰하는 사람에게만 공유하세요.
+            {t("group.inviteNote")}
           </p>
           {inviteUrl ? (
             <div className="mt-3 space-y-2">
               <div className="flex gap-2">
-                <Input readOnly value={inviteUrl} aria-label="그룹 초대 링크" />
+                <Input readOnly value={inviteUrl} aria-label={t("group.inviteAria")} />
                 <Button
                   variant="outline"
                   className="shrink-0"
                   onClick={() => void navigator.clipboard.writeText(inviteUrl)}
                 >
                   <Link2 className="h-4 w-4" aria-hidden />
-                  복사
+                  {t("group.copy")}
                 </Button>
               </div>
               {/* 서버가 메일을 보내지 않고, 사용자의 메일 클라이언트로 초대 링크를 전달한다. */}
@@ -166,7 +167,7 @@ export function GroupSettingsDialog({
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 hover:underline"
               >
                 <Mail className="h-3.5 w-3.5" aria-hidden />
-                이메일로 보내기
+                {t("group.email")}
               </a>
             </div>
           ) : (
@@ -178,23 +179,22 @@ export function GroupSettingsDialog({
               disabled={inviteBusy}
             >
               {inviteBusy ? <Spinner /> : <Link2 className="h-4 w-4" aria-hidden />}
-              초대 링크 만들기
+              {t("group.createInvite")}
             </Button>
           )}
         </div>
       ) : null}
 
       <div className="mt-5 border-t border-zinc-100 pt-4">
-        <p className="text-sm font-medium text-zinc-900">그룹 나가기</p>
+        <p className="text-sm font-medium text-zinc-900">{t("group.leaveTitle")}</p>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-          나가면 이 대화가 목록에서 사라지고 새 메시지를 받지 않습니다. 내가 보낸
-          메시지는 다른 참여자에게 남습니다.
+          {t("group.leaveNote")}
         </p>
         {confirmLeave ? (
           <div className="mt-3 flex gap-2">
             <Button variant="destructive" size="sm" onClick={() => void leave()} disabled={busy}>
               {busy ? <Spinner /> : <LogOut className="h-4 w-4" aria-hidden />}
-              정말 나가기
+              {t("group.confirmLeave")}
             </Button>
             <Button
               variant="outline"
@@ -202,7 +202,7 @@ export function GroupSettingsDialog({
               onClick={() => setConfirmLeave(false)}
               disabled={busy}
             >
-              취소
+              {t("chat.cancel")}
             </Button>
           </div>
         ) : (
@@ -213,7 +213,7 @@ export function GroupSettingsDialog({
             onClick={() => setConfirmLeave(true)}
           >
             <LogOut className="h-4 w-4" aria-hidden />
-            그룹 나가기
+            {t("group.leave")}
           </Button>
         )}
       </div>

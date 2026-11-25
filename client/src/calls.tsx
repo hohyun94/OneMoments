@@ -1,4 +1,5 @@
-﻿import { useQueryClient } from "@tanstack/react-query";
+﻿import { useI18n } from "./i18n.tsx";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -106,6 +107,7 @@ const CONNECT_TIMEOUT_MS = 15_000;
  * 통화 상태는 메모리에서만 유지되므로 새로고침하면 통화가 종료된다(docs/29-voice-call.md).
  */
 export function CallProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const { sendFrame, subscribeFrames } = useRealtime();
   const queryClient = useQueryClient();
 
@@ -265,7 +267,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           callId,
           reason: "failed",
         });
-        finish("연결에 실패했습니다. 네트워크를 확인해 주세요.");
+        finish(t("call.error.connectHint"));
       }, CONNECT_TIMEOUT_MS);
     },
     [finish, sendFrame],
@@ -347,7 +349,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       role: "offerer" | "answerer",
     ): Promise<RTCPeerConnection | null> => {
       if (!navigator.mediaDevices?.getUserMedia || typeof RTCPeerConnection === "undefined") {
-        finish("이 브라우저는 통화를 지원하지 않습니다.");
+        finish(t("call.error.unsupported"));
         return null;
       }
       // 발신 미리보기로 이미 켠 카메라는 그대로 쓰고, 마이크만 추가로 얻는다.
@@ -374,10 +376,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       } catch {
         finish(
           previewTrack
-            ? "마이크 권한이 필요합니다."
+            ? t("call.error.micPermission")
             : media === "video"
-              ? "카메라·마이크 권한이 필요합니다."
-              : "마이크 권한이 필요합니다.",
+              ? t("call.error.cameraMicPermission")
+              : t("call.error.micPermission"),
         );
         return null;
       }
@@ -481,7 +483,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
               const latest = sessionRef.current;
               if (!latest || latest.callId !== callId) return;
               if (pcRef.current?.connectionState === "connected") return;
-              finish("연결이 끊어졌습니다. 다시 시도해 주세요.");
+              finish(t("call.error.disconnected"));
             }, 20_000);
           }
           if (current.direction === "outgoing" && !restartTimerRef.current) {
@@ -497,7 +499,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
             callId,
             reason: "failed",
           });
-          finish("연결에 실패했습니다.");
+          finish(t("call.error.connect"));
         }
       };
       return pc;
@@ -529,7 +531,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       const member =
         conversation?.members.find((item) => item.id === fromUserId) ??
         (conversation?.peer?.id === fromUserId ? conversation.peer : null);
-      return member?.username ? `@${member.username}` : "상대";
+      return member?.username ? `@${member.username}` : t("call.peerFallback");
     },
     [queryClient],
   );
@@ -592,7 +594,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           facing: "user",
           canFlipCamera: false,
           connectedAt: null,
-          note: media === "video" ? "영상 통화를 사용할 수 없습니다." : "음성 통화를 사용할 수 없습니다.",
+          note: t(media === "video" ? "call.error.videoUnavailable" : "call.error.audioUnavailable"),
         });
         return;
       }
@@ -624,7 +626,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           return;
         }
         if (!ready) {
-          finish("카메라 권한이 필요합니다.");
+          finish(t("call.error.cameraPermission"));
           return;
         }
         void refreshCameraDevices();
@@ -639,7 +641,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         const latest = sessionRef.current;
         if (latest?.callId !== callId || latest.phase !== "outgoing") return;
         sendFrame({ type: "call.cancel", conversationId: input.conversationId, callId });
-        finish("응답이 없어 통화를 종료했습니다.");
+        finish(t("call.error.noAnswer"));
       }, cfg.ringTimeoutSeconds * 1000);
     },
     [clearTimers, ensureConfig, finish, refreshCameraDevices, releaseMedia, sendFrame, startVideoPreview],
@@ -651,7 +653,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const cfg = await ensureConfig();
     if (!cfg) {
       declineInternal(current.callId, current.conversationId, "unsupported");
-      finish("음성 통화를 사용할 수 없습니다.");
+      finish(t("call.error.audioUnavailable"));
       return;
     }
     const pc = await prepareConnection(cfg, current.callId, current.media, "answerer");
@@ -682,7 +684,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       await pc.setLocalDescription(answer);
       sendSignal({ description: { type: "answer", sdp: answer.sdp ?? "" } });
     } catch {
-      finish("연결에 실패했습니다.");
+      finish(t("call.error.connect"));
     }
   }, [
     adoptRemoteTransceivers,
@@ -701,7 +703,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const current = sessionRef.current;
     if (!current || current.phase !== "incoming") return;
     declineInternal(current.callId, current.conversationId, "declined");
-    finish("통화를 거절했습니다.");
+    finish(t("call.error.declined"));
   }, [declineInternal, finish]);
 
   const hangup = useCallback(() => {
@@ -721,7 +723,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         reason: "hangup",
       });
     }
-    finish("통화를 종료했습니다.");
+    finish(t("call.error.ended"));
   }, [finish, sendFrame]);
 
   const toggleMute = useCallback(() => {
@@ -910,7 +912,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         case "call.accepted": {
           if (current.direction === "incoming") {
             // 다른 기기에서 먼저 받았다.
-            finish("다른 기기에서 통화를 받았습니다.");
+            finish(t("call.error.answeredElsewhere"));
             return;
           }
           const cfg = configRef.current;
@@ -944,7 +946,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
         case "call.cancelled": {
           if (current.direction === "incoming" && current.phase === "incoming") {
-            finish("상대가 통화를 취소했습니다.");
+            finish(t("call.error.peerCancelled"));
           }
           return;
         }
@@ -971,7 +973,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
                   await pc.setLocalDescription(answer);
                   sendSignal({ description: { type: "answer", sdp: answer.sdp ?? "" } });
                 } catch {
-                  finish("연결에 실패했습니다.");
+                  finish(t("call.error.connect"));
                 }
                 return;
               }
@@ -980,7 +982,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
                   await pc.setRemoteDescription(signal.description as RTCSessionDescriptionInit);
                   await flushCandidates();
                 } catch {
-                  finish("연결에 실패했습니다.");
+                  finish(t("call.error.connect"));
                 }
               }
               return;

@@ -23,6 +23,7 @@ import {
   Spinner,
   cn,
 } from "../components/ui.tsx";
+import { useI18n } from "../i18n.tsx";
 import { api } from "../lib/api.ts";
 import { validateAvatarFile } from "../lib/avatar.ts";
 import { appInviteLink, inviteMailto } from "../lib/inviteMail.ts";
@@ -34,6 +35,7 @@ export function ContactsPage() {
     useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const { t } = useI18n();
   const [statusDraft, setStatusDraft] = useState(session?.user.statusMessage ?? "");
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -107,9 +109,9 @@ export function ContactsPage() {
     setStatusMessage(null);
     try {
       await updateStatusMessage(statusDraft.trim() || null);
-      setStatusMessage("상태 메시지를 저장했습니다.");
+      setStatusMessage(t("contacts.statusSaved"));
     } catch {
-      setStatusError("상태 메시지를 저장하지 못했습니다.");
+      setStatusError(t("contacts.statusFailed"));
     } finally {
       setStatusBusy(false);
     }
@@ -127,9 +129,9 @@ export function ContactsPage() {
     setAvatarBusy(true);
     try {
       await uploadAvatar(file);
-      setAvatarMessage("프로필 사진을 변경했습니다.");
+      setAvatarMessage(t("contacts.avatarSaved"));
     } catch {
-      setAvatarError("프로필 사진을 저장하지 못했습니다.");
+      setAvatarError(t("contacts.avatarSaveFailed"));
     } finally {
       setAvatarBusy(false);
     }
@@ -141,9 +143,9 @@ export function ContactsPage() {
     setAvatarBusy(true);
     try {
       await removeAvatar();
-      setAvatarMessage("프로필 사진을 삭제했습니다.");
+      setAvatarMessage(t("contacts.avatarRemoved"));
     } catch {
-      setAvatarError("프로필 사진을 삭제하지 못했습니다.");
+      setAvatarError(t("contacts.avatarRemoveFailed"));
     } finally {
       setAvatarBusy(false);
     }
@@ -155,7 +157,7 @@ export function ContactsPage() {
     try {
       await updateLastSeenVisibility(visible);
     } catch {
-      setLastSeenError("설정을 저장하지 못했습니다.");
+      setLastSeenError(t("contacts.settingsFailed"));
     } finally {
       setLastSeenBusy(false);
     }
@@ -169,13 +171,13 @@ export function ContactsPage() {
             variant="ghost"
             size="icon"
             onClick={() => navigate("/")}
-            aria-label="대화로 돌아가기"
+            aria-label={t("contacts.back")}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
           <div className="min-w-0 flex-1">
-            <h1 className="text-base font-semibold text-zinc-900">연락처</h1>
-            <p className="text-xs text-zinc-500">프로필과 대화 상대를 관리합니다</p>
+            <h1 className="text-base font-semibold text-zinc-900">{t("contacts.title")}</h1>
+            <p className="text-xs text-zinc-500">{t("contacts.subtitle")}</p>
           </div>
         </div>
       </header>
@@ -184,10 +186,10 @@ export function ContactsPage() {
         <Card className="p-5">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
             <UserRound className="h-4 w-4 text-accent-600" aria-hidden />
-            내 프로필
+            {t("contacts.myProfile")}
           </h2>
           <p className="mt-1 text-xs text-zinc-500">
-            @{session.user.username} · 상태 메시지와 프로필 사진은 대화 상대에게 공개됩니다.
+            {t("contacts.privacyNote", { username: `@${session.user.username}` })}
           </p>
           <div className="mt-4 flex items-center gap-3">
             <Avatar
@@ -204,11 +206,11 @@ export function ContactsPage() {
                 )}
               >
                 <ImagePlus className="h-3.5 w-3.5" aria-hidden />
-                사진 선택
+                {t("contacts.pickPhoto")}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
-                  aria-label="프로필 사진 선택"
+                  aria-label={t("contacts.pickPhotoAria")}
                   className="sr-only"
                   disabled={avatarBusy}
                   onChange={(event) => {
@@ -225,13 +227,13 @@ export function ContactsPage() {
                   onClick={() => void clearAvatar()}
                   disabled={avatarBusy}
                 >
-                  사진 삭제
+                  {t("contacts.removePhoto")}
                 </Button>
               ) : null}
             </div>
           </div>
           <p className="mt-2 text-[11px] text-zinc-400">
-            정사각 128px 로 줄여 저장하며 PNG·JPEG·WebP(8MB 이하)만 올릴 수 있습니다.
+            {t("contacts.photoNote")}
           </p>
           {avatarMessage ? (
             <p className="mt-2 text-xs text-emerald-700">{avatarMessage}</p>
@@ -250,9 +252,9 @@ export function ContactsPage() {
               onChange={(event) => void toggleLastSeen(event.target.checked)}
             />
             <span>
-              <span className="font-medium text-zinc-800">마지막 접속 시간 공개</span>
+              <span className="font-medium text-zinc-800">{t("contacts.lastSeenPublic")}</span>
               <br />
-              끄면 대화 상대에게 접속 시각이 보이지 않습니다(기본: 비공개).
+              {t("contacts.lastSeenNote")}
             </span>
           </label>
           {lastSeenError ? (
@@ -268,13 +270,12 @@ export function ContactsPage() {
                 setStatusDraft(event.target.value);
                 setStatusMessage(null);
               }}
-              placeholder="상태 메시지 (최대 80자)"
-              aria-label="상태 메시지"
+              placeholder={t("contacts.statusPlaceholder")}
+              aria-label={t("contacts.statusAria")}
             />
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-[11px] text-zinc-400">
-                {statusDraft.length}/80 · 메시지와 달리 서버에 일반 텍스트로 저장되는 공개
-                프로필 정보입니다.
+                {t("contacts.statusNote", { count: statusDraft.length })}
               </p>
               <Button type="submit" size="sm" disabled={statusBusy}>
                 {statusBusy ? (
@@ -282,7 +283,7 @@ export function ContactsPage() {
                 ) : (
                   <Check className="h-4 w-4" aria-hidden />
                 )}
-                저장
+                {t("contacts.save")}
               </Button>
             </div>
           </form>
@@ -299,11 +300,10 @@ export function ContactsPage() {
         <Card className="p-5">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
             <Mail className="h-4 w-4 text-accent-600" aria-hidden />
-            친구 초대
+            {t("contacts.inviteTitle")}
           </h2>
           <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-            아직 가입하지 않은 사람에게 링크를 보내세요. 서버가 메일을 보내지 않고, 내 메일
-            클라이언트로 링크만 전달합니다(이메일 주소는 저장하지 않습니다).
+            {t("contacts.inviteNote")}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button
@@ -313,29 +313,29 @@ export function ContactsPage() {
               onClick={() => void navigator.clipboard.writeText(appLink)}
             >
               <Link2 className="h-3.5 w-3.5" aria-hidden />
-              링크 복사
+              {t("contacts.copyLink")}
             </Button>
             <a
               href={inviteMailto(appLink)}
               className="inline-flex items-center gap-1.5 text-xs font-medium text-accent-700 hover:underline"
             >
               <Mail className="h-3.5 w-3.5" aria-hidden />
-              이메일로 보내기
+              {t("contacts.email")}
             </a>
             <span className="truncate text-[11px] text-zinc-400">{appLink}</span>
           </div>
         </Card>
 
-        <section aria-label="연락처 목록">
+        <section aria-label={t("contacts.listAria")}>
           <div className="mb-2 flex items-baseline justify-between px-1">
-            <h2 className="text-sm font-semibold text-zinc-900">대화 상대</h2>
-            <span className="text-xs text-zinc-500">{contacts.length}명</span>
+            <h2 className="text-sm font-semibold text-zinc-900">{t("contacts.people")}</h2>
+            <span className="text-xs text-zinc-500">{t("contacts.count", { count: contacts.length })}</span>
           </div>
 
           {favoriteMutation.isError || blockMutation.isError || openMutation.isError ? (
             <div className="mb-2">
               <Alert variant="error">
-                연락처 설정을 변경하지 못했습니다. 잠시 후 다시 시도해 주세요.
+                {t("contacts.updateFailed")}
               </Alert>
             </div>
           ) : null}
@@ -345,12 +345,12 @@ export function ContactsPage() {
               <Spinner className="h-5 w-5 text-accent-600" />
             </div>
           ) : contactsQuery.isError ? (
-            <Alert variant="error">연락처를 불러오지 못했습니다.</Alert>
+            <Alert variant="error">{t("contacts.loadFailed")}</Alert>
           ) : contacts.length === 0 ? (
             <Card className="px-4 py-10 text-center text-sm leading-relaxed text-zinc-500">
-              아직 대화 상대가 없습니다.
+              {t("contacts.emptyTitle")}
               <br />
-              대화를 시작하면 여기에 표시됩니다.
+              {t("contacts.emptyHint")}
             </Card>
           ) : (
             <ul className="space-y-2">
@@ -370,24 +370,24 @@ export function ContactsPage() {
                           {contact.favorite ? (
                             <Star
                               className="h-3.5 w-3.5 fill-amber-400 text-amber-500"
-                              aria-label="즐겨찾기"
+                              aria-label={t("contacts.favorite")}
                             />
                           ) : null}
                         </p>
                         <p className="truncate text-xs text-zinc-500">
-                          {contact.statusMessage ?? "상태 메시지 없음"}
+                          {contact.statusMessage ?? t("contacts.noStatus")}
                         </p>
                         {contact.blockedMe ? (
                           <p className="mt-0.5 text-[11px] text-amber-700">
-                            상대가 나를 차단했습니다.
+                            {t("contacts.blockedByPeer")}
                           </p>
                         ) : null}
                       </div>
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={contact.favorite ? "즐겨찾기 해제" : "즐겨찾기"}
-                        title={contact.favorite ? "즐겨찾기 해제" : "즐겨찾기"}
+                        aria-label={t(contact.favorite ? "contacts.unfavorite" : "contacts.favorite")}
+                        title={t(contact.favorite ? "contacts.unfavorite" : "contacts.favorite")}
                         disabled={blocked || favoriteMutation.isPending}
                         onClick={() =>
                           favoriteMutation.mutate({
@@ -409,8 +409,8 @@ export function ContactsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={blocked ? "차단 해제" : "차단"}
-                        title={blocked ? "차단 해제" : "차단"}
+                        aria-label={t(blocked ? "contacts.unblock" : "contacts.block")}
+                        title={t(blocked ? "contacts.unblock" : "contacts.block")}
                         disabled={blockMutation.isPending}
                         onClick={() => {
                           if (blocked) {
@@ -429,8 +429,8 @@ export function ContactsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`${contact.username}님과 대화`}
-                        title="대화 열기"
+                        aria-label={t("contacts.openChat", { name: contact.username ?? "" })}
+                        title={t("contacts.openChatTitle")}
                         disabled={blocked || contact.blockedMe || openMutation.isPending}
                         onClick={() => openMutation.mutate(contact.id)}
                       >
@@ -445,10 +445,10 @@ export function ContactsPage() {
         </section>
 
         <p className="px-1 text-center text-[11px] text-zinc-400">
-          차단하면 1:1 대화의 메시지 전송이 양방향으로 막힙니다.
+          {t("contacts.blockNote")}
           <br />
           <Link className="underline hover:text-zinc-600" to="/">
-            대화 목록으로
+            {t("contacts.backToList")}
           </Link>
         </p>
       </main>
@@ -456,16 +456,14 @@ export function ContactsPage() {
       <Dialog
         open={blockTarget !== null}
         onClose={() => setBlockTarget(null)}
-        title="연락처 차단"
+        title={t("contacts.blockDialogTitle")}
       >
         <p className="text-sm leading-relaxed text-zinc-600">
-          {blockTarget ? `@${blockTarget.username}님을 차단할까요?` : ""} 차단하면 서로 1:1
-          메시지를 보낼 수 없고, 즐겨찾기도 해제됩니다. 언제든 연락처에서 차단을 해제할 수
-          있습니다.
+          {t("contacts.blockConfirm", { name: blockTarget ? `@${blockTarget.username}` : "" })}
         </p>
         <div className="mt-5 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setBlockTarget(null)}>
-            취소
+            {t("chat.cancel")}
           </Button>
           <Button
             variant="destructive"
@@ -477,7 +475,7 @@ export function ContactsPage() {
             }}
           >
             <Ban className="h-4 w-4" aria-hidden />
-            차단
+            {t("contacts.blockAction")}
           </Button>
         </div>
       </Dialog>

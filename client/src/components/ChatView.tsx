@@ -14,6 +14,7 @@ import {
   Clock,
   EyeOff,
   History,
+  Images,
   Link2,
   MapPin,
   Mic,
@@ -109,6 +110,7 @@ import {
   encodeLocationPayload,
   type LocationPayload,
 } from "../lib/location.ts";
+import { MediaGalleryDialog } from "./MediaGalleryDialog.tsx";
 import { LocationShareDialog } from "./LocationShareDialog.tsx";
 
 interface PendingMessage {
@@ -352,6 +354,8 @@ export function ChatView({
   const [safety, setSafety] = useState<SafetyNumber | null>(null);
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
+  /** 첨부 모아보기(이 기기에서 복호화한 범위). */
+  const [galleryOpen, setGalleryOpen] = useState(false);
   const [safetyChanged, setSafetyChanged] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1539,6 +1543,15 @@ export function ChatView({
         <Button
           variant="ghost"
           size="sm"
+          onClick={() => setGalleryOpen(true)}
+          aria-label="첨부 모아보기"
+        >
+          <Images className="h-4 w-4" aria-hidden />
+          <span className="hidden sm:inline">첨부</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => setSafetyOpen(true)}
           aria-label="안전번호"
           disabled={!safety}
@@ -2155,6 +2168,17 @@ export function ChatView({
           Enter 전송 · Shift+Enter 줄바꿈
         </p>
       </form>
+
+      <MediaGalleryDialog
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+        messages={chronological}
+        identity={identity}
+        onJump={(messageId) => {
+          setGalleryOpen(false);
+          setSearchParams({ anchor: messageId }, { replace: true });
+        }}
+      />
 
       <LocationShareDialog
         open={locationOpen}

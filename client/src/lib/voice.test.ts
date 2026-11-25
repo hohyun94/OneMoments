@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatDuration,
+  formatPlaybackRate,
+  nextPlaybackRate,
+  PLAYBACK_RATES,
   pickVoiceMimeType,
   voiceExtension,
   voiceFileName,
@@ -33,5 +36,17 @@ describe("voice helpers", () => {
     expect(formatDuration(75)).toBe("1:15");
     expect(formatDuration(3_725)).toBe("1:02:05");
     expect(formatDuration(-3)).toBe("0:00");
+  });
+
+  it("cycles playback rates", () => {
+    expect(PLAYBACK_RATES).toEqual([1, 1.25, 1.5, 2]);
+    expect(nextPlaybackRate(1)).toBe(1.25);
+    expect(nextPlaybackRate(1.25)).toBe(1.5);
+    expect(nextPlaybackRate(1.5)).toBe(2);
+    // 마지막이면 1x 로 돌아오고, 알 수 없는 값도 1x 로 안전하게 처리한다.
+    expect(nextPlaybackRate(2)).toBe(1);
+    expect(nextPlaybackRate(1.75)).toBe(1);
+    expect(formatPlaybackRate(1)).toBe("1x");
+    expect(formatPlaybackRate(1.5)).toBe("1.5x");
   });
 });

@@ -7,6 +7,7 @@ import { ChatView } from "../components/ChatView.tsx";
 import { ConversationSidebar } from "../components/ConversationSidebar.tsx";
 import { NewConversationDialog } from "../components/NewConversationDialog.tsx";
 import { Button, Spinner, cn } from "../components/ui.tsx";
+import { useI18n } from "../i18n.tsx";
 import { api } from "../lib/api.ts";
 import { loadPinnedConversations, togglePinnedConversation } from "../lib/conversationPins.ts";
 import { useRealtime } from "../realtime.tsx";
@@ -135,6 +136,7 @@ function ChatShell({
   onLogout: () => void;
 }) {
   const { status } = useRealtime();
+  const { t } = useI18n();
   const selectedId = selected?.id ?? null;
 
   return (
@@ -190,11 +192,12 @@ function ChatShell({
                 </span>
                 <div>
                   <p className="text-base font-medium text-zinc-900">
-                    대화를 선택하세요
+                    {t("chat.empty.select")}
                   </p>
                 </div>
                 <Button onClick={onNewConversation}>
-                  <Plus className="h-4 w-4" aria-hidden />새 대화 시작
+                  <Plus className="h-4 w-4" aria-hidden />
+                  {t("chat.empty.new")}
                 </Button>
               </>
             )}

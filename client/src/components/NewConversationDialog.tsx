@@ -1,6 +1,7 @@
 import { Search, X } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 
+import { useI18n } from "../i18n.tsx";
 import { ApiError, api } from "../lib/api.ts";
 import type { ConversationSummary, PeerUser } from "../types.ts";
 import { Alert, Button, Dialog, Input, Label, Spinner, cn } from "./ui.tsx";
@@ -24,6 +25,7 @@ export function NewConversationDialog({
   const [members, setMembers] = useState<PeerUser[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const { t } = useI18n();
 
   useEffect(() => {
     if (!open) return;
@@ -59,7 +61,7 @@ export function NewConversationDialog({
       setResult(response.user);
       setSearched(true);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "검색에 실패했습니다.");
+      setError(caught instanceof ApiError ? caught.message : t("error.searchFailed"));
     } finally {
       setBusy(false);
     }
@@ -97,7 +99,7 @@ export function NewConversationDialog({
 
   function startDirect(): void {
     if (!result) return;
-    void create({ peerUserId: result.id }, "대화를 시작할 수 없습니다.");
+    void create({ peerUserId: result.id }, t("error.startConversation"));
   }
 
   function createGroup(): void {
@@ -108,15 +110,15 @@ export function NewConversationDialog({
         name: groupName.trim(),
         memberUserIds: members.map((member) => member.id),
       },
-      "그룹을 만들 수 없습니다.",
+      t("error.createGroup"),
     );
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="새 대화">
+    <Dialog open={open} onClose={onClose} title={t("newChat.title")}>
       <div
         role="tablist"
-        aria-label="대화 종류"
+        aria-label={t("newChat.kind.label")}
         className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-1"
       >
         <button
@@ -141,26 +143,26 @@ export function NewConversationDialog({
             mode === "group" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600",
           )}
         >
-          그룹
+          {t("newChat.tab.group")}
         </button>
       </div>
 
       {mode === "group" ? (
         <div className="mb-3 space-y-1.5">
-          <Label htmlFor="group-name">그룹 이름</Label>
+          <Label htmlFor="group-name">{t("newChat.groupName.label")}</Label>
           <Input
             id="group-name"
             value={groupName}
             maxLength={64}
             onChange={(event) => setGroupName(event.target.value)}
-            placeholder="예: 주말 등산"
+            placeholder={t("newChat.groupName.placeholder")}
           />
         </div>
       ) : null}
 
       <form className="space-y-3" onSubmit={search}>
         <div className="space-y-1.5">
-          <Label htmlFor="peer-username">사용자 아이디</Label>
+          <Label htmlFor="peer-username">{t("newChat.username.label")}</Label>
           <div className="flex gap-2">
             <Input
               id="peer-username"
@@ -173,9 +175,9 @@ export function NewConversationDialog({
                 setSearched(false);
                 setResult(null);
               }}
-              placeholder="정확한 아이디 입력"
+              placeholder={t("newChat.username.placeholder")}
             />
-            <Button type="submit" variant="outline" disabled={busy} aria-label="검색">
+            <Button type="submit" variant="outline" disabled={busy} aria-label={t("newChat.search")}>
               {busy ? <Spinner /> : <Search className="h-4 w-4" />}
             </Button>
           </div>
@@ -185,7 +187,7 @@ export function NewConversationDialog({
       {error ? <Alert variant="error">{error}</Alert> : null}
 
       {searched && !result ? (
-        <p className="mt-3 text-sm text-zinc-500">일치하는 사용자가 없습니다.</p>
+        <p className="mt-3 text-sm text-zinc-500">{t("newChat.notFound")}</p>
       ) : null}
 
       {result ? (
@@ -193,7 +195,7 @@ export function NewConversationDialog({
           <div className="min-w-0">
             <p className="truncate text-sm font-medium text-zinc-900">@{result.username}</p>
             <p className="text-xs text-zinc-500">
-              {mode === "group" ? "그룹에 추가할 사용자" : "1:1 대화"}
+              {mode === "group" ? t("newChat.result.group") : t("newChat.result.direct")}
             </p>
           </div>
           <Button
@@ -201,7 +203,7 @@ export function NewConversationDialog({
             disabled={busy}
           >
             {busy ? <Spinner /> : null}
-            {mode === "group" ? "추가" : "대화 시작"}
+            {mode === "group" ? t("newChat.add") : t("newChat.start")}
           </Button>
         </div>
       ) : null}
@@ -210,9 +212,9 @@ export function NewConversationDialog({
         <div className="mt-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-zinc-700">
-              참여자 {members.length + 1}명
+              {t("newChat.members", { count: members.length + 1 })}
             </p>
-            <p className="text-xs text-zinc-500">최대 20명</p>
+            <p className="text-xs text-zinc-500">{t("newChat.maxMembers")}</p>
           </div>
           <ul className="mt-2 space-y-2">
             {members.map((member) => (
@@ -224,7 +226,7 @@ export function NewConversationDialog({
                 <button
                   type="button"
                   onClick={() => removeMember(member.id)}
-                  aria-label={`${member.username} 제거`}
+                  aria-label={t("newChat.removeMember", { name: member.username ?? "" })}
                   className="rounded-md p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
                 >
                   <X className="h-4 w-4" />
@@ -233,7 +235,7 @@ export function NewConversationDialog({
             ))}
             {members.length === 0 ? (
               <li className="rounded-lg border border-dashed border-zinc-200 px-3 py-3 text-center text-xs text-zinc-500">
-                아이디를 검색해 참여자를 추가하세요.
+                {t("newChat.membersEmpty")}
               </li>
             ) : null}
           </ul>
@@ -243,15 +245,13 @@ export function NewConversationDialog({
             disabled={busy || !groupName.trim() || members.length === 0}
           >
             {busy ? <Spinner /> : null}
-            그룹 만들기
+            {t("newChat.createGroup")}
           </Button>
         </div>
       ) : null}
 
       <p className="mt-4 text-xs text-zinc-500">
-        {mode === "group"
-          ? "그룹 메시지는 참여자 전원의 기기로 각각 암호화되어 전송됩니다. 새로 참여한 사람은 이후 메시지만 읽을 수 있습니다."
-          : "상대가 오프라인이어도 메시지는 암호화되어 저장되고, 접속하면 전달됩니다."}
+        {mode === "group" ? t("newChat.groupNote") : t("newChat.directNote")}
       </p>
     </Dialog>
   );

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { useI18n } from "../i18n.tsx";
 import { loadAliases, subscribeAliases } from "../lib/aliases.ts";
 import { listBookmarks, removeBookmark, type BookmarkRecord } from "../lib/bookmarks.ts";
 import { sortPinnedFirst } from "../lib/conversationPins.ts";
@@ -24,6 +25,7 @@ import { formatListTime } from "../lib/format.ts";
 import { searchMessages, type SearchableMessage } from "../lib/search.ts";
 import type { RealtimeStatus } from "../realtime.tsx";
 import type { ConversationSummary } from "../types.ts";
+import { LanguageToggle } from "./LanguageToggle.tsx";
 import { Avatar, Button, Dialog, cn } from "./ui.tsx";
 
 export function ConversationSidebar({
@@ -61,6 +63,7 @@ export function ConversationSidebar({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchableMessage[]>([]);
+  const { t } = useI18n();
   // 로컬 별명(이 기기에서만)과 저장한 메시지.
   const aliases = useSyncExternalStore(subscribeAliases, loadAliases);
   const [savedOpen, setSavedOpen] = useState(false);
@@ -77,12 +80,12 @@ export function ConversationSidebar({
   }
 
   function displayNameOf(conversation: ConversationSummary | undefined): string {
-    if (!conversation) return "대화";
-    if (conversation.kind === "group") return conversation.name ?? "그룹";
+    if (!conversation) return t("sidebar.conversation");
+    if (conversation.kind === "group") return conversation.name ?? t("sidebar.group");
     return (
       aliases[conversation.peer?.id ?? ""] ||
       conversation.peer?.username ||
-      "삭제된 사용자"
+      t("sidebar.deletedUser")
     );
   }
 
@@ -117,7 +120,9 @@ export function ConversationSidebar({
             <p className="text-lg font-semibold text-zinc-900">@{displayName}</p>
           </div>
           <span
-            title={connection === "open" ? "실시간 연결됨" : "실시간 연결 중"}
+            title={t(
+              connection === "open" ? "sidebar.connection.open" : "sidebar.connection.connecting",
+            )}
             className={cn(
               "h-2.5 w-2.5 rounded-full",
               connection === "open"
@@ -129,7 +134,8 @@ export function ConversationSidebar({
           />
         </div>
         <Button className="mt-4 w-full" onClick={onNewConversation}>
-          <MessageSquarePlus className="h-4 w-4" aria-hidden />새 대화
+          <MessageSquarePlus className="h-4 w-4" aria-hidden />
+          {t("sidebar.newConversation")}
         </Button>
       </header>
 
@@ -139,8 +145,8 @@ export function ConversationSidebar({
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="메시지 검색 (2자 이상)"
-            aria-label="메시지 검색"
+            placeholder={t("sidebar.search.placeholder")}
+            aria-label={t("sidebar.search.label")}
             className="h-8 min-w-0 flex-1 bg-transparent text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none"
           />
           {query ? (
@@ -188,9 +194,9 @@ export function ConversationSidebar({
       <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label="대화 목록">
         {conversations.length === 0 ? (
           <div className="px-3 py-10 text-center text-sm leading-relaxed text-zinc-500">
-            아직 대화가 없습니다.
+            {t("sidebar.empty.title")}
             <br />
-            사용자 아이디로 새 대화를 시작하세요.
+            {t("sidebar.empty.hint")}
           </div>
         ) : (
           <ul className="space-y-1">
@@ -231,20 +237,20 @@ export function ConversationSidebar({
                         {pinned ? (
                           <Pin
                             className="h-3 w-3 shrink-0 fill-current text-accent-600"
-                            aria-label="고정된 대화"
+                            aria-label={t("sidebar.pinned")}
                           />
                         ) : null}
                         {conversation.favorite ? (
                           <Star
                             className="h-3 w-3 shrink-0 fill-amber-400 text-amber-500"
-                            aria-label="즐겨찾기"
+                            aria-label={t("sidebar.favorite")}
                           />
                         ) : null}
                         <span className="flex shrink-0 items-center gap-1.5">
                           {missedCalls > 0 ? (
                             <span
-                              aria-label={`부재중 전화 ${missedCalls}건`}
-                              title={`부재중 전화 ${missedCalls}건`}
+                              aria-label={t("sidebar.missedCalls", { count: missedCalls })}
+                              title={t("sidebar.missedCalls", { count: missedCalls })}
                               className="flex h-5 items-center gap-0.5 rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white"
                             >
                               <PhoneMissed className="h-3 w-3" aria-hidden />
@@ -253,7 +259,7 @@ export function ConversationSidebar({
                           ) : null}
                           {unread > 0 && !active ? (
                             <span
-                              aria-label={`읽지 않은 메시지 ${unread}개`}
+                              aria-label={t("sidebar.unread", { count: unread })}
                               className="flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-600 px-1.5 text-[10px] font-semibold text-accent-contrast"
                             >
                               {unread > 99 ? "99+" : unread}
@@ -266,7 +272,7 @@ export function ConversationSidebar({
                       </span>
                       <span className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
                         {conversation.muted ? (
-                          <span title="알림 꺼짐">
+                          <span title={t("sidebar.muted")}>
                             <BellOff className="h-3 w-3" aria-hidden />
                           </span>
                         ) : null}
@@ -275,9 +281,15 @@ export function ConversationSidebar({
                         ) : (
                           <ShieldCheck className="h-3 w-3" aria-hidden />
                         )}
-                        {isGroup ? `${conversation.memberCount}명` : "1:1 대화"}
+                        {isGroup
+                          ? t("sidebar.members", { count: conversation.memberCount })
+                          : t("sidebar.direct")}
                         {!isGroup && conversation.blocked
-                          ? ` · ${conversation.blocked === "me" ? "차단함" : "차단됨"}`
+                          ? ` · ${t(
+                              conversation.blocked === "me"
+                                ? "sidebar.blocked.me"
+                                : "sidebar.blocked.peer",
+                            )}`
                           : ""}
                       </span>
                     </span>
@@ -285,8 +297,8 @@ export function ConversationSidebar({
                   <button
                     type="button"
                     onClick={() => onTogglePinConversation(conversation.id)}
-                    aria-label={pinned ? "대화 고정 해제" : "대화 고정"}
-                    title={pinned ? "고정 해제" : "고정"}
+                    aria-label={pinned ? t("sidebar.unpin") : t("sidebar.pin")}
+                    title={pinned ? t("sidebar.unpinTitle") : t("sidebar.pinTitle")}
                     className={cn(
                       "mr-1 shrink-0 rounded-md p-1 hover:bg-zinc-100",
                       pinned ? "text-accent-600" : "text-zinc-300 hover:text-zinc-600",
@@ -304,7 +316,7 @@ export function ConversationSidebar({
       <footer className="border-t border-zinc-100 p-2">
         <Button variant="ghost" className="w-full justify-start" onClick={openSavedMessages}>
           <Bookmark className="h-4 w-4" aria-hidden />
-          저장한 메시지
+          {t("sidebar.saved.button")}
         </Button>
         <Button
           variant="ghost"
@@ -312,7 +324,7 @@ export function ConversationSidebar({
           onClick={onOpenContacts}
         >
           <Contact className="h-4 w-4" aria-hidden />
-          연락처
+          {t("nav.contacts")}
         </Button>
         <Button
           variant="ghost"
@@ -320,33 +332,39 @@ export function ConversationSidebar({
           onClick={onOpenMoments}
         >
           <Sparkles className="h-4 w-4" aria-hidden />
-          Moments
+          {t("nav.moments")}
         </Button>
         {isAdmin ? (
           <Button variant="ghost" className="w-full justify-start" onClick={onOpenAdmin}>
             <ShieldAlert className="h-4 w-4" aria-hidden />
-            관리자 콘솔
+            {t("nav.admin")}
           </Button>
         ) : null}
         <Button variant="ghost" className="w-full justify-start" onClick={onOpenDevices}>
           <Smartphone className="h-4 w-4" aria-hidden />
-          기기 관리
+          {t("nav.devices")}
         </Button>
+        <div className="flex items-center justify-between gap-2 px-1 py-2">
+          <span className="text-xs text-zinc-500">{t("nav.language")}</span>
+          <LanguageToggle />
+        </div>
         <Button variant="ghost" className="w-full justify-start" onClick={onLogout}>
           <LogOut className="h-4 w-4" aria-hidden />
-          로그아웃
+          {t("nav.logout")}
         </Button>
       </footer>
 
-      <Dialog open={savedOpen} onClose={() => setSavedOpen(false)} title="저장한 메시지">
-        <p className="text-xs text-zinc-500">
-          이 기기에만 저장됩니다. 항목을 누르면 원문으로 이동합니다.
-        </p>
+      <Dialog
+        open={savedOpen}
+        onClose={() => setSavedOpen(false)}
+        title={t("sidebar.saved.button")}
+      >
+        <p className="text-xs text-zinc-500">{t("sidebar.saved.description")}</p>
         {savedLoading ? (
-          <p className="mt-4 text-sm text-zinc-500">불러오는 중…</p>
+          <p className="mt-4 text-sm text-zinc-500">{t("sidebar.saved.loading")}</p>
         ) : saved.length === 0 ? (
           <p className="mt-4 text-sm leading-relaxed text-zinc-500">
-            저장한 메시지가 없습니다. 메시지 아래의 북마크 아이콘을 누르면 여기에 모입니다.
+            {t("sidebar.saved.empty")}
           </p>
         ) : (
           <ul className="mt-3 max-h-80 divide-y divide-zinc-100 overflow-y-auto">
@@ -364,13 +382,13 @@ export function ConversationSidebar({
                     {conversationLabel(row.conversationId)} · {formatListTime(row.createdAt)}
                   </span>
                   <span className="line-clamp-2 block break-words text-xs text-zinc-700">
-                    {row.text || "첨부 메시지"}
+                    {row.text || t("sidebar.saved.attachment")}
                   </span>
                 </button>
                 <button
                   type="button"
-                  aria-label="저장 취소"
-                  title="저장 취소"
+                  aria-label={t("sidebar.saved.remove")}
+                  title={t("sidebar.saved.remove")}
                   onClick={() => {
                     void removeBookmark(row.messageId).then(() => {
                       setSaved((rows) =>

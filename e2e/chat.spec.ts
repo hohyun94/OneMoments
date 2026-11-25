@@ -1363,3 +1363,32 @@ test("메시지는 오프라인이면 큐에 저장되고 연결되면 자동 �
   await ownContext.close();
   await peerContext.close();
 });
+
+test("영어 UI: 대화 목록과 새 대화 다이얼로그가 영어로 표시된다", async ({ page }) => {
+  await page.goto("/");
+  // 브라우저 언어(ko-KR)보다 저장된 언어를 우선한다.
+  await page.evaluate(() => window.localStorage.setItem("onemoments-locale", "en"));
+  await page.reload();
+
+  await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await page.getByLabel("Username").fill(uniqueName("enuser"));
+  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+  await page.getByLabel("Confirm password").fill(PASSWORD);
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  await expect(page.getByRole("button", { name: "New chat", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start a new chat" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Contacts" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(page.getByText("No conversations yet.")).toBeVisible();
+
+  await page.getByRole("button", { name: "New chat", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "New chat" });
+  await expect(dialog.getByRole("tab", { name: "Group" })).toBeVisible();
+  await expect(dialog.getByLabel("Username")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Search" })).toBeVisible();
+
+  await dialog.getByRole("tab", { name: "Group" }).click();
+  await expect(dialog.getByLabel("Group name")).toBeVisible();
+  await expect(dialog.getByText("Search a username to add participants.")).toBeVisible();
+});

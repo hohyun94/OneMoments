@@ -1,7 +1,8 @@
-import { Download, X } from "lucide-react";
+﻿import { Download, X } from "lucide-react";
 import { useEffect } from "react";
 
 import { cn } from "./ui.tsx";
+import { useI18n } from "../i18n.tsx";
 
 /**
  * 복호화된 이미지를 화면 가득 보여주는 라이트박스.
@@ -21,6 +22,7 @@ export function ImageLightbox({
   onDownload?: () => void;
   downloading?: boolean;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
@@ -39,7 +41,7 @@ export function ImageLightbox({
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="이미지 크게 보기"
+      aria-label={t("lightbox.open")}
       data-testid="image-lightbox"
       className="fixed inset-0 z-[60] flex flex-col bg-black/95 p-3"
       onClick={onClose}
@@ -53,8 +55,8 @@ export function ImageLightbox({
               onDownload();
             }}
             disabled={downloading}
-            aria-label="다운로드"
-            title="다운로드"
+            aria-label={t("msg.download")}
+            title={t("msg.download")}
             className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20 disabled:opacity-50"
           >
             <Download className="h-4 w-4" aria-hidden />
@@ -66,8 +68,8 @@ export function ImageLightbox({
             event.stopPropagation();
             onClose();
           }}
-          aria-label="닫기"
-          title="닫기"
+          aria-label={t("lightbox.close")}
+          title={t("lightbox.close")}
           className="rounded-lg bg-white/10 p-2 text-white hover:bg-white/20"
         >
           <X className="h-4 w-4" aria-hidden />

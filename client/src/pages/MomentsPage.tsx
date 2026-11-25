@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ImagePlus, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
@@ -28,6 +28,7 @@ import {
   momentTimeLeft,
   parseMomentContent,
 } from "../lib/moments.ts";
+import { useI18n } from "../i18n.tsx";
 import { useSession } from "../session.tsx";
 import type { MomentContact, MomentDevice, MomentView } from "../types.ts";
 
@@ -42,6 +43,7 @@ interface MomentContent {
 }
 
 function MomentImage({ attachment }: { attachment: AttachmentPayload }) {
+  const { t } = useI18n();
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -69,14 +71,14 @@ function MomentImage({ attachment }: { attachment: AttachmentPayload }) {
   if (failed) {
     return (
       <p className="rounded-lg bg-zinc-100 px-3 py-2 text-xs text-zinc-500">
-        이미지를 불러올 수 없습니다.
+        {t("moments.imageLoadFailed")}
       </p>
     );
   }
   if (!url) {
     return (
       <p className="rounded-lg bg-zinc-100 px-3 py-2 text-xs text-zinc-400">
-        이미지 불러오는 중…
+        {t("moments.imageLoading")}
       </p>
     );
   }
@@ -101,9 +103,10 @@ function MomentCard({
   currentUserId: string;
   onOpen: () => void;
 }) {
+  const { t } = useI18n();
   const [content, setContent] = useState<MomentContent | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const author = moment.author.username ?? "삭제된 사용자";
+  const author = moment.author.username ?? t("moments.deletedAuthor");
 
   useEffect(() => {
     let active = true;
@@ -115,7 +118,7 @@ function MomentCard({
         setContent(parseMomentContent(plaintext));
       })
       .catch(() => {
-        if (active) setError("이 기기에서 읽을 수 없는 순간입니다.");
+        if (active) setError(t("moments.unreadable"));
       });
     return () => {
       active = false;
@@ -140,10 +143,10 @@ function MomentCard({
         </span>
         {moment.author.id === currentUserId ? (
           <span className="text-[11px] text-zinc-500">
-            {moment.viewCount ?? 0}명 조회
+            {t("moments.viewCount", { count: moment.viewCount ?? 0 })}
           </span>
         ) : moment.viewed ? (
-          <span className="text-[11px] text-zinc-400">조회함</span>
+          <span className="text-[11px] text-zinc-400">{t("moments.viewed")}</span>
         ) : null}
       </span>
 
@@ -159,7 +162,7 @@ function MomentCard({
           ) : null}
         </span>
       ) : (
-        <span className="mt-3 text-xs text-zinc-400">복호화 중…</span>
+        <span className="mt-3 text-xs text-zinc-400">{t("moments.decrypting")}</span>
       )}
     </button>
   );
@@ -178,9 +181,10 @@ function MomentViewer({
   onClose: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useI18n();
   const [content, setContent] = useState<MomentContent | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const author = moment.author.username ?? "삭제된 사용자";
+  const author = moment.author.username ?? t("moments.deletedAuthor");
   const isAuthor = isMomentAuthor(moment, currentUserId);
 
   useEffect(() => {
@@ -192,7 +196,7 @@ function MomentViewer({
         if (active) setContent(parseMomentContent(plaintext));
       })
       .catch(() => {
-        if (active) setError("이 기기에서 읽을 수 없는 순간입니다.");
+        if (active) setError(t("moments.unreadable"));
       });
     return () => {
       active = false;
@@ -216,7 +220,7 @@ function MomentViewer({
   });
 
   return (
-    <Dialog open onClose={onClose} title="순간">
+    <Dialog open onClose={onClose} title={t("moments.dialogTitle")}>
       <div className="space-y-3">
         <div className="flex items-center gap-2">
           <Avatar name={author} />
@@ -234,7 +238,7 @@ function MomentViewer({
               onClick={onDelete}
             >
               <Trash2 className="h-4 w-4" aria-hidden />
-              삭제
+              {t("moments.delete")}
             </Button>
           ) : null}
         </div>
@@ -251,13 +255,13 @@ function MomentViewer({
             ) : null}
           </div>
         ) : (
-          <p className="py-6 text-center text-sm text-zinc-400">복호화 중…</p>
+          <p className="py-6 text-center text-sm text-zinc-400">{t("moments.decrypting")}</p>
         )}
 
         {isAuthor ? (
           <div className="border-t border-zinc-100 pt-3">
             <p className="text-xs font-medium text-zinc-600">
-              조회 {viewsQuery.data?.length ?? 0}명
+              {t("moments.viewersCount", { count: viewsQuery.data?.length ?? 0 })}
             </p>
             <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
               {(viewsQuery.data ?? []).map((view) => (
@@ -266,10 +270,10 @@ function MomentViewer({
                 </p>
               ))}
               {viewsQuery.isLoading ? (
-                <p className="text-xs text-zinc-400">불러오는 중…</p>
+                <p className="text-xs text-zinc-400">{t("moments.viewersLoading")}</p>
               ) : null}
               {!viewsQuery.isLoading && (viewsQuery.data ?? []).length === 0 ? (
-                <p className="text-xs text-zinc-400">아직 조회한 사람이 없습니다.</p>
+                <p className="text-xs text-zinc-400">{t("moments.viewersEmpty")}</p>
               ) : null}
             </div>
           </div>
@@ -290,6 +294,7 @@ function MomentComposer({
   identity: NonNullable<ReturnType<typeof useSession>["identity"]>;
   onCreated: () => void;
 }) {
+  const { t } = useI18n();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -329,13 +334,13 @@ function MomentComposer({
     }
     if (!selectedFile.type.startsWith("image/")) {
       setFile(null);
-      setError("이미지 파일만 첨부할 수 있습니다.");
+      setError(t("moments.imageOnly"));
       event.target.value = "";
       return;
     }
     if (selectedFile.size > MAX_ATTACHMENT_BYTES) {
       setFile(null);
-      setError("이미지는 5MB 이하만 첨부할 수 있습니다.");
+      setError(t("moments.imageTooBig"));
       event.target.value = "";
       return;
     }
@@ -346,11 +351,11 @@ function MomentComposer({
     event.preventDefault();
     if (busy) return;
     if (selected.size === 0) {
-      setError("공개할 사람을 한 명 이상 선택하세요.");
+      setError(t("moments.pickAudience"));
       return;
     }
     if (!text.trim() && !file) {
-      setError("텍스트나 이미지를 추가하세요.");
+      setError(t("moments.needContent"));
       return;
     }
 
@@ -358,7 +363,7 @@ function MomentComposer({
     setError(null);
     try {
       const contacts = contactsQuery.data;
-      if (!contacts) throw new Error("연락처를 불러오지 못했습니다.");
+      if (!contacts) throw new Error(t("moments.contactsFailed"));
       const audienceUserIds = [...selected];
       const devices = [
         ...contacts.selfDevices,
@@ -370,7 +375,7 @@ function MomentComposer({
         ...new Map(devices.map((device) => [device.id, device])).values(),
       ];
       if (uniqueDevices.length === 0) {
-        throw new Error("상대 기기 정보를 찾을 수 없습니다.");
+        throw new Error(t("moments.peerDevicesMissing"));
       }
 
       const momentId = crypto.randomUUID();
@@ -421,7 +426,7 @@ function MomentComposer({
     } catch (caught) {
       if (caught instanceof AttachmentError) setError(caught.message);
       else if (caught instanceof ApiError) setError(caught.message);
-      else setError(caught instanceof Error ? caught.message : "순간을 공유하지 못했습니다.");
+      else setError(caught instanceof Error ? caught.message : t("moments.shareFailed"));
     } finally {
       setBusy(false);
     }
@@ -430,20 +435,20 @@ function MomentComposer({
   const contacts = contactsQuery.data?.contacts ?? [];
 
   return (
-    <Dialog open={open} onClose={onClose} title="순간 공유">
+    <Dialog open={open} onClose={onClose} title={t("moments.shareDialogTitle")}>
       <form className="space-y-4" onSubmit={(event) => void submit(event)}>
         <p className="text-xs leading-relaxed text-zinc-500">
-          24시간 동안 선택한 사람에게만 공개됩니다. 서버는 암호문만 보관합니다.
+          {t("moments.shareNote")}
         </p>
 
         <div>
-          <Label>공개할 사람 ({selected.size}명)</Label>
+          <Label>{t("moments.audience", { count: selected.size })}</Label>
           <div className="mt-1.5 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-zinc-200 p-2">
             {contactsQuery.isLoading ? (
-              <p className="px-1 py-2 text-xs text-zinc-400">불러오는 중…</p>
+              <p className="px-1 py-2 text-xs text-zinc-400">{t("moments.viewersLoading")}</p>
             ) : contacts.length === 0 ? (
               <p className="px-1 py-2 text-xs text-zinc-500">
-                먼저 대화를 시작해 연락처를 만드세요.
+                {t("moments.noContacts")}
               </p>
             ) : (
               contacts.map((contact) => (
@@ -460,7 +465,7 @@ function MomentComposer({
                   />
                   <span className="min-w-0 flex-1 truncate">@{contact.username}</span>
                   {contact.devices.length === 0 ? (
-                    <span className="text-[11px] text-zinc-400">활성 기기 없음</span>
+                    <span className="text-[11px] text-zinc-400">{t("moments.noActiveDevices")}</span>
                   ) : null}
                 </label>
               ))
@@ -469,14 +474,14 @@ function MomentComposer({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="moment-text">내용</Label>
+          <Label htmlFor="moment-text">{t("moments.content")}</Label>
           <Textarea
             id="moment-text"
             rows={3}
             value={text}
             disabled={busy}
             onChange={(event) => setText(event.target.value)}
-            placeholder="지금의 순간을 남겨보세요"
+            placeholder={t("moments.contentPlaceholder")}
           />
         </div>
 
@@ -498,14 +503,14 @@ function MomentComposer({
               onClick={() => document.getElementById("moment-image")?.click()}
             >
               <ImagePlus className="h-4 w-4" aria-hidden />
-              이미지
+              {t("moments.image")}
             </Button>
             {file ? (
               <span className="flex items-center gap-2 text-xs text-zinc-600">
                 {file.name}
                 <button
                   type="button"
-                  aria-label="이미지 제거"
+                  aria-label={t("moments.removeImage")}
                   onClick={() => {
                     setFile(null);
                     const input = document.getElementById(
@@ -526,11 +531,11 @@ function MomentComposer({
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>
-            취소
+            {t("chat.cancel")}
           </Button>
           <Button type="submit" disabled={busy}>
             {busy ? <Spinner /> : <Sparkles className="h-4 w-4" aria-hidden />}
-            공유
+            {t("moments.share")}
           </Button>
         </div>
       </form>
@@ -539,6 +544,7 @@ function MomentComposer({
 }
 
 export function MomentsPage() {
+  const { t } = useI18n();
   const { session, identity } = useSession();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -576,7 +582,7 @@ export function MomentsPage() {
             variant="ghost"
             size="icon"
             onClick={() => navigate("/")}
-            aria-label="대화로 돌아가기"
+            aria-label={t("moments.back")}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -586,34 +592,34 @@ export function MomentsPage() {
               Moments
             </h1>
             <p className="text-[11px] text-zinc-500">
-              24시간 동안 선택한 사람에게만 보이는 순간
+              {t("moments.subtitle")}
             </p>
           </div>
           <Button onClick={() => setComposerOpen(true)}>
             <Plus className="h-4 w-4" aria-hidden />
-            순간 공유
+            {t("moments.shareButton")}
           </Button>
         </div>
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-5">
         {feedQuery.isLoading ? (
-          <p className="py-16 text-center text-sm text-zinc-500">불러오는 중…</p>
+          <p className="py-16 text-center text-sm text-zinc-500">{t("moments.viewersLoading")}</p>
         ) : feedQuery.isError ? (
-          <Alert variant="error">순간을 불러오지 못했습니다.</Alert>
+          <Alert variant="error">{t("moments.loadFailed")}</Alert>
         ) : moments.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-16 text-center">
             <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-50 text-accent-600">
               <Sparkles className="h-7 w-7" aria-hidden />
             </span>
             <p className="text-sm text-zinc-500">
-              아직 공유된 순간이 없습니다.
+              {t("moments.emptyTitle")}
               <br />
-              첫 순간을 남겨보세요.
+              {t("moments.emptyHint")}
             </p>
             <Button onClick={() => setComposerOpen(true)}>
               <Plus className="h-4 w-4" aria-hidden />
-              순간 공유
+              {t("moments.shareButton")}
             </Button>
           </div>
         ) : (

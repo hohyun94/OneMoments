@@ -1,4 +1,4 @@
-import { ExternalLink, MapPin } from "lucide-react";
+﻿import { ExternalLink, MapPin } from "lucide-react";
 
 import {
   formatAccuracy,
@@ -7,10 +7,12 @@ import {
   type LocationPayload,
 } from "../lib/location.ts";
 import { cn } from "./ui.tsx";
+import { useI18n } from "../i18n.tsx";
 
 /** 암호화된 위치 공유 메시지를 카드로 보여준다(지도 임베드 없이 외부 링크만). */
 export function LocationCard({ location, own }: { location: LocationPayload; own: boolean }) {
-  const title = location.label?.trim() || "공유한 위치";
+  const { t } = useI18n();
+  const title = location.label?.trim() || t("card.sharedLocation");
   return (
     <div
       data-testid="location-card"
@@ -53,7 +55,7 @@ export function LocationCard({ location, own }: { location: LocationPayload; own
           own ? "text-white" : "text-accent-700",
         )}
       >
-        지도에서 열기
+        {t("msg.openInMap")}
         <ExternalLink className="h-3 w-3" aria-hidden />
       </a>
     </div>

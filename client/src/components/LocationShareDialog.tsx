@@ -1,4 +1,4 @@
-import { MapPin, RotateCw } from "lucide-react";
+﻿import { MapPin, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -13,6 +13,7 @@ import {
   type SharedLocation,
 } from "../lib/location.ts";
 import { renderStaticMap } from "../lib/staticMap.ts";
+import { useI18n } from "../i18n.tsx";
 import { Button, Dialog, Input, Label, Spinner } from "./ui.tsx";
 
 export interface LocationShareRequest extends SharedLocation {
@@ -47,6 +48,7 @@ export function LocationShareDialog({
   const [includeMap, setIncludeMap] = useState(true);
   const [mapPreviewUrl, setMapPreviewUrl] = useState<string | null>(null);
   const [mapBusy, setMapBusy] = useState(false);
+  const { t } = useI18n();
   const [mapError, setMapError] = useState<string | null>(null);
   const mapBlobRef = useRef<Blob | null>(null);
   const mapEnabled = Boolean(mapTileUrl);
@@ -62,7 +64,7 @@ export function LocationShareDialog({
       setError(
         caught instanceof LocationRequestError
           ? locationFailureMessage(caught.code)
-          : "현재 위치를 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+          : t("locate.failed"),
       );
     }
   }, []);
@@ -112,7 +114,7 @@ export function LocationShareDialog({
         setMapError(
           caught instanceof DOMException && caught.name === "AbortError"
             ? null
-            : "지도 이미지를 만들 수 없습니다. 좌표로만 보냅니다.",
+            : t("locate.mapFailed"),
         );
       })
       .finally(() => {
@@ -136,11 +138,11 @@ export function LocationShareDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="현재 위치 보내기">
+    <Dialog open={open} onClose={onClose} title={t("locate.title")}>
       <div data-testid="location-share-dialog" className="space-y-3">
         {status === "locating" ? (
           <p className="flex items-center gap-2 text-sm text-zinc-600">
-            <Spinner /> 위치 확인 중…
+            <Spinner /> {t("locate.locating")}
           </p>
         ) : null}
 
@@ -148,7 +150,7 @@ export function LocationShareDialog({
           <div className="space-y-2">
             <p className="text-sm text-red-600">{error}</p>
             <Button type="button" variant="outline" size="sm" onClick={() => void locate()}>
-              <RotateCw className="h-4 w-4" aria-hidden /> 다시 시도
+              <RotateCw className="h-4 w-4" aria-hidden /> {t("locate.retry")}
             </Button>
           </div>
         ) : null}
@@ -159,7 +161,7 @@ export function LocationShareDialog({
               <div className="overflow-hidden rounded-xl border border-zinc-200">
                 <img
                   src={mapPreviewUrl}
-                  alt="현재 위치 지도 미리보기"
+                  alt={t("locate.mapAlt")}
                   data-testid="location-map-preview"
                   className="h-48 w-full object-cover"
                 />
@@ -179,7 +181,7 @@ export function LocationShareDialog({
                   </p>
                   <p className="text-xs text-zinc-500">
                     {formatAccuracy(location.accuracy)}
-                    {mapEnabled && includeMap && mapBusy ? " · 지도 준비 중…" : ""}
+                    {mapEnabled && includeMap && mapBusy ? t("locate.mapPreparing") : ""}
                   </p>
                 </div>
               </div>
@@ -194,31 +196,29 @@ export function LocationShareDialog({
                   data-testid="location-include-map"
                 />
                 <span>
-                  <span className="font-medium text-zinc-800">지도 이미지 함께 보내기</span>
+                  <span className="font-medium text-zinc-800">{t("locate.includeMap")}</span>
                   <br />
-                  이 브라우저에서 지도를 그려 암호화해 보냅니다. 상대는 지도 서비스에 접속하지
-                  않습니다.
+                  {t("locate.includeMapNote")}
                 </span>
               </label>
             ) : null}
             {mapError ? <p className="text-[11px] text-amber-700">{mapError}</p> : null}
             <div>
-              <Label htmlFor="location-label">장소 이름 (선택)</Label>
+              <Label htmlFor="location-label">{t("locate.labelLabel")}</Label>
               <Input
                 id="location-label"
                 value={label}
                 maxLength={LOCATION_LABEL_MAX}
-                placeholder="예: 집, 회사"
+                placeholder={t("locate.labelPlaceholder")}
                 onChange={(event) => setLabel(event.target.value)}
               />
             </div>
             <p className="text-xs leading-relaxed text-zinc-500">
-              이 좌표는 대화 상대에게만 보이며, 메시지와 함께 종단간 암호화되어 저장됩니다.
-              서버는 위치를 해독할 수 없습니다.
+              {t("locate.privacyNote")}
             </p>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={onClose}>
-                취소
+                {t("chat.cancel")}
               </Button>
               <Button
                 type="button"
@@ -227,7 +227,7 @@ export function LocationShareDialog({
                 onClick={send}
               >
                 {sending ? <Spinner /> : <MapPin className="h-4 w-4" aria-hidden />}
-                보내기
+                {t("locate.send")}
               </Button>
             </div>
           </>

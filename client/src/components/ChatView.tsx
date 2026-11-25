@@ -71,6 +71,7 @@ import { autoDeleteLabel } from "../lib/autoDelete.ts";
 import { removeIndexedMessages } from "../lib/search.ts";
 import { describeReads, readersFor } from "../lib/readReceipts.ts";
 import { isViewOnceLocked } from "../lib/viewOnce.ts";
+import { loadDraft, saveDraft } from "../lib/drafts.ts";
 import {
   encodeLinkMessage,
   extractFirstUrl,
@@ -632,7 +633,8 @@ export function ChatView({
   }, [draft, linkPreview]);
 
   useEffect(() => {
-    setDraft("");
+    // 대화별로 저장해 둔 초안을 복원한다(대화를 바꿔도 쓰던 글이 남는다).
+    setDraft(loadDraft(conversation.id));
     setAttachments([]);
     setAttachmentError(null);
     setSendError(null);
@@ -644,6 +646,11 @@ export function ChatView({
     cancelRecording();
     if (fileInputRef.current) fileInputRef.current.value = "";
   }, [conversation.id]);
+
+  // 입력 중인 글을 대화별 초안으로 저장한다(빈 값이면 저장 키를 지운다).
+  useEffect(() => {
+    saveDraft(conversation.id, draft);
+  }, [conversation.id, draft]);
 
   // 컴포넌트가 사라질 때도 마이크 스트림과 타이머를 정리한다.
   useEffect(() => {
@@ -1764,6 +1771,9 @@ export function ChatView({
                             messageId: target.id,
                             pinned: !target.pinned,
                           })
+                        }
+                        onJumpToTarget={(targetId) =>
+                          setSearchParams({ anchor: targetId }, { replace: true })
                         }
                         viewOnceLocked={isViewOnceLocked({
                           viewOnce: message.viewOnce,

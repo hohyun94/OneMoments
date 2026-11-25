@@ -37,6 +37,7 @@ import { fileToAvatarPayload } from "./lib/avatar.ts";
 import { disablePush } from "./lib/push.ts";
 import { markDeviceRecovered } from "./lib/recovery.ts";
 import { clearSearchIndex } from "./lib/search.ts";
+import { clearAllDrafts } from "./lib/drafts.ts";
 import {
   THEME_STORAGE_KEY,
   applyTheme,
@@ -635,6 +636,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionIdleTimeoutSeconds(null);
     queryClient.clear();
     clearDecryptedMessageCache();
+    // 로컬 초안에는 평문이 남으므로 로그아웃 시 함께 지운다.
+    clearAllDrafts();
     await Promise.all([serverLogout, pushOff, clearSearchIndex()]);
   }, [queryClient]);
 

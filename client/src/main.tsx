@@ -4,8 +4,10 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 
 import { App } from "./App.tsx";
+import { UpdatePrompt } from "./components/UpdatePrompt.tsx";
 import "./index.css";
 import { I18nProvider } from "./i18n.tsx";
+import { initServiceWorkerUpdates } from "./lib/swUpdate.ts";
 import { THEME_STORAGE_KEY, applyTheme, loadTheme } from "./lib/theme.ts";
 import { SessionProvider } from "./session.tsx";
 
@@ -24,11 +26,8 @@ window.addEventListener("storage", (event) => {
 });
 
 // 설치형 PWA/오프라인 앱 셸: HTTPS(localhost 포함)에서만 등록된다. 실패해도 앱 사용에는 영향이 없다.
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
-  window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-  });
-}
+// 새 배포를 감지하면 하단 새로고침 배너(UpdatePrompt)를 띄운다.
+initServiceWorkerUpdates();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +49,8 @@ createRoot(container).render(
         <BrowserRouter>
           <SessionProvider>
             <App />
+            {/* 새 배포 감지 시 하단 새로고침 배너(라우터 밖에 두어 모든 화면에서 보인다). */}
+            <UpdatePrompt />
           </SessionProvider>
         </BrowserRouter>
       </I18nProvider>

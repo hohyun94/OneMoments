@@ -19,7 +19,7 @@ import { Button, cn } from "./ui.tsx";
 
 /** 통화 상태를 화면 하단 카드(영상은 전체 화면 패널)로 보여준다. */
 export function CallOverlay() {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const {
     session,
     accept,
@@ -162,7 +162,7 @@ export function CallOverlay() {
                     data-testid="remote-screen-badge"
                     className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] text-white"
                   >
-                    {remoteScreenLabel(true)}
+                    {remoteScreenLabel(true, locale)}
                   </span>
                   {/* 공유 중에는 상대 카메라를 작은 타일로 함께 보여준다. */}
                   <div className="absolute left-3 top-16 h-28 w-20 overflow-hidden rounded-xl border border-white/30 bg-black/70">
@@ -255,9 +255,9 @@ export function CallOverlay() {
               type="button"
               size="icon"
               onClick={() => void toggleScreenShare()}
-              aria-label={screenShareLabel(session.screenSharing)}
+              aria-label={screenShareLabel(session.screenSharing, locale)}
               aria-pressed={session.screenSharing}
-              title={screenShareLabel(session.screenSharing)}
+              title={screenShareLabel(session.screenSharing, locale)}
               className="bg-white/10 text-white hover:bg-white/20"
             >
               {session.screenSharing ? (
@@ -272,8 +272,8 @@ export function CallOverlay() {
               type="button"
               size="icon"
               onClick={() => void flipCamera()}
-              aria-label={cameraFlipLabel(session.facing)}
-              title={cameraFlipLabel(session.facing)}
+              aria-label={cameraFlipLabel(session.facing, locale)}
+              title={cameraFlipLabel(session.facing, locale)}
               className="bg-white/10 text-white hover:bg-white/20"
             >
               <SwitchCamera className="h-4 w-4" aria-hidden />

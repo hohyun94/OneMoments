@@ -107,7 +107,7 @@ const CONNECT_TIMEOUT_MS = 15_000;
  * 통화 상태는 메모리에서만 유지되므로 새로고침하면 통화가 종료된다(docs/29-voice-call.md).
  */
 export function CallProvider({ children }: { children: ReactNode }) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const { sendFrame, subscribeFrames } = useRealtime();
   const queryClient = useQueryClient();
 
@@ -941,7 +941,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           return;
         }
         case "call.declined": {
-          if (current.direction === "outgoing") finish(callDeclineNote(call.reason));
+          if (current.direction === "outgoing") finish(callDeclineNote(call.reason, locale));
           return;
         }
         case "call.cancelled": {
@@ -951,7 +951,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
           return;
         }
         case "call.ended": {
-          finish(callEndNote(call.reason, true));
+          finish(callEndNote(call.reason, true, locale));
           return;
         }
         case "call.signal": {

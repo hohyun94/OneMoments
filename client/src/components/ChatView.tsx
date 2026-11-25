@@ -90,6 +90,7 @@ import {
   type LinkPreviewMeta,
 } from "../lib/linkPreviewMessage.ts";
 import { uploadAttachment } from "../lib/upload.ts";
+import { useI18n } from "../i18n.tsx";
 import { useRealtime } from "../realtime.tsx";
 import { useSession } from "../session.tsx";
 import { useCall } from "../calls.tsx";
@@ -201,6 +202,7 @@ export function ChatView({
 }) {
   const queryClient = useQueryClient();
   const { status: connection, sendTyping, typingUsers, onlineUsers } = useRealtime();
+  const { t, locale } = useI18n();
   const { mapTileUrl } = useSession();
 
   const messagesQuery = useInfiniteQuery({
@@ -1546,7 +1548,7 @@ export function ChatView({
 
   const dayGroups: Array<{ day: string; items: MessageView[] }> = [];
   for (const message of chronological) {
-    const day = formatDayLabel(message.createdAt);
+    const day = formatDayLabel(message.createdAt, locale);
     const last = dayGroups.at(-1);
     if (last && last.day === day) last.items.push(message);
     else dayGroups.push({ day, items: [message] });
@@ -1655,7 +1657,7 @@ export function ChatView({
                   : peerOnline
                     ? "온라인"
                     : peer?.lastSeenAt
-                      ? `마지막 접속 ${formatRelativeTime(peer.lastSeenAt)}`
+                      ? t("time.lastSeen", { time: formatRelativeTime(peer.lastSeenAt, Date.now(), locale) })
                       : "오프라인"}
                 {peer?.statusMessage ? ` · ${peer.statusMessage}` : ""}
                 {conversation.autoDeleteAfterReadSeconds !== null
@@ -1843,7 +1845,7 @@ export function ChatView({
                         className="w-full px-3 py-2 text-left hover:bg-zinc-50"
                       >
                         <span className="block text-[11px] text-zinc-400">
-                          {formatRelativeTime(row.createdAt)}
+                          {formatRelativeTime(row.createdAt, Date.now(), locale)}
                         </span>
                         <span className="line-clamp-2 block text-xs text-zinc-700">
                           {row.text}

@@ -1,4 +1,4 @@
-import {
+﻿import {
   BellOff,
   Bookmark,
   Contact,
@@ -63,7 +63,7 @@ export function ConversationSidebar({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchableMessage[]>([]);
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // 로컬 별명(이 기기에서만)과 저장한 메시지.
   const aliases = useSyncExternalStore(subscribeAliases, loadAliases);
   const [savedOpen, setSavedOpen] = useState(false);
@@ -266,7 +266,7 @@ export function ConversationSidebar({
                             </span>
                           ) : null}
                           <span className="text-[11px] text-zinc-400">
-                            {formatListTime(conversation.lastMessageAt)}
+                            {formatListTime(conversation.lastMessageAt, locale)}
                           </span>
                         </span>
                       </span>
@@ -379,7 +379,7 @@ export function ConversationSidebar({
                   className="min-w-0 flex-1 text-left"
                 >
                   <span className="block text-[11px] text-zinc-500">
-                    {conversationLabel(row.conversationId)} · {formatListTime(row.createdAt)}
+                    {conversationLabel(row.conversationId)} · {formatListTime(row.createdAt, locale)}
                   </span>
                   <span className="line-clamp-2 block break-words text-xs text-zinc-700">
                     {row.text || t("sidebar.saved.attachment")}

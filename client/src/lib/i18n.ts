@@ -126,6 +126,14 @@ const ko: Dictionary = {
   "invite.errorTitle": "초대를 열 수 없습니다",
   "invite.back": "대화 목록으로 이동",
   "invite.accepting": "그룹 초대를 수락하는 중…",
+
+  "time.justNow": "방금 전",
+  "time.minutesAgo": "{count}분 전",
+  "time.hoursAgo": "{count}시간 전",
+  "time.daysAgo": "{count}일 전",
+  "time.today": "오늘",
+  "time.yesterday": "어제",
+  "time.lastSeen": "마지막 접속 {time}",
 };
 
 const en: Dictionary = {
@@ -243,6 +251,14 @@ const en: Dictionary = {
   "invite.errorTitle": "Unable to open the invite",
   "invite.back": "Go to conversations",
   "invite.accepting": "Accepting the group invite…",
+
+  "time.justNow": "just now",
+  "time.minutesAgo": "{count} min ago",
+  "time.hoursAgo": "{count} hr ago",
+  "time.daysAgo": "{count} d ago",
+  "time.today": "Today",
+  "time.yesterday": "Yesterday",
+  "time.lastSeen": "Last seen {time}",
 };
 
 export const dictionaries: Record<Locale, Dictionary> = { ko, en };

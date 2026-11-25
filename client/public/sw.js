@@ -132,6 +132,8 @@ self.addEventListener("push", (event) => {
     data: {
       conversationId:
         typeof payload.conversationId === "string" ? payload.conversationId : null,
+      // 보안 알림처럼 앱 내 특정 화면으로 보내고 싶을 때 사용한다(예: /devices).
+      url: typeof payload.url === "string" ? payload.url : null,
     },
   };
 
@@ -140,11 +142,15 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const conversationId = event.notification.data?.conversationId;
+  const data = event.notification.data ?? {};
+  const conversationId = data.conversationId;
+  const explicitUrl =
+    typeof data.url === "string" && data.url.startsWith("/") ? data.url : null;
   const target =
-    typeof conversationId === "string" && conversationId.length > 0
+    explicitUrl ??
+    (typeof conversationId === "string" && conversationId.length > 0
       ? `/c/${encodeURIComponent(conversationId)}`
-      : "/";
+      : "/");
 
   event.waitUntil(
     self.clients

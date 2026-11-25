@@ -23,6 +23,7 @@ import {
   Phone,
   Pin,
   Reply,
+  Search,
   Send,
   Settings,
   ShieldCheck,
@@ -72,6 +73,7 @@ import { removeIndexedMessages } from "../lib/search.ts";
 import { describeReads, readersFor } from "../lib/readReceipts.ts";
 import { isViewOnceLocked } from "../lib/viewOnce.ts";
 import { loadDraft, saveDraft } from "../lib/drafts.ts";
+import { searchMessages, type SearchableMessage } from "../lib/search.ts";
 import {
   encodeLinkMessage,
   extractFirstUrl,
@@ -361,6 +363,11 @@ export function ChatView({
   const [membersOpen, setMembersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [autoDeleteOpen, setAutoDeleteOpen] = useState(false);
+  // 대화 내 검색: 로컬(IndexedDB) 인덱스에서만 찾는다.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchableMessage[]>([]);
+  const [searchPending, setSearchPending] = useState(false);
   const [replyTarget, setReplyTarget] = useState<{
     message: MessageView;
     text: string;
@@ -635,6 +642,11 @@ export function ChatView({
   useEffect(() => {
     // 대화별로 저장해 둔 초안을 복원한다(대화를 바꿔도 쓰던 글이 남는다).
     setDraft(loadDraft(conversation.id));
+    // 다른 대화로 넘어가면 검색 상태는 초기화한다.
+    setSearchOpen(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchPending(false);
     setAttachments([]);
     setAttachmentError(null);
     setSendError(null);
@@ -651,6 +663,31 @@ export function ChatView({
   useEffect(() => {
     saveDraft(conversation.id, draft);
   }, [conversation.id, draft]);
+
+  // 대화 내 검색: 200ms 디바운스 후 로컬 인덱스에서만 조회한다.
+  useEffect(() => {
+    const needle = searchQuery.trim();
+    if (!searchOpen || needle.length === 0) {
+      setSearchResults([]);
+      setSearchPending(false);
+      return;
+    }
+    let cancelled = false;
+    setSearchPending(true);
+    const timer = window.setTimeout(() => {
+      void searchMessages(needle, { conversationId: conversation.id, limit: 30 }).then(
+        (rows) => {
+          if (cancelled) return;
+          setSearchResults(rows);
+          setSearchPending(false);
+        },
+      );
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [conversation.id, searchOpen, searchQuery]);
 
   // 컴포넌트가 사라질 때도 마이크 스트림과 타이머를 정리한다.
   useEffect(() => {
@@ -1498,6 +1535,17 @@ export function ChatView({
         <Button
           variant="ghost"
           size="sm"
+          onClick={() => setSearchOpen((open) => !open)}
+          aria-label="대화 내 검색"
+          aria-pressed={searchOpen}
+          title="이 대화에서 검색"
+        >
+          <Search className="h-4 w-4" aria-hidden />
+          <span className="hidden sm:inline">검색</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={() => muteMutation.mutate(!conversation.muted)}
           aria-label={conversation.muted ? "대화 알림 켜기" : "대화 알림 끄기"}
           disabled={muteMutation.isPending}
@@ -1618,6 +1666,68 @@ export function ChatView({
           </span>
         ) : null}
       </header>
+      {searchOpen ? (
+        <div className="border-b border-zinc-200 bg-zinc-50 px-3 py-2 md:px-5">
+          <div className="flex items-center gap-2">
+            <Search className="h-4 w-4 text-zinc-400" aria-hidden />
+            <input
+              autoFocus
+              aria-label="대화 내 검색어"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setSearchOpen(false);
+              }}
+              placeholder="이 대화에서 검색"
+              className="h-9 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm outline-none focus:border-accent-400"
+            />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSearchOpen(false)}
+              aria-label="검색 닫기"
+            >
+              <X className="h-4 w-4" aria-hidden />
+            </Button>
+          </div>
+          {searchQuery.trim().length > 0 ? (
+            <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-zinc-200 bg-white">
+              {searchPending ? (
+                <p className="px-3 py-2 text-xs text-zinc-500">검색 중…</p>
+              ) : searchResults.length === 0 ? (
+                <p className="px-3 py-2 text-xs text-zinc-500">
+                  이 기기에 저장된 메시지에서 찾지 못했습니다.
+                </p>
+              ) : (
+                <ul className="divide-y divide-zinc-100">
+                  {searchResults.map((row) => (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSearchParams({ anchor: row.id }, { replace: true })
+                        }
+                        className="w-full px-3 py-2 text-left hover:bg-zinc-50"
+                      >
+                        <span className="block text-[11px] text-zinc-400">
+                          {formatRelativeTime(row.createdAt)}
+                        </span>
+                        <span className="line-clamp-2 block text-xs text-zinc-700">
+                          {row.text}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="mt-1 text-[11px] text-zinc-500">
+              이 기기에서 복호화된 메시지만 검색합니다.
+            </p>
+          )}
+        </div>
+      ) : null}
 
       {safetyChanged ? (
         <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">

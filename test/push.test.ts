@@ -20,6 +20,7 @@ import {
   removePushSubscription,
   sendMessagePushes,
   sendMissedCallPushes,
+  sendNewDeviceLoginPushes,
   upsertPushSubscription,
 } from "../src/services/push.js";
 import { createTestContext, resetDatabase, type TestContext } from "./support/context.js";
@@ -109,22 +110,31 @@ function decryptWebPushBody(
   ]);
 }
 
-function vapidTestConfig(): Config {
+function testVapidKeys(): { publicKey: string; privateKey: string } {
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const jwk = pair.privateKey.export({ format: "jwk" });
   const x = decodeBase64Url(jwk.x as string);
   const y = decodeBase64Url(jwk.y as string);
+  return {
+    publicKey: base64url(Buffer.concat([Buffer.from([0x04]), x, y])),
+    privateKey: jwk.d as string,
+  };
+}
+
+function vapidTestConfig(): Config {
+  const keys = testVapidKeys();
   return loadConfig({
     NODE_ENV: "test",
     DATABASE_URL: "postgres://test",
-    VAPID_PUBLIC_KEY: base64url(Buffer.concat([Buffer.from([0x04]), x, y])),
-    VAPID_PRIVATE_KEY: jwk.d as string,
+    VAPID_PUBLIC_KEY: keys.publicKey,
+    VAPID_PRIVATE_KEY: keys.privateKey,
     VAPID_SUBJECT: "mailto:push@example.com",
   });
 }
 
 beforeAll(async () => {
-  ctx = await createTestContext();
+  // 라우트(새 기기 로그인)가 보내는 푸시까지 확인하려면 서버 설정에 VAPID 키가 필요하다.
+  ctx = await createTestContext({ webPush: testVapidKeys() });
 });
 
 afterAll(async () => {
@@ -246,36 +256,45 @@ describe("web push", () => {
   });
 
   it("stores subscriptions and reports push disabled when VAPID is missing", async () => {
-    const aliceClient = new TestClient(ctx.baseUrl);
-    const identity = createIdentity();
-    const registered = await aliceClient.register(`alice${randomBytes(4).toString("hex")}`, identity);
-    expect(registered.status).toBe(201);
-    const userId = registered.body.user.id as string;
-    const deviceId = registered.body.device.id as string;
+    // 공유 컨텍스트에는 VAPID 키가 있으므로, 키가 없는 서버를 따로 띄워 검증한다.
+    const plain = await createTestContext();
+    try {
+      const aliceClient = new TestClient(plain.baseUrl);
+      const identity = createIdentity();
+      const registered = await aliceClient.register(
+        `alice${randomBytes(4).toString("hex")}`,
+        identity,
+      );
+      expect(registered.status).toBe(201);
+      const userId = registered.body.user.id as string;
+      const deviceId = registered.body.device.id as string;
 
-    const publicKey = await aliceClient.request("GET", "/api/push/public-key");
-    expect(publicKey.status).toBe(503);
-    expect(publicKey.body.error.code).toBe("PUSH_DISABLED");
+      const publicKey = await aliceClient.request("GET", "/api/push/public-key");
+      expect(publicKey.status).toBe(503);
+      expect(publicKey.body.error.code).toBe("PUSH_DISABLED");
 
-    const keys = subscriptionKeys();
-    const endpoint = "https://push.example.com/sub/1";
-    const subscription = await upsertPushSubscription(ctx.db, {
-      userId,
-      deviceId,
-      endpoint,
-      p256dh: keys.p256dh,
-      auth: keys.auth,
-    });
-    expect(subscription.endpoint).toBe(endpoint);
+      const keys = subscriptionKeys();
+      const endpoint = "https://push.example.com/sub/1";
+      const subscription = await upsertPushSubscription(plain.db, {
+        userId,
+        deviceId,
+        endpoint,
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+      });
+      expect(subscription.endpoint).toBe(endpoint);
 
-    const active = await listActiveSubscriptions(ctx.db, {
-      userIds: [userId],
-      excludeDeviceId: "00000000-0000-4000-8000-000000000000",
-    });
-    expect(active.map((row) => row.id)).toContain(subscription.id);
+      const active = await listActiveSubscriptions(plain.db, {
+        userIds: [userId],
+        excludeDeviceId: "00000000-0000-4000-8000-000000000000",
+      });
+      expect(active.map((row) => row.id)).toContain(subscription.id);
 
-    await removePushSubscription(ctx.db, { userId, deviceId, endpoint });
-    expect(await listActiveSubscriptions(ctx.db, { userIds: [userId] })).toHaveLength(0);
+      await removePushSubscription(plain.db, { userId, deviceId, endpoint });
+      expect(await listActiveSubscriptions(plain.db, { userIds: [userId] })).toHaveLength(0);
+    } finally {
+      await plain.close();
+    }
   });
 
   it("delivers a message notification without plaintext metadata", async () => {
@@ -413,6 +432,84 @@ describe("web push", () => {
       // 발신자 식별자나 SDP 같은 시그널링 내용은 담지 않는다.
       expect(JSON.stringify(payload)).not.toContain("sdp");
       expect(JSON.stringify(payload)).not.toContain("caller");
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("delivers a new device login alert to the user's other devices", async () => {
+    const alice = new TestClient(ctx.baseUrl);
+    const username = `login${randomBytes(4).toString("hex")}`;
+    const registered = await alice.register(username, createIdentity());
+    expect(registered.status).toBe(201);
+    const userId = registered.body.user.id as string;
+    const deviceId = registered.body.device.id as string;
+    const keys = subscriptionKeys();
+
+    const bodies = new Map<string, Buffer[]>();
+    const server: Server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
+      req.on("end", () => {
+        const path = req.url ?? "/";
+        bodies.set(path, [...(bodies.get(path) ?? []), Buffer.concat(chunks)]);
+        res.statusCode = 201;
+        res.end();
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    await upsertPushSubscription(ctx.db, {
+      userId,
+      deviceId,
+      endpoint: `http://127.0.0.1:${port}/push/existing`,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+    });
+
+    try {
+      // 두 번째 기기로 로그인하면 기존 기기로 보안 알림이 간다.
+      const second = await alice.loginWithNewDevice(username, createIdentity(), {
+        deviceName: "노트북",
+      });
+      expect(second.status).toBe(200);
+      const newDeviceId = second.body.device.id as string;
+
+      // 라우트가 비동기로 보내므로 도착할 때까지 잠시 기다린다.
+      const start = Date.now();
+      while ((bodies.get("/push/existing")?.length ?? 0) === 0 && Date.now() - start < 3_000) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+
+      const first = bodies.get("/push/existing")?.[0];
+      if (!first) throw new Error("missing new device login push");
+      const decrypted = decryptWebPushBody(first, keys);
+      const payload = JSON.parse(
+        decrypted.subarray(0, decrypted.length - 1).toString("utf8"),
+      ) as { type: string; body: string; url: string; tag: string };
+      expect(payload.type).toBe("security");
+      expect(payload.body).toContain("노트북");
+      expect(payload.url).toBe("/devices");
+      expect(payload.tag).toBe("onemoments-security");
+      expect(JSON.stringify(payload)).not.toContain("ciphertext");
+
+      // 새 기기 자신에게는 보내지 않는다.
+      const secondKeys = subscriptionKeys();
+      await upsertPushSubscription(ctx.db, {
+        userId,
+        deviceId: newDeviceId,
+        endpoint: `http://127.0.0.1:${port}/push/new`,
+        p256dh: secondKeys.p256dh,
+        auth: secondKeys.auth,
+      });
+      await sendNewDeviceLoginPushes(ctx.db, vapidTestConfig(), {
+        userId,
+        newDeviceId,
+        deviceName: "노트북",
+        platform: "web",
+      });
+      expect(bodies.get("/push/new")).toBeUndefined();
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }

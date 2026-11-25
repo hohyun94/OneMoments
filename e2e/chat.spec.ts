@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+﻿import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import pg from "pg";
 
@@ -1265,7 +1265,71 @@ test("대화 내 검색으로 원문을 찾아 이동한다", async ({ browser }
   const result = own.getByRole("button", { name: new RegExp(body) });
   await expect(result).toBeVisible();
   await result.click();
-  await expect(own).toHaveURL(/anchor=/);
+  // 이동한 메시지는 잠시 강조된다(anchor 파라미터는 스크롤 후 정리된다).
+  await expect(own.locator('[data-highlighted="true"]')).toHaveCount(1);
+
+  await ownContext.close();
+  await peerContext.close();
+});
+
+test("별명은 이 기기에만 적용되고 새로고침해도 유지된다", async ({ browser }) => {
+  const peerContext = await browser.newContext();
+  const peer = await peerContext.newPage();
+  const peerName = uniqueName("aliaspeer");
+  await register(peer, peerName);
+
+  const ownContext = await browser.newContext();
+  const own = await ownContext.newPage();
+  const ownName = uniqueName("aliasown");
+  await register(own, ownName);
+  await startConversation(own, peerName);
+
+  await own.getByRole("button", { name: "별명 변경" }).click();
+  await own.getByRole("textbox", { name: "별명" }).fill("우리엄마");
+  await own.getByRole("dialog", { name: "별명" }).getByRole("button", { name: "저장" }).click();
+
+  await expect(own.getByRole("heading", { level: 2, name: "우리엄마" })).toBeVisible();
+  await expect(
+    own.getByRole("navigation", { name: "대화 목록" }).getByText("우리엄마"),
+  ).toBeVisible();
+
+  // 새로고침해도 이 기기에는 별명이 남는다.
+  await own.reload();
+  await expect(own.getByRole("heading", { level: 2, name: "우리엄마" })).toBeVisible();
+
+  // 상대 화면에는 내 아이디가 그대로 보인다(별명은 서버로 전송되지 않는다).
+  await peer.reload();
+  await expect(
+    peer.getByRole("navigation", { name: "대화 목록" }).getByText(ownName),
+  ).toBeVisible();
+
+  await ownContext.close();
+  await peerContext.close();
+});
+
+test("메시지를 저장하면 저장함에서 원문으로 이동한다", async ({ browser }) => {
+  const peerContext = await browser.newContext();
+  const peer = await peerContext.newPage();
+  const peerName = uniqueName("savepeer");
+  await register(peer, peerName);
+
+  const ownContext = await browser.newContext();
+  const own = await ownContext.newPage();
+  await register(own, uniqueName("saveown"));
+  await startConversation(own, peerName);
+
+  const body = `저장확인${Date.now().toString(36)}`;
+  await sendMessage(own, body);
+  await expect(own.getByText(body)).toBeVisible();
+
+  await own.getByRole("button", { name: "북마크", exact: true }).last().click();
+  await own.getByRole("button", { name: "저장한 메시지" }).click();
+
+  const dialog = own.getByRole("dialog", { name: "저장한 메시지" });
+  await expect(dialog.getByText(body)).toBeVisible();
+  await dialog.getByText(body).click();
+  await expect(dialog).toBeHidden();
+  await expect(own.locator('[data-highlighted="true"]')).toHaveCount(1);
 
   await ownContext.close();
   await peerContext.close();

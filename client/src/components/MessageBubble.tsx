@@ -1,4 +1,17 @@
-﻿import { Download, EyeOff, FileText, Pause, Pencil, Pin, Play, Reply, ShieldAlert, Smile, Trash2 } from "lucide-react";
+﻿import {
+  Bookmark,
+  Download,
+  EyeOff,
+  FileText,
+  Pause,
+  Pencil,
+  Pin,
+  Play,
+  Reply,
+  ShieldAlert,
+  Smile,
+  Trash2,
+} from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type MouseEvent } from "react";
 
 import {
@@ -16,6 +29,7 @@ import { mentionsUser } from "../lib/mentions.ts";
 import { tokenizeMessage } from "../lib/richText.ts";
 import { formatDuration, formatPlaybackRate, nextPlaybackRate } from "../lib/voice.ts";
 import { indexDecryptedMessage } from "../lib/search.ts";
+import { addBookmark, isBookmarked, removeBookmark } from "../lib/bookmarks.ts";
 import { viewOnceHint } from "../lib/viewOnce.ts";
 import type { MessageView, ReactionSummary } from "../types.ts";
 import { LocationCard } from "./LocationCard.tsx";
@@ -576,6 +590,36 @@ export function MessageBubble({
   const [result, setResult] = useState<Result | null>(() => cache.get(message.id) ?? null);
   const [reactionOpen, setReactionOpen] = useState(false);
   const [replyText, setReplyText] = useState<string | null>(null);
+  const [bookmarked, setBookmarked] = useState(false);
+
+  // 저장함(북마크) 여부는 이 기기의 IndexedDB 에서 확인한다.
+  useEffect(() => {
+    let cancelled = false;
+    void isBookmarked(message.id).then((value) => {
+      if (!cancelled) setBookmarked(value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [message.id]);
+
+  async function toggleBookmark() {
+    if (bookmarked) {
+      await removeBookmark(message.id);
+      setBookmarked(false);
+      return;
+    }
+    const text =
+      result?.status === "ok" ? (result.location ? "위치 공유" : result.text) : "";
+    await addBookmark({
+      messageId: message.id,
+      conversationId: message.conversationId,
+      senderUserId: message.senderUserId,
+      createdAt: message.createdAt,
+      text,
+    });
+    setBookmarked(true);
+  }
   const source = renderMessage ?? message;
   const mentionsMe =
     Boolean(mentionUser) &&
@@ -900,6 +944,18 @@ export function MessageBubble({
             )}
           >
             <Pin className={cn("h-3.5 w-3.5", pinned && "fill-current")} />
+          </button>
+          <button
+            type="button"
+            onClick={() => void toggleBookmark()}
+            aria-label={bookmarked ? "북마크 해제" : "북마크"}
+            title={bookmarked ? "저장함에서 빼기" : "저장함에 저장"}
+            className={cn(
+              "rounded-md p-1 hover:bg-zinc-100",
+              bookmarked ? "text-accent-600" : "text-zinc-400 hover:text-zinc-700",
+            )}
+          >
+            <Bookmark className={cn("h-3.5 w-3.5", bookmarked && "fill-current")} />
           </button>
           <button
             type="button"

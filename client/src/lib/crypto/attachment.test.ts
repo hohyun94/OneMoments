@@ -68,4 +68,32 @@ describe("encrypted attachments", () => {
       reason: "too-large",
     });
   });
+
+  it("carries optional location metadata for map image attachments", () => {
+    const map = {
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "location-map.png",
+      mime: "image/png",
+      size: 4096,
+      key: "a2V5",
+      iv: "aXY=",
+      text: "",
+      location: {
+        lat: 37.5665,
+        lng: 126.978,
+        accuracy: 20,
+        at: "2026-03-01T00:00:00.000Z",
+        label: "회사",
+      },
+    };
+    const parsed = parseAttachmentPayload(encodeAttachmentPayload(map));
+    expect(parsed?.location).toEqual(map.location);
+
+    // 위경도 범위를 벗어나면 메시지 전체를 버린다.
+    const invalid = encodeAttachmentPayload({
+      ...map,
+      location: { ...map.location, lat: 91 },
+    });
+    expect(parseAttachmentPayload(invalid)).toBeNull();
+  });
 });

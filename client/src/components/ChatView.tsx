@@ -78,6 +78,7 @@ import {
 } from "../lib/linkPreviewMessage.ts";
 import { uploadAttachment } from "../lib/upload.ts";
 import { useRealtime } from "../realtime.tsx";
+import { useSession } from "../session.tsx";
 import { useCall } from "../calls.tsx";
 import type {
   ActiveDevice,
@@ -186,6 +187,7 @@ export function ChatView({
 }) {
   const queryClient = useQueryClient();
   const { status: connection, sendTyping, typingUsers, onlineUsers } = useRealtime();
+  const { mapTileUrl } = useSession();
 
   const messagesQuery = useInfiniteQuery({
     queryKey: ["messages", conversation.id],
@@ -1256,13 +1258,70 @@ export function ChatView({
     }
   }
 
-  /** 위치 공유도 일반 텍스트 메시지와 같은 경로로 보낸다(본문이 암호화됨). */
-  async function sendLocation(location: LocationPayload): Promise<void> {
+  /**
+   * 위치 공유.
+   *
+   * 지도 이미지(Blob)가 있으면 **암호화 첨부**로 올리고 좌표 메타데이터를 함께 담아 보낸다.
+   * 없으면 기존처럼 좌표만 담은 텍스트 메시지로 보낸다(서버는 어느 쪽도 해독할 수 없다).
+   */
+  async function sendLocation(location: LocationPayload, map: Blob | null): Promise<void> {
+    const clientMessageId = crypto.randomUUID();
+    const targetMessageId = replyTarget?.message.id;
+
+    if (map) {
+      setSending(true);
+      setSendError(null);
+      try {
+        const encrypted = await encryptAttachment(
+          new File([map], "location-map.png", { type: "image/png" }),
+        );
+        const uploaded = await uploadAttachment({
+          conversationId: conversation.id,
+          clientMessageId,
+          body: new Blob([encrypted.ciphertext], { type: "application/octet-stream" }),
+        });
+        const pending: PendingMessage = {
+          clientMessageId,
+          plaintext: encodeAttachmentPayload({
+            id: uploaded.attachment.id,
+            name: "location-map.png",
+            mime: "image/png",
+            size: map.size,
+            key: encrypted.key,
+            iv: encrypted.iv,
+            text: "",
+            location: {
+              lat: location.lat,
+              lng: location.lng,
+              accuracy: location.accuracy,
+              at: location.at,
+              ...(location.label ? { label: location.label } : {}),
+            },
+          }),
+          kind: "text",
+          targetMessageId,
+        };
+        pendingRef.current = pending;
+        await deliver(pending);
+        if (pendingRef.current === null) {
+          setLocationOpen(false);
+          setReplyTarget(null);
+        }
+      } catch (error) {
+        setSendError(
+          error instanceof ApiError ? error.message : "지도 이미지를 보낼 수 없습니다.",
+        );
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+
     const pending: PendingMessage = {
-      clientMessageId: crypto.randomUUID(),
+      clientMessageId,
       plaintext: encodeLocationPayload(location),
       kind: "text",
-      targetMessageId: replyTarget?.message.id,
+      targetMessageId,
     };
     pendingRef.current = pending;
     await deliver(pending);
@@ -2100,8 +2159,9 @@ export function ChatView({
       <LocationShareDialog
         open={locationOpen}
         onClose={() => setLocationOpen(false)}
-        onSend={(location) => void sendLocation(location)}
+        onSend={(location, map) => void sendLocation(location, map)}
         sending={sending}
+        mapTileUrl={mapTileUrl}
       />
 
       <Dialog open={safetyOpen} onClose={() => setSafetyOpen(false)} title="안전번호">

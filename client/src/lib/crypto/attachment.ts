@@ -65,6 +65,15 @@ export async function decryptAttachment(
   );
 }
 
+/** 위치 공유를 지도 이미지 첨부로 보낼 때 함께 담는 좌표(선택). */
+export interface AttachmentLocation {
+  lat: number;
+  lng: number;
+  accuracy: number;
+  at: string;
+  label?: string;
+}
+
 /** 파일 이름·MIME·키는 메시지 본문(이미 E2E 암호화됨) 안에만 존재한다. */
 export interface AttachmentPayload {
   id: string;
@@ -78,6 +87,8 @@ export interface AttachmentPayload {
   durationSeconds?: number;
   /** 음성 파형(0~100 막대). 송신자가 한 번 계산해 암호문에 담는다. */
   waveform?: number[];
+  /** 지도 이미지 첨부에만 붙는다(카드에서 "지도에서 열기" 제공). */
+  location?: AttachmentLocation;
 }
 
 export function encodeAttachmentPayload(payload: AttachmentPayload): string {
@@ -125,6 +136,8 @@ export function parseAttachmentPayload(content: string): AttachmentPayload | nul
         return null;
       }
     }
+    const location = parseAttachmentLocation(value.location);
+    if (value.location !== undefined && location === null) return null;
     return {
       id: value.id,
       name: value.name,
@@ -137,8 +150,39 @@ export function parseAttachmentPayload(content: string): AttachmentPayload | nul
         ? { durationSeconds: value.durationSeconds }
         : {}),
       ...(Array.isArray(value.waveform) ? { waveform: value.waveform } : {}),
+      ...(location ? { location } : {}),
     };
   } catch {
     return null;
   }
+}
+
+/** 지도 이미지 첨부의 좌표 메타데이터 검증(형식이 어긋나면 null → 메시지 전체를 버린다). */
+function parseAttachmentLocation(value: unknown): AttachmentLocation | null | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as {
+    lat?: unknown;
+    lng?: unknown;
+    accuracy?: unknown;
+    at?: unknown;
+    label?: unknown;
+  };
+  const lat = raw.lat;
+  const lng = raw.lng;
+  const accuracy = raw.accuracy;
+  if (typeof lat !== "number" || !Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+  if (typeof lng !== "number" || !Number.isFinite(lng) || lng < -180 || lng > 180) return null;
+  if (typeof accuracy !== "number" || !Number.isFinite(accuracy) || accuracy < 0) return null;
+  if (typeof raw.at !== "string" || raw.at.length === 0 || raw.at.length > 40) return null;
+  if (raw.label !== undefined && (typeof raw.label !== "string" || raw.label.length > 80)) {
+    return null;
+  }
+  return {
+    lat,
+    lng,
+    accuracy,
+    at: raw.at,
+    ...(typeof raw.label === "string" && raw.label.length > 0 ? { label: raw.label } : {}),
+  };
 }

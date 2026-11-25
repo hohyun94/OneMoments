@@ -75,7 +75,10 @@ export function createApp(options: AppOptions): Express {
         "default-src 'self'",
         "script-src 'self'",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob:",
+        // 지도 타일을 쓰도록 설정한 경우에만 그 오리진을 허용한다(지도 임베드는 하지 않는다).
+        config.mapTileOrigin
+          ? `img-src 'self' data: blob: ${config.mapTileOrigin}`
+          : "img-src 'self' data: blob:",
         // 음성 메시지는 복호화한 Blob 을 objectURL 로 재생하므로 media-src 가 필요하다.
         "media-src 'self' blob:",
         "font-src 'self' data:",
@@ -85,7 +88,7 @@ export function createApp(options: AppOptions): Express {
         "form-action 'self'",
       ].join("; "),
     );
-    // 위치·마이크·카메라는 같은 출처에서만 허용한다(지도 임베드는 쓰지 않는다).
+    // 위치·마이크·카메라는 같은 출처에서만 허용한다.
     res.setHeader("Permissions-Policy", "geolocation=(self), microphone=(self), camera=(self)");
     next();
   });

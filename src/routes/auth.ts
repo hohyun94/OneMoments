@@ -105,7 +105,10 @@ export function createAuthRouter(db: Database, config: Config): Router {
   router.get(
     "/config",
     asyncHandler(async (_req, res) => {
-      res.json({ oauthEnabled: config.googleOAuth !== null });
+      res.json({
+        oauthEnabled: config.googleOAuth !== null,
+        mapTileUrl: config.mapTileUrl,
+      });
     }),
   );
 

@@ -77,6 +77,13 @@ import { loadDraft, saveDraft } from "../lib/drafts.ts";
 import { searchMessages, type SearchableMessage } from "../lib/search.ts";
 import { loadAliases, saveAlias, subscribeAliases } from "../lib/aliases.ts";
 import {
+  enqueueOutgoing,
+  listOutgoing,
+  markOutgoingAttempt,
+  removeOutgoing,
+  type OutgoingMessage,
+} from "../lib/outbox.ts";
+import {
   encodeLinkMessage,
   extractFirstUrl,
   previewHost,
@@ -373,6 +380,9 @@ export function ChatView({
   // 상대 별명 편집 다이얼로그.
   const [aliasOpen, setAliasOpen] = useState(false);
   const [aliasDraft, setAliasDraft] = useState("");
+  // 오프라인 전송 큐(이 대화).
+  const [outbox, setOutbox] = useState<OutgoingMessage[]>([]);
+  const flushingRef = useRef(false);
   const [replyTarget, setReplyTarget] = useState<{
     message: MessageView;
     text: string;
@@ -658,6 +668,8 @@ export function ChatView({
     setSearchPending(false);
     setAliasOpen(false);
     setAliasDraft("");
+    // 이 대화에 남아 있는 전송 대기 메시지를 불러온다.
+    void listOutgoing(conversation.id).then(setOutbox);
     setAttachments([]);
     setAttachmentError(null);
     setSendError(null);
@@ -699,6 +711,21 @@ export function ChatView({
       window.clearTimeout(timer);
     };
   }, [conversation.id, searchOpen, searchQuery]);
+
+  // 연결이 돌아오면 대기 중인 메시지를 자동으로 다시 보낸다.
+  useEffect(() => {
+    if (outbox.length === 0) return;
+    if (connection === "open") void flushOutbox();
+    const onOnline = () => void flushOutbox();
+    window.addEventListener("online", onOnline);
+    const timer = window.setInterval(() => {
+      if (navigator.onLine) void flushOutbox();
+    }, 10_000);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.clearInterval(timer);
+    };
+  }, [conversation.id, connection, outbox.length]);
 
   // 컴포넌트가 사라질 때도 마이크 스트림과 타이머를 정리한다.
   useEffect(() => {
@@ -862,10 +889,41 @@ export function ChatView({
     }
   }
 
-  async function deliver(pending: PendingMessage): Promise<void> {
+  /** 전송하지 못한 메시지를 로컬 큐에 보관하고 안내를 띄운다. */
+  async function enqueuePending(pending: PendingMessage): Promise<void> {
+    await enqueueOutgoing({
+      id: pending.clientMessageId,
+      conversationId: conversation.id,
+      text: pending.plaintext,
+      kind: pending.kind,
+      viewOnce: pending.viewOnce,
+      targetMessageId: pending.targetMessageId,
+    });
+    setOutbox(await listOutgoing(conversation.id));
+    if (pendingRef.current === pending) pendingRef.current = null;
+    setSendError("오프라인입니다. 연결되면 자동으로 전송됩니다.");
+  }
+
+  async function deliver(
+    pending: PendingMessage,
+    options: { queueOnNetworkError?: boolean } = {},
+  ): Promise<"sent" | "queued" | "failed"> {
     setSending(true);
     setSendError(null);
     try {
+      if (options.queueOnNetworkError !== false) {
+        // 오프라인이면 요청을 시도하지 않고 바로 큐에 넣는다(요청이 멈추는 것을 방지).
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          await enqueuePending(pending);
+          return "queued";
+        }
+        // 이미 대기 중인 메시지가 있으면 순서를 지키기 위해 새 메시지도 큐에 넣는다.
+        const waiting = await listOutgoing(conversation.id);
+        if (waiting.length > 0) {
+          await enqueuePending(pending);
+          return "queued";
+        }
+      }
       const { message, prepared } = await postEncrypted(pending);
       if (prepared) {
         await commitSenderKeyMessage(prepared);
@@ -879,18 +937,62 @@ export function ChatView({
       void queryClient.invalidateQueries({ queryKey: ["conversations"] });
       if (pendingRef.current === pending) pendingRef.current = null;
       sendTyping(conversation.id, "stop");
+      return "sent";
     } catch (error) {
-      if (error instanceof ApiError && error.code === "PEER_DELETED") {
-        setSendError("상대가 계정을 삭제했습니다.");
-      } else if (error instanceof ApiError && error.code === "USER_BLOCKED") {
-        setSendError("차단된 대화입니다. 연락처에서 차단 상태를 확인하세요.");
-      } else if (error instanceof ApiError) {
-        setSendError(error.message);
-      } else {
-        setSendError("메시지를 보낼 수 없습니다. 잠시 후 다시 시도해 주세요.");
+      if (!(error instanceof ApiError)) {
+        // 네트워크 단절로 실패하면 로컬 큐에 보관하고 연결되면 다시 보낸다.
+        if (options.queueOnNetworkError !== false) {
+          await enqueuePending(pending);
+        } else {
+          setSendError("오프라인입니다. 연결되면 자동으로 전송됩니다.");
+        }
+        return "queued";
       }
+      if (error.code === "PEER_DELETED") {
+        setSendError("상대가 계정을 삭제했습니다.");
+      } else if (error.code === "USER_BLOCKED") {
+        setSendError("차단된 대화입니다. 연락처에서 차단 상태를 확인하세요.");
+      } else {
+        setSendError(error.message);
+      }
+      return "failed";
     } finally {
       setSending(false);
+    }
+  }
+
+  /** 큐에 남은 메시지를 보낸 순서대로 다시 보낸다. 실패하면 그 자리에서 멈춘다. */
+  async function flushOutbox(): Promise<void> {
+    if (flushingRef.current) return;
+    flushingRef.current = true;
+    try {
+      const rows = await listOutgoing(conversation.id);
+      for (const row of rows) {
+        if (!navigator.onLine && connection !== "open") break;
+        const result = await deliver(
+          {
+            clientMessageId: row.id,
+            plaintext: row.text,
+            kind: row.kind as PendingMessage["kind"],
+            viewOnce: row.viewOnce,
+            targetMessageId: row.targetMessageId,
+          },
+          { queueOnNetworkError: false },
+        );
+        if (result === "sent") {
+          await removeOutgoing(row.id);
+          continue;
+        }
+        if (result === "queued") {
+          await markOutgoingAttempt(row.id);
+          break;
+        }
+        // 영구 실패(차단·삭제 등)는 큐에서 제거하고 오류를 보여준다.
+        await removeOutgoing(row.id);
+      }
+    } finally {
+      flushingRef.current = false;
+      setOutbox(await listOutgoing(conversation.id));
     }
   }
 
@@ -1802,6 +1904,21 @@ export function ChatView({
           </Button>
         </div>
       </Dialog>
+
+      {outbox.length > 0 ? (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900"
+        >
+          <span className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4" aria-hidden />
+            전송 대기 {outbox.length}건 · 연결되면 자동으로 전송됩니다.
+          </span>
+          <Button size="sm" variant="outline" onClick={() => void flushOutbox()}>
+            지금 재시도
+          </Button>
+        </div>
+      ) : null}
 
       {safetyChanged ? (
         <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">

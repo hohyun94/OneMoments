@@ -449,6 +449,7 @@ export const updateDiaryAudienceBodySchema = z.object({
 });
 export const diaryIdParamsSchema = z.object({ diaryId: z.string().uuid() });
 export const diaryEntryParamsSchema = z.object({ entryId: z.string().uuid() });
+export const diaryAttachmentParamsSchema = z.object({ attachmentId: z.string().uuid() });
 export const diaryListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional(),
 });

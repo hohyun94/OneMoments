@@ -1,25 +1,29 @@
-import { Router } from "express";
+import express, { Router } from "express";
 
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
-import { asyncHandler } from "../http/errors.js";
+import { AppError, asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import {
   createDiaryBodySchema,
   createDiaryEntryBodySchema,
+  diaryAttachmentParamsSchema,
   diaryEntryParamsSchema,
   diaryIdParamsSchema,
   diaryListQuerySchema,
   updateDiaryAudienceBodySchema,
 } from "../http/validation.js";
+import { createAttachmentStorage } from "../services/attachments.js";
 import {
   createDiary,
+  createDiaryAttachment,
   createDiaryEntry,
   deleteDiaryEntry,
   getDiaryDetail,
   getDiaryEntry,
   listDiaries,
   listDiaryEntries,
+  requireDiaryAttachmentAccess,
   updateDiaryAudience,
 } from "../services/diaries.js";
 
@@ -30,6 +34,7 @@ import {
 export function createDiariesRouter(db: Database, config: Config): Router {
   const router = Router();
   const session = requireSession(db);
+  const storage = createAttachmentStorage(config);
   const csrf = requireCsrf(config);
   const writeLimiter = createRateLimiter({
     windowMs: 60_000,
@@ -39,6 +44,60 @@ export function createDiariesRouter(db: Database, config: Config): Router {
   });
 
   router.use(session);
+
+  /** 사진 업로드 — 암호문 블롭만 받는다. 응답은 id/size 뿐(파일명·MIME 없음). */
+  router.post(
+    "/attachments",
+    csrf,
+    express.raw({ type: "application/octet-stream", limit: config.attachmentMaxBytes }),
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      if (!Buffer.isBuffer(req.body) || req.body.byteLength === 0) {
+        throw AppError.badRequest("EMPTY_ATTACHMENT", "Attachment body is empty");
+      }
+      if (req.body.byteLength > config.attachmentMaxBytes) {
+        throw AppError.payloadTooLarge("Attachment is too large");
+      }
+      const rawClientEntryId = req.header("x-diary-entry-id");
+      if (
+        rawClientEntryId !== undefined &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          rawClientEntryId,
+        )
+      ) {
+        throw AppError.badRequest("INVALID_ATTACHMENT", "x-diary-entry-id must be a UUID");
+      }
+      const attachment = await createDiaryAttachment(db, storage, {
+        uploaderUserId: auth.userId,
+        clientEntryId: rawClientEntryId ?? null,
+        data: req.body,
+      });
+      res.status(201).json({ attachment: { id: attachment.id, size: attachment.size } });
+    }),
+  );
+
+  /** 사진 다운로드 — 글에 연결된 뒤에는 일기장 멤버만, 예약 상태에서는 업로더만. */
+  router.get(
+    "/attachments/:attachmentId",
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { attachmentId } = diaryAttachmentParamsSchema.parse(req.params);
+      const attachment = await requireDiaryAttachmentAccess(db, {
+        attachmentId,
+        userId: auth.userId,
+      });
+      let data: Buffer;
+      try {
+        data = await storage.get(attachment.id);
+      } catch {
+        throw AppError.notFound("ATTACHMENT_NOT_FOUND", "Attachment not found");
+      }
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Length", String(data.byteLength));
+      res.setHeader("Content-Disposition", 'attachment; filename="diary.bin"');
+      res.send(data);
+    }),
+  );
 
   router.get(
     "/",

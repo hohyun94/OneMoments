@@ -172,9 +172,12 @@ export function AdminSignupRequestsPanel() {
                       date: formatDateTime(item.requestedAt, locale),
                     })}
                   </p>
-                  {item.note ? (
-                    <p className="mt-1 line-clamp-2 text-xs text-zinc-600">{item.note}</p>
-                  ) : null}
+                  <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-zinc-600">
+                    <span className="font-medium text-zinc-500">
+                      {t("admin.requests.reasonLabel")}:{" "}
+                    </span>
+                    {item.note ?? t("admin.requests.noReason")}
+                  </p>
                   {item.status === "rejected" && item.reviewNote ? (
                     <p className="mt-1 text-xs text-zinc-500">
                       {t("admin.requests.rejectReason", { note: item.reviewNote })}

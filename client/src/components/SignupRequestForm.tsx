@@ -87,11 +87,15 @@ export function SignupRequestForm({
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    if (note.trim().length < 5) {
+      setError(t("signup.request.noteRequired"));
+      return;
+    }
     setBusy(true);
     try {
       const created = await api<{ token: string; status: StatusView["status"] }>(
         "/api/signup-requests",
-        { method: "POST", body: { username: username.trim(), note: note.trim() || undefined } },
+        { method: "POST", body: { username: username.trim(), note: note.trim() } },
       );
       storeToken(created.token);
       setToken(created.token);
@@ -154,8 +158,10 @@ export function SignupRequestForm({
           <Textarea
             id="request-note"
             name="requestNote"
-            rows={3}
-            maxLength={200}
+            rows={4}
+            required
+            minLength={5}
+            maxLength={500}
 
             value={note}
             onChange={(event) => setNote(event.target.value)}

@@ -281,6 +281,13 @@
       "when": 1795795586957,
       "tag": "0039_perpetual_kate_bishop",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795797781819,
+      "tag": "0040_special_giant_man",
+      "breakpoints": true
     }
   ]
 }

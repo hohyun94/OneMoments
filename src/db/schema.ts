@@ -1025,7 +1025,41 @@ export const diaryAttachments = pgTable(
   ],
 );
 
+/**
+ * 글 수정 이력.
+ *
+ * 수정 시 **그 시점 봉투(keys)까지** 함께 스냅샷한다. 봉투를 보관하지 않으면
+ * 나중에 그 버전을 복호화할 수 없기 때문이다(수정 시 새 키·새 봉투로 교체됨).
+ * 삭제 시 글과 함께 cascade 로 사라진다.
+ */
+export const diaryEntryVersions = pgTable(
+  "diary_entry_versions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => diaryEntries.id, { onDelete: "cascade" }),
+    /** 1부터 증가하는 버전 번호. */
+    versionNo: integer("version_no").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    nonce: text("nonce").notNull(),
+    signature: text("signature").notNull(),
+    keyEpoch: integer("key_epoch").notNull(),
+    /** 그 시점 수신 기기별 봉투 스냅샷(복호화에 필요). */
+    keys: jsonb("keys").$type<unknown[]>().notNull(),
+    editedByUserId: uuid("edited_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("diary_entry_versions_uq").on(table.entryId, table.versionNo),
+    index("diary_entry_versions_entry_idx").on(table.entryId),
+  ],
+);
+
 export type DiaryRow = typeof diaries.$inferSelect;
+export type DiaryEntryVersionRow = typeof diaryEntryVersions.$inferSelect;
 export type DiaryAttachmentRow = typeof diaryAttachments.$inferSelect;
 export type DiaryAudienceRow = typeof diaryAudience.$inferSelect;
 export type DiaryEntryRow = typeof diaryEntries.$inferSelect;

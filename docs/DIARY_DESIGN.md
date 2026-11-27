@@ -60,6 +60,7 @@
 - [x] 스키마·마이그레이션(`0038_deep_klaw.sql`)
 - [x] 서비스(`src/services/diaries.ts`): 목록/상세/생성/대상 변경/글 목록·조회·작성·삭제
 - [x] 라우트(`src/routes/diaries.ts`) + 마운트
-- [ ] 클라이언트(목록·작성·읽기·대상 관리) — 다음 단계
+- [x] 클라이언트 데이터 계층(`client/src/lib/diary.ts`) — 메시지 봉투 경로 재사용
+- [ ] 화면(`DiaryPage`)·내비·i18n — 다음 단계
 - [ ] 사진 첨부(`uploadAttachment` 재사용)
 - [ ] 테스트·문서 마무리

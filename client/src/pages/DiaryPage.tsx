@@ -1,5 +1,6 @@
-﻿import { BookOpen, Plus, RefreshCw, Trash2 } from "lucide-react";
+﻿import { ArrowLeft, BookOpen, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { RichTextEditor } from "../components/RichTextEditor.tsx";
 import { Alert, Button, Card, Spinner, cn } from "../components/ui.tsx";
@@ -52,6 +53,7 @@ function when(value: string, locale: string): string {
 /** 일기장 — 만료 없이 보관되고 지정한 대상에게만 공개. 글은 암호문으로만 저장한다. */
 export function DiaryPage() {
   const { t, locale } = useI18n();
+  const navigate = useNavigate();
   const { identity, session } = useSession();
   const [diaries, setDiaries] = useState<DiarySummary[]>([]);
   const [detail, setDetail] = useState<DiaryDetail | null>(null);
@@ -390,10 +392,16 @@ export function DiaryPage() {
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
       <header className="flex items-center justify-between gap-2">
-        <h1 className="flex items-center gap-2 text-lg font-semibold text-zinc-900">
-          <BookOpen className="h-5 w-5 text-accent-600" aria-hidden />
-          {t("diary.title")}
-        </h1>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => navigate("/")} aria-label={t("diary.backToChat")}>
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            {t("diary.backToChat")}
+          </Button>
+          <h1 className="flex items-center gap-2 text-lg font-semibold text-zinc-900">
+            <BookOpen className="h-5 w-5 text-accent-600" aria-hidden />
+            {t("diary.title")}
+          </h1>
+        </div>
         <Button
           variant="outline"
           size="sm"

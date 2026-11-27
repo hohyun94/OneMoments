@@ -10,6 +10,7 @@ import {
   diaryAudience,
   diaryEntries,
   diaryEntryKeys,
+  diaryEntryVersions,
   diaries,
   users,
 } from "../db/schema.js";
@@ -663,6 +664,7 @@ export async function updateDiaryEntry(
         updatedAt: sql`now()`,
       })
       .where(eq(diaryEntries.id, input.entryId));
+    await snapshotEntryVersion(tx, input.entryId, input.userId);
     await tx.delete(diaryEntryKeys).where(eq(diaryEntryKeys.entryId, input.entryId));
     await tx.insert(diaryEntryKeys).values(
       payload.keys.map((key) => ({
@@ -683,3 +685,127 @@ export async function updateDiaryEntry(
   });
   return { entryId: input.entryId, keyEpoch: row.keyEpoch };
 }
+
+/** 수정 직전 상태를 이력으로 남긴다(그 시점 봉투 포함). */
+async function snapshotEntryVersion(
+  tx: Parameters<Parameters<Database["transaction"]>[0]>[0],
+  entryId: string,
+  editorUserId: string,
+): Promise<void> {
+  const [current] = await tx
+    .select({
+      ciphertext: diaryEntries.ciphertext,
+      nonce: diaryEntries.nonce,
+      signature: diaryEntries.signature,
+      keyEpoch: diaryEntries.keyEpoch,
+    })
+    .from(diaryEntries)
+    .where(eq(diaryEntries.id, entryId))
+    .limit(1);
+  if (!current) return;
+  const keys = await tx
+    .select()
+    .from(diaryEntryKeys)
+    .where(eq(diaryEntryKeys.entryId, entryId));
+  const [versionRow] = await tx
+    .select({
+      nextNo: sql<number>`coalesce(max(${diaryEntryVersions.versionNo}), 0) + 1`,
+    })
+    .from(diaryEntryVersions)
+    .where(eq(diaryEntryVersions.entryId, entryId));
+  await tx.insert(diaryEntryVersions).values({
+    entryId,
+    versionNo: Number(versionRow?.nextNo ?? 1),
+    ciphertext: current.ciphertext,
+    nonce: current.nonce,
+    signature: current.signature,
+    keyEpoch: current.keyEpoch,
+    keys: keys.map((key) => ({
+      deviceId: key.recipientDeviceId,
+      ephemeralPublicKey: key.ephemeralPublicKey,
+      ratchetPublicKey: key.ratchetPublicKey,
+      previousChainLength: key.previousChainLength,
+      messageNumber: key.messageNumber,
+      senderIdentityPublicKey: key.senderIdentityPublicKey,
+      signedPreKeyId: key.signedPreKeyId,
+      oneTimePreKeyId: key.oneTimePreKeyId,
+      wrappedKey: key.wrappedKey,
+      wrapNonce: key.wrapNonce,
+      version: key.version,
+    })),
+    editedByUserId: editorUserId,
+  });
+}
+
+/** 글 이력 목록(메타데이터만, 최신순). */
+export async function listDiaryEntryVersions(db: Database, entryId: string, userId: string) {
+  const [entry] = await db
+    .select({ diaryId: diaryEntries.diaryId })
+    .from(diaryEntries)
+    .where(eq(diaryEntries.id, entryId))
+    .limit(1);
+  if (!entry) throw AppError.notFound("ENTRY_NOT_FOUND", "Entry not found");
+  await requireDiary(db, entry.diaryId, userId);
+  const rows = await db
+    .select({
+      id: diaryEntryVersions.id,
+      versionNo: diaryEntryVersions.versionNo,
+      keyEpoch: diaryEntryVersions.keyEpoch,
+      createdAt: diaryEntryVersions.createdAt,
+    })
+    .from(diaryEntryVersions)
+    .where(eq(diaryEntryVersions.entryId, entryId))
+    .orderBy(desc(diaryEntryVersions.versionNo));
+  return rows.map((row) => ({
+    id: row.id,
+    versionNo: row.versionNo,
+    keyEpoch: row.keyEpoch,
+    createdAt: row.createdAt.toISOString(),
+  }));
+}
+
+/** 이력 1건(그 시점 봉투 포함) — 내 기기 봉투가 있는 것만 내려준다. */
+export async function getDiaryEntryVersion(
+  db: Database,
+  input: { entryId: string; versionId: string; userId: string },
+) {
+  const [entry] = await db
+    .select({ diaryId: diaryEntries.diaryId, authorSigningPublicKey: diaryEntries.authorSigningPublicKey })
+    .from(diaryEntries)
+    .where(eq(diaryEntries.id, input.entryId))
+    .limit(1);
+  if (!entry) throw AppError.notFound("ENTRY_NOT_FOUND", "Entry not found");
+  await requireDiary(db, entry.diaryId, input.userId);
+  const [version] = await db
+    .select()
+    .from(diaryEntryVersions)
+    .where(eq(diaryEntryVersions.id, input.versionId))
+    .limit(1);
+  if (!version || version.entryId !== input.entryId) {
+    throw AppError.notFound("VERSION_NOT_FOUND", "Version not found");
+  }
+  const myDevices = await db
+    .select({ id: devices.id })
+    .from(devices)
+    .where(and(eq(devices.userId, input.userId), isNull(devices.revokedAt)));
+  const deviceIds = new Set(myDevices.map((device) => device.id));
+  const keys = (version.keys as Array<{ deviceId: string }>).filter((key) =>
+    deviceIds.has(key.deviceId),
+  );
+  if (keys.length === 0) {
+    throw AppError.forbidden("이 기기에서는 이 버전을 열 수 없습니다.");
+  }
+  return {
+    id: version.id,
+    entryId: version.entryId,
+    versionNo: version.versionNo,
+    authorSigningPublicKey: entry.authorSigningPublicKey,
+    keyEpoch: version.keyEpoch,
+    ciphertext: version.ciphertext,
+    nonce: version.nonce,
+    signature: version.signature,
+    createdAt: version.createdAt.toISOString(),
+    keys,
+  };
+}
+

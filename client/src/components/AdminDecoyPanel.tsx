@@ -4,18 +4,19 @@ import { useState, type FormEvent } from "react";
 
 import { Alert, Button, Card, Dialog, Input, Label, PasswordInput, Spinner } from "./ui.tsx";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../i18n.tsx";
 import type { DecoyProfile } from "../types.ts";
 
-function formatDateTime(value: string | null): string {
+function formatDateTime(value: string | null, locale: string = "ko"): string {
   if (!value) return "-";
-  return new Date(value).toLocaleString("ko-KR", {
+  return new Date(value).toLocaleString(locale === "en" ? "en-US" : "ko-KR", {
     dateStyle: "short",
     timeStyle: "short",
   });
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "요청이 실패했습니다.";
+  return error instanceof Error ? error.message : "admin.requestFailed";
 }
 
 /**
@@ -23,6 +24,7 @@ function errorMessage(error: unknown): string {
  * 비밀번호 원문은 서버 응답에 포함되지 않으며, 입력값도 화면에 다시 표시하지 않는다.
  */
 export function AdminDecoyPanel() {
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [alias, setAlias] = useState("");
   const [handle, setHandle] = useState("");
@@ -57,7 +59,7 @@ export function AdminDecoyPanel() {
       setFormError(null);
       invalidate();
     },
-    onError: (error) => setFormError(errorMessage(error)),
+    onError: (error) => setFormError(t(errorMessage(error))),
   });
 
   const toggle = useMutation({
@@ -80,15 +82,12 @@ export function AdminDecoyPanel() {
       <Card className="p-4">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
           <KeyRound className="h-4 w-4" aria-hidden />
-          decoy 프로필 만들기
+          {t("admin.decoy.createTitle")}
         </h2>
-        <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-          실제 로그인 ID는 그대로 두고, 별도 비밀번호로 격리된 프로필에 들어갑니다. 비밀번호는
-          해시로만 저장되며 이 화면에서 다시 표시되지 않습니다.
-        </p>
+        <p className="mt-1 text-xs leading-relaxed text-zinc-500">{t("admin.decoy.createNote")}</p>
         <form onSubmit={onCreate} className="mt-3 grid gap-3 sm:grid-cols-3">
           <div>
-            <Label htmlFor="decoy-alias">실제 로그인 ID</Label>
+            <Label htmlFor="decoy-alias">{t("admin.decoy.aliasLabel")}</Label>
             <Input
               id="decoy-alias"
               value={alias}
@@ -99,7 +98,7 @@ export function AdminDecoyPanel() {
             />
           </div>
           <div>
-            <Label htmlFor="decoy-handle">공개 핸들(선택)</Label>
+            <Label htmlFor="decoy-handle">{t("admin.decoy.handleLabel")}</Label>
             <Input
               id="decoy-handle"
               value={handle}
@@ -109,7 +108,7 @@ export function AdminDecoyPanel() {
             />
           </div>
           <div>
-            <Label htmlFor="decoy-password">decoy 비밀번호</Label>
+            <Label htmlFor="decoy-password">{t("admin.decoy.passwordLabel")}</Label>
             <PasswordInput
               id="decoy-password"
               autoComplete="new-password"
@@ -122,7 +121,7 @@ export function AdminDecoyPanel() {
           </div>
           <div className="flex items-center gap-2 sm:col-span-3">
             <Button type="submit" disabled={create.isPending}>
-              {create.isPending ? "만드는 중" : "만들기"}
+              {create.isPending ? t("admin.decoy.creating") : t("admin.decoy.create")}
             </Button>
             {formError ? <span className="text-sm text-red-600">{formError}</span> : null}
           </div>
@@ -136,7 +135,7 @@ export function AdminDecoyPanel() {
           </div>
         ) : profilesQuery.isError ? (
           <div className="p-4">
-            <Alert variant="error">{errorMessage(profilesQuery.error)}</Alert>
+            <Alert variant="error">{t(errorMessage(profilesQuery.error))}</Alert>
           </div>
         ) : profilesQuery.data && profilesQuery.data.length > 0 ? (
           <ul className="divide-y divide-zinc-100">
@@ -145,7 +144,7 @@ export function AdminDecoyPanel() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium text-zinc-900">@{profile.handle}</p>
                   <p className="text-xs text-zinc-500">
-                    alias @{profile.alias} · 생성 {formatDateTime(profile.createdAt)}
+                    {t("admin.decoy.profileMeta", { alias: profile.alias, date: formatDateTime(profile.createdAt, locale) })}
                   </p>
                 </div>
                 <span
@@ -155,10 +154,10 @@ export function AdminDecoyPanel() {
                       : "rounded bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700"
                   }
                 >
-                  {profile.disabledAt ? "비활성" : "활성"}
+                  {profile.disabledAt ? t("admin.decoy.statusDisabled") : t("admin.decoy.statusActive")}
                 </span>
                 <Button size="sm" variant="outline" onClick={() => setRotateTarget(profile)}>
-                  비밀번호 교체
+                  {t("admin.decoy.rotatePassword")}
                 </Button>
                 <Button
                   size="sm"
@@ -168,19 +167,19 @@ export function AdminDecoyPanel() {
                   }
                   disabled={toggle.isPending}
                 >
-                  {profile.disabledAt ? "활성화" : "비활성화"}
+                  {profile.disabledAt ? t("admin.decoy.enable") : t("admin.decoy.disable")}
                 </Button>
               </li>
             ))}
           </ul>
         ) : (
           <p className="px-4 py-10 text-center text-sm text-zinc-500">
-            decoy 프로필이 없습니다.
+            {t("admin.decoy.empty")}
           </p>
         )}
         {toggle.isError ? (
           <div className="p-4">
-            <Alert variant="error">{errorMessage(toggle.error)}</Alert>
+            <Alert variant="error">{t(errorMessage(toggle.error))}</Alert>
           </div>
         ) : null}
       </Card>
@@ -203,6 +202,7 @@ function RotateDecoyDialog({
   onClose: () => void;
   onSuccess: () => void;
 }) {
+  const { t } = useI18n();
   const [password, setPassword] = useState("");
 
   const rotate = useMutation({
@@ -224,12 +224,12 @@ function RotateDecoyDialog({
   };
 
   return (
-    <Dialog open={Boolean(target)} onClose={close} title="decoy 비밀번호 회전">
+    <Dialog open={Boolean(target)} onClose={close} title={t("admin.decoy.rotateTitle")}>
       <p className="text-sm leading-relaxed text-zinc-600">
-        @{target?.alias} 의 decoy 비밀번호를 교체합니다. 기존 decoy 비밀번호는 즉시 무효화됩니다.
+        {t("admin.decoy.rotateNote", { alias: target?.alias ?? "" })}
       </p>
       <div className="mt-3">
-        <Label htmlFor="rotate-decoy-password">새 decoy 비밀번호</Label>
+        <Label htmlFor="rotate-decoy-password">{t("admin.decoy.newPasswordLabel")}</Label>
         <PasswordInput
           id="rotate-decoy-password"
           autoComplete="new-password"
@@ -241,18 +241,18 @@ function RotateDecoyDialog({
       </div>
       {rotate.isError ? (
         <div className="mt-2">
-          <Alert variant="error">{errorMessage(rotate.error)}</Alert>
+          <Alert variant="error">{t(errorMessage(rotate.error))}</Alert>
         </div>
       ) : null}
       <div className="mt-4 flex justify-end gap-2">
         <Button variant="outline" onClick={close}>
-          취소
+          {t("admin.cancel")}
         </Button>
         <Button
           onClick={() => target && rotate.mutate(target.id)}
           disabled={rotate.isPending || password.length < 10}
         >
-          {rotate.isPending ? "교체 중" : "교체"}
+          {rotate.isPending ? t("admin.decoy.rotating") : t("admin.decoy.rotate")}
         </Button>
       </div>
     </Dialog>

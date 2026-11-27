@@ -9,6 +9,7 @@ import { AdminDevicesPanel } from "../components/AdminDevicesPanel.tsx";
 import { Alert, Avatar, Button, Card, Dialog, Input, Label, Spinner } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
 import { formatBytes } from "../lib/format.ts";
+import { useI18n } from "../i18n.tsx";
 import { useSession } from "../session.tsx";
 import type {
   AdminAuditEntry,
@@ -20,45 +21,45 @@ import type {
 } from "../types.ts";
 
 const TABS = [
-  { id: "overview", label: "개요" },
-  { id: "users", label: "사용자" },
-  { id: "devices", label: "기기" },
-  { id: "decoy", label: "Decoy" },
-  { id: "invites", label: "가입 초대" },
-  { id: "audit", label: "감사 로그" },
+  { id: "overview", label: "admin.tab.overview" },
+  { id: "users", label: "admin.tab.users" },
+  { id: "devices", label: "admin.tab.devices" },
+  { id: "decoy", label: "admin.tab.decoy" },
+  { id: "invites", label: "admin.tab.invites" },
+  { id: "audit", label: "admin.tab.audit" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
 /** 인증 이벤트 라벨. 서버는 이벤트 코드만 저장한다. */
 const AUTH_EVENT_LABELS: Record<string, string> = {
-  register: "가입",
-  login: "로그인",
-  logout: "로그아웃",
-  device_logout: "기기 로그아웃",
-  device_revoked: "기기 폐기",
-  recover: "키 복구",
-  admin_sessions_revoked: "관리자 세션 종료",
+  register: "admin.event.register",
+  login: "admin.event.login",
+  logout: "admin.event.logout",
+  device_logout: "admin.event.deviceLogout",
+  device_revoked: "admin.event.deviceRevoked",
+  recover: "admin.event.recover",
+  admin_sessions_revoked: "admin.event.adminSessionsRevoked",
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  "user.sessions.revoked": "세션 강제 종료",
-  "decoy.created": "decoy 생성",
-  "decoy.password.rotated": "decoy 비밀번호 회전",
-  "decoy.disabled": "decoy 비활성화",
-  "decoy.enabled": "decoy 활성화",
+  "user.sessions.revoked": "admin.action.userSessionsRevoked",
+  "decoy.created": "admin.action.decoyCreated",
+  "decoy.password.rotated": "admin.action.decoyRotated",
+  "decoy.disabled": "admin.action.decoyDisabled",
+  "decoy.enabled": "admin.action.decoyEnabled",
 };
 
-function formatDateTime(value: string | null): string {
+function formatDateTime(value: string | null, locale: string = "ko"): string {
   if (!value) return "-";
-  return new Date(value).toLocaleString("ko-KR", {
+  return new Date(value).toLocaleString(locale === "en" ? "en-US" : "ko-KR", {
     dateStyle: "short",
     timeStyle: "short",
   });
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "요청이 실패했습니다.";
+  return error instanceof Error ? error.message : "admin.requestFailed";
 }
 
 function Loading() {
@@ -88,6 +89,7 @@ function Stat({
 }
 
 function AccessDenied() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   return (
     <div className="flex min-h-dvh items-center justify-center bg-zinc-50 px-4">
@@ -95,12 +97,12 @@ function AccessDenied() {
         <span className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
           <ShieldAlert className="h-6 w-6" aria-hidden />
         </span>
-        <h1 className="text-lg font-semibold text-zinc-900">관리자 권한이 없습니다</h1>
+        <h1 className="text-lg font-semibold text-zinc-900">{t("admin.noAccess")}</h1>
         <p className="mt-2 text-sm leading-relaxed text-zinc-500">
-          이 화면은 ADMIN_USERNAMES allowlist 에 등록된 관리자만 사용할 수 있습니다.
+          {t("admin.noAccessNote")}
         </p>
         <Button className="mt-5 w-full" onClick={() => navigate("/")}>
-          채팅으로 돌아가기
+          {t("admin.backToChat")}
         </Button>
       </Card>
     </div>
@@ -108,6 +110,7 @@ function AccessDenied() {
 }
 
 export function AdminPage() {
+  const { t } = useI18n();
   const { session } = useSession();
   const navigate = useNavigate();
   const [tab, setTab] = useState<TabId>("overview");
@@ -123,17 +126,17 @@ export function AdminPage() {
             variant="ghost"
             size="icon"
             onClick={() => navigate("/")}
-            aria-label="채팅으로 돌아가기"
+            aria-label={t("admin.backToChat")}
           >
             <ArrowLeft className="h-4 w-4" aria-hidden />
           </Button>
           <div>
             <p className="text-xs font-medium tracking-wide text-accent-600">OneMoments</p>
-            <h1 className="text-lg font-semibold text-zinc-900">관리자 콘솔</h1>
+            <h1 className="text-lg font-semibold text-zinc-900">{t("admin.title")}</h1>
           </div>
           <span className="ml-auto text-xs text-zinc-500">@{session.user.username}</span>
         </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 px-4 pb-2" aria-label="관리자 탭">
+        <nav className="mx-auto flex max-w-5xl gap-1 px-4 pb-2" aria-label={t("admin.tabsAria")}>
           {TABS.map((item) => (
             <button
               key={item.id}
@@ -146,7 +149,7 @@ export function AdminPage() {
                   : "rounded-lg px-3 py-1.5 text-sm font-medium text-zinc-600 hover:bg-zinc-100"
               }
             >
-              {item.label}
+              {t(item.label)}
             </button>
           ))}
         </nav>
@@ -165,6 +168,7 @@ export function AdminPage() {
 }
 
 function OverviewTab() {
+  const { t } = useI18n();
   const overviewQuery = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: () =>
@@ -176,7 +180,7 @@ function OverviewTab() {
 
   if (overviewQuery.isLoading) return <Loading />;
   if (overviewQuery.isError) {
-    return <Alert variant="error">{errorMessage(overviewQuery.error)}</Alert>;
+    return <Alert variant="error">{t(errorMessage(overviewQuery.error))}</Alert>;
   }
   const overview = overviewQuery.data;
   if (!overview) return null;
@@ -184,40 +188,43 @@ function OverviewTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-zinc-900">서버 현황</h2>
+        <h2 className="text-sm font-semibold text-zinc-900">{t("admin.statusTitle")}</h2>
         <Button variant="outline" size="sm" onClick={() => void overviewQuery.refetch()}>
           <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-          새로고침
+          {t("admin.refresh")}
         </Button>
       </div>
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="서버 통계">
-        <Stat label="사용자" value={overview.usersTotal} hint={`삭제 ${overview.usersDeleted}명`} />
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label={t("admin.statsAria")}>
         <Stat
-          label="활성 기기"
+          label={t("admin.stat.users")}
+          value={overview.usersTotal}
+          hint={t("admin.stat.usersHint", { count: overview.usersDeleted })}
+        />
+        <Stat
+          label={t("admin.stat.devices")}
           value={overview.devicesActive}
-          hint={`폐기 ${overview.devicesRevoked}대`}
+          hint={t("admin.stat.devicesHint", { count: overview.devicesRevoked })}
         />
-        <Stat label="활성 세션" value={overview.activeSessions} />
-        <Stat label="푸시 구독" value={overview.pushSubscriptions} />
-        <Stat label="1:1 대화" value={overview.directConversations} />
-        <Stat label="그룹 대화" value={overview.groupConversations} />
-        <Stat label="메시지" value={overview.messages} hint="암호문 기준" />
+        <Stat label={t("admin.stat.sessions")} value={overview.activeSessions} />
+        <Stat label={t("admin.stat.push")} value={overview.pushSubscriptions} />
+        <Stat label={t("admin.stat.direct")} value={overview.directConversations} />
+        <Stat label={t("admin.stat.group")} value={overview.groupConversations} />
+        <Stat label={t("admin.stat.messages")} value={overview.messages} hint={t("admin.stat.messagesHint")} />
         <Stat
-          label="첨부"
+          label={t("admin.stat.attachments")}
           value={overview.attachments}
-          hint={`암호문 ${formatBytes(overview.attachmentBytes)}`}
+          hint={t("admin.stat.attachmentsHint", { size: formatBytes(overview.attachmentBytes) })}
         />
         <Stat
-          label="Decoy 프로필"
+          label={t("admin.stat.decoy")}
           value={overview.decoyProfiles}
-          hint={`비활성 ${overview.decoyProfilesDisabled}개`}
+          hint={t("admin.stat.decoyHint", { count: overview.decoyProfilesDisabled })}
         />
       </section>
       <Card className="p-4">
-        <h3 className="text-sm font-semibold text-zinc-900">메타데이터만 표시합니다</h3>
+        <h3 className="text-sm font-semibold text-zinc-900">{t("admin.metaTitle")}</h3>
         <p className="mt-1 text-sm leading-relaxed text-zinc-500">
-          서버는 메시지 평문·대화 키·기기 개인키를 보관하지 않습니다. 이 화면에서도 메시지 내용과
-          세션 토큰은 조회할 수 없습니다.
+          {t("admin.metaNote")}
         </p>
       </Card>
     </div>
@@ -225,6 +232,7 @@ function OverviewTab() {
 }
 
 function UsersTab() {
+  const { t, locale } = useI18n();
   const [search, setSearch] = useState("");
   const [appliedQuery, setAppliedQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -257,13 +265,13 @@ function UsersTab() {
           <Input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="username 검색"
-            aria-label="username 검색"
+            placeholder={t("admin.searchPlaceholder")}
+            aria-label={t("admin.searchPlaceholder")}
             maxLength={32}
           />
           <Button type="submit" variant="outline">
             <Search className="h-4 w-4" aria-hidden />
-            검색
+            {t("admin.search")}
           </Button>
         </form>
       </Card>
@@ -273,7 +281,7 @@ function UsersTab() {
           <Loading />
         ) : usersQuery.isError && !usersQuery.data ? (
           <div className="p-4">
-            <Alert variant="error">{errorMessage(usersQuery.error)}</Alert>
+            <Alert variant="error">{t(errorMessage(usersQuery.error))}</Alert>
           </div>
         ) : users.length > 0 ? (
           <>
@@ -298,13 +306,16 @@ function UsersTab() {
                         </span>
                         {user.deleted ? (
                           <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
-                            삭제됨
+                            {t("admin.deleted")}
                           </span>
                         ) : null}
                       </span>
                       <span className="mt-0.5 block text-xs text-zinc-500">
-                        기기 {user.activeDeviceCount} · 세션 {user.activeSessionCount} · 가입{" "}
-                        {formatDateTime(user.createdAt)}
+                        {t("admin.userMeta", {
+                          devices: user.activeDeviceCount,
+                          sessions: user.activeSessionCount,
+                          date: formatDateTime(user.createdAt, locale),
+                        })}
                       </span>
                     </span>
                   </button>
@@ -312,7 +323,7 @@ function UsersTab() {
               ))}
             </ul>
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-100 px-4 py-3">
-              <p className="text-xs text-zinc-500">{users.length}명 표시</p>
+              <p className="text-xs text-zinc-500">{t("admin.usersShown", { count: users.length })}</p>
               {usersQuery.hasNextPage ? (
                 <Button
                   variant="outline"
@@ -321,19 +332,19 @@ function UsersTab() {
                   disabled={usersQuery.isFetchingNextPage}
                 >
                   {usersQuery.isFetchingNextPage ? <Spinner /> : null}
-                  더 보기
+                  {t("admin.loadMore")}
                 </Button>
               ) : null}
             </div>
             {usersQuery.isFetchNextPageError ? (
               <div className="px-4 pb-3">
-                <Alert variant="error">{errorMessage(usersQuery.error)}</Alert>
+                <Alert variant="error">{t(errorMessage(usersQuery.error))}</Alert>
               </div>
             ) : null}
           </>
         ) : (
           <p className="px-4 py-10 text-center text-sm text-zinc-500">
-            해당하는 사용자가 없습니다.
+            {t("admin.usersEmpty")}
           </p>
         )}
       </Card>
@@ -346,6 +357,7 @@ function UsersTab() {
 }
 
 function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => void }) {
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -364,7 +376,7 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
         method: "POST",
       }),
     onSuccess: (result) => {
-      setNotice(`세션 ${result.revokedSessions}개를 종료했습니다.`);
+      setNotice(t("admin.sessionsRevoked", { count: result.revokedSessions }));
       setConfirmOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["admin"] });
     },
@@ -392,7 +404,7 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
   if (detailQuery.isError) {
     return (
       <Card className="p-4">
-        <Alert variant="error">{errorMessage(detailQuery.error)}</Alert>
+        <Alert variant="error">{t(errorMessage(detailQuery.error))}</Alert>
       </Card>
     );
   }
@@ -409,14 +421,14 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
             @{detail.user.username}
             {detail.user.deleted ? (
               <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
-                삭제됨
+                {t("admin.deleted")}
               </span>
             ) : null}
           </p>
-          <p className="text-xs text-zinc-500">가입 {formatDateTime(detail.user.createdAt)}</p>
+          <p className="text-xs text-zinc-500">{t("admin.joinedAt", { date: formatDateTime(detail.user.createdAt, locale) })}</p>
         </div>
         <Button variant="outline" size="sm" onClick={onClose}>
-          닫기
+          {t("admin.close")}
         </Button>
         <Button
           variant="destructive"
@@ -425,15 +437,17 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
           disabled={revoke.isPending}
         >
           <KeyRound className="h-4 w-4" aria-hidden />
-          세션 종료
+          {t("admin.revokeSessions")}
         </Button>
       </div>
 
       {detail.decoy ? (
         <div className="mt-3">
           <Alert>
-            이 계정에는 decoy 프로필이 연결되어 있습니다 (alias @{detail.decoy.alias}
-            {detail.decoy.disabledAt ? ", 비활성" : ""}).
+            {t("admin.decoyLinked", {
+              alias: detail.decoy.alias,
+              disabled: detail.decoy.disabledAt ? t("admin.decoyDisabledSuffix") : "",
+            })}
           </Alert>
         </div>
       ) : null}
@@ -444,16 +458,16 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
       ) : null}
       {revoke.isError ? (
         <div className="mt-3">
-          <Alert variant="error">{errorMessage(revoke.error)}</Alert>
+          <Alert variant="error">{t(errorMessage(revoke.error))}</Alert>
         </div>
       ) : null}
 
       <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {[
-          ["대화", detail.counts.conversations],
-          ["메시지", detail.counts.messages],
-          ["첨부", detail.counts.attachments],
-          ["푸시 구독", detail.counts.pushSubscriptions],
+          [t("admin.count.conversations"), detail.counts.conversations],
+          [t("admin.count.messages"), detail.counts.messages],
+          [t("admin.count.attachments"), detail.counts.attachments],
+          [t("admin.count.push"), detail.counts.pushSubscriptions],
         ].map(([label, value]) => (
           <div key={String(label)} className="rounded-lg bg-zinc-50 px-3 py-2">
             <dt className="text-xs text-zinc-500">{label}</dt>
@@ -466,17 +480,20 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
         <section>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-zinc-900">
             <Smartphone className="h-4 w-4" aria-hidden />
-            기기 ({detail.devices.length})
+            {t("admin.devicesTitle", { count: detail.devices.length })}
           </h3>
           <ul className="mt-2 space-y-2">
             {detail.devices.map((device) => (
               <li key={device.id} className="rounded-lg border border-zinc-100 px-3 py-2">
                 <p className="text-sm text-zinc-900">
                   {device.name}
-                  {device.revokedAt ? " · 폐기됨" : ""}
+                  {device.revokedAt ? t("admin.deviceRevokedSuffix") : ""}
                 </p>
                 <p className="text-xs text-zinc-500">
-                  등록 {formatDateTime(device.createdAt)} · 마지막 {formatDateTime(device.lastSeenAt)}
+                  {t("admin.deviceRegistered", {
+                    registered: formatDateTime(device.createdAt, locale),
+                    lastSeen: formatDateTime(device.lastSeenAt, locale),
+                  })}
                 </p>
               </li>
             ))}
@@ -484,14 +501,14 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
         </section>
         <section>
           <h3 className="text-sm font-semibold text-zinc-900">
-            세션 ({detail.sessions.length})
+            {t("admin.sessionsTitle", { count: detail.sessions.length })}
           </h3>
           <ul className="mt-2 space-y-2">
             {detail.sessions.map((session) => (
               <li key={session.id} className="rounded-lg border border-zinc-100 px-3 py-2">
-                <p className="text-sm text-zinc-900">만료 {formatDateTime(session.expiresAt)}</p>
+                <p className="text-sm text-zinc-900">{t("admin.sessionExpires", { date: formatDateTime(session.expiresAt, locale) })}</p>
                 <p className="truncate text-xs text-zinc-500">
-                  최근 {formatDateTime(session.lastSeenAt)}
+                  {t("admin.sessionLastSeen", { date: formatDateTime(session.lastSeenAt, locale) })}
                   {session.userAgent ? ` · ${session.userAgent}` : ""}
                 </p>
               </li>
@@ -502,10 +519,10 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
 
       <section className="mt-5">
         <h3 className="text-sm font-semibold text-zinc-900">
-          로그인 기록 {authEvents.length > 0 ? `(${authEvents.length})` : ""}
+          {authEvents.length > 0 ? t("admin.authTitleCount", { count: authEvents.length }) : t("admin.authTitle")}
         </h3>
         <p className="mt-1 text-xs text-zinc-500">
-          로그인·로그아웃·복구·기기 조치 이력입니다. IP와 User-Agent는 관리자만 볼 수 있습니다.
+          {t("admin.authNote")}
         </p>
         {authEventsQuery.isLoading ? (
           <div className="mt-2">
@@ -513,7 +530,7 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
           </div>
         ) : authEventsQuery.isError ? (
           <div className="mt-2">
-            <Alert variant="error">로그인 기록을 불러오지 못했습니다.</Alert>
+            <Alert variant="error">{t("admin.authLoadFailed")}</Alert>
           </div>
         ) : (
           <>
@@ -522,21 +539,21 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
                 <li key={event.id} className="rounded-lg border border-zinc-100 px-3 py-2">
                   <p className="flex items-center justify-between gap-2 text-sm text-zinc-900">
                     <span className="font-medium">
-                      {AUTH_EVENT_LABELS[event.event] ?? event.event}
+                      {t(AUTH_EVENT_LABELS[event.event] ?? event.event)}
                     </span>
                     <span className="text-xs text-zinc-500">
                       {formatDateTime(event.createdAt)}
                     </span>
                   </p>
                   <p className="mt-0.5 truncate text-xs text-zinc-500">
-                    IP {event.ip ?? "기록 없음"}
-                    {event.deviceId ? ` · 기기 ${event.deviceId.slice(0, 8)}` : ""}
+                    {t("admin.authIp", { ip: event.ip ?? t("admin.authNoIp") })}
+                    {event.deviceId ? t("admin.authDevice", { id: event.deviceId.slice(0, 8) }) : ""}
                     {event.userAgent ? ` · ${event.userAgent}` : ""}
                   </p>
                 </li>
               ))}
               {authEvents.length === 0 ? (
-                <li className="text-xs text-zinc-500">기록이 없습니다.</li>
+                <li className="text-xs text-zinc-500">{t("admin.authEmpty")}</li>
               ) : null}
             </ul>
             {authEventsQuery.hasNextPage ? (
@@ -547,7 +564,7 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
                   onClick={() => void authEventsQuery.fetchNextPage()}
                   disabled={authEventsQuery.isFetchingNextPage}
                 >
-                  {authEventsQuery.isFetchingNextPage ? "불러오는 중" : "더 보기"}
+                  {authEventsQuery.isFetchingNextPage ? t("admin.loading") : t("admin.loadMore")}
                 </Button>
               </div>
             ) : null}
@@ -555,17 +572,16 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
         )}
       </section>
 
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title="세션 강제 종료">
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title={t("admin.revokeTitle")}>
         <p className="text-sm leading-relaxed text-zinc-600">
-          @{detail.user.username} 의 모든 세션을 종료하고 푸시 구독을 삭제합니다. 기기와 키는
-          유지되며, 다음 로그인에서 새 세션이 발급됩니다.
+          {t("admin.revokeNote", { username: detail.user.username })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button variant="outline" onClick={() => setConfirmOpen(false)}>
-            취소
+            {t("admin.cancel")}
           </Button>
           <Button variant="destructive" onClick={() => revoke.mutate()} disabled={revoke.isPending}>
-            {revoke.isPending ? "종료 중" : "종료"}
+            {revoke.isPending ? t("admin.revoking") : t("admin.revoke")}
           </Button>
         </div>
       </Dialog>
@@ -574,6 +590,7 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
 }
 
 function AuditTab() {
+  const { t, locale } = useI18n();
   const auditQuery = useQuery({
     queryKey: ["admin", "audit"],
     queryFn: () =>
@@ -582,7 +599,7 @@ function AuditTab() {
 
   if (auditQuery.isLoading) return <Loading />;
   if (auditQuery.isError) {
-    return <Alert variant="error">{errorMessage(auditQuery.error)}</Alert>;
+    return <Alert variant="error">{t(errorMessage(auditQuery.error))}</Alert>;
   }
 
   return (
@@ -592,19 +609,19 @@ function AuditTab() {
           {auditQuery.data.map((entry) => (
             <li key={entry.id} className="px-4 py-3">
               <p className="text-sm text-zinc-900">
-                {ACTION_LABELS[entry.action] ?? entry.action}
+                {t(ACTION_LABELS[entry.action] ?? entry.action)}
                 {entry.targetUsername ? (
                   <span className="text-zinc-500"> · @{entry.targetUsername}</span>
                 ) : null}
               </p>
               <p className="mt-0.5 text-xs text-zinc-500">
-                관리자 @{entry.adminUsername} · {formatDateTime(entry.createdAt)}
+                {t("admin.auditEntry", { admin: entry.adminUsername, date: formatDateTime(entry.createdAt, locale) })}
               </p>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="px-4 py-10 text-center text-sm text-zinc-500">감사 기록이 없습니다.</p>
+        <p className="px-4 py-10 text-center text-sm text-zinc-500">{t("admin.auditEmpty")}</p>
       )}
     </Card>
   );

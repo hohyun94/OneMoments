@@ -1,3 +1,4 @@
+﻿import { randomUUID } from "node:crypto";
 import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import type { Config } from "../config.js";
@@ -5,6 +6,7 @@ import type { Database } from "../db/client.js";
 import {
   deviceOneTimePreKeys,
   devices,
+  diaryAttachments,
   diaryAudience,
   diaryEntries,
   diaryEntryKeys,
@@ -12,6 +14,7 @@ import {
   users,
 } from "../db/schema.js";
 import { normalizeMessagePayload } from "../crypto/envelope.js";
+import type { AttachmentStorage } from "./attachments.js";
 import { AppError } from "../http/errors.js";
 
 /**
@@ -479,3 +482,52 @@ export async function deleteDiaryEntry(db: Database, entryId: string, userId: st
   return { deleted: true };
 }
 
+
+
+/** 사진 업로드 — 암호문 블롭을 저장하고 id/size 만 돌려준다. */
+export async function createDiaryAttachment(
+  db: Database,
+  storage: AttachmentStorage,
+  input: { uploaderUserId: string; clientEntryId: string | null; data: Buffer },
+) {
+  const id = randomUUID();
+  await storage.put(id, input.data);
+  try {
+    const [row] = await db
+      .insert(diaryAttachments)
+      .values({
+        id,
+        uploaderUserId: input.uploaderUserId,
+        clientEntryId: input.clientEntryId,
+        size: input.data.byteLength,
+      })
+      .returning();
+    if (!row) throw new Error("Failed to insert diary attachment");
+    return row;
+  } catch (error) {
+    await storage.delete(id);
+    throw error;
+  }
+}
+
+/** 첨부 접근 — 글에 연결됐으면 그 일기장 멤버만, 아직 예약 상태면 업로더만. */
+export async function requireDiaryAttachmentAccess(
+  db: Database,
+  input: { attachmentId: string; userId: string },
+) {
+  const [row] = await db
+    .select({ attachment: diaryAttachments, entry: diaryEntries })
+    .from(diaryAttachments)
+    .leftJoin(diaryEntries, eq(diaryEntries.id, diaryAttachments.entryId))
+    .where(eq(diaryAttachments.id, input.attachmentId))
+    .limit(1);
+  if (!row) throw AppError.notFound("ATTACHMENT_NOT_FOUND", "Attachment not found");
+  if (!row.entry) {
+    if (row.attachment.uploaderUserId !== input.userId) {
+      throw AppError.notFound("ATTACHMENT_NOT_FOUND", "Attachment not found");
+    }
+    return row.attachment;
+  }
+  await requireDiary(db, row.entry.diaryId, input.userId);
+  return row.attachment;
+}

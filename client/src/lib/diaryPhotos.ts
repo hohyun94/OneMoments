@@ -103,3 +103,9 @@ export async function loadDiaryPhoto(ref: DiaryPhotoRef): Promise<string> {
   const plain = await decryptAttachment(ciphertext, ref.key, ref.iv);
   return URL.createObjectURL(new Blob([plain], { type: ref.mime }));
 }
+
+/** 저장 직전에 본문에서 임시 blob URL 을 걷어낸다(사진 참조 id 만 남긴다). */
+export function stripBlobImageSrcs(html: string): string {
+  return html.replace(/(<img\b[^>]*?)\ssrc="blob:[^"]*"/gi, "$1");
+}
+

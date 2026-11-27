@@ -11,6 +11,7 @@ import {
   inlineDiaryPhotoUrls,
   loadDiaryPhoto,
   parseDiaryPayload,
+  stripBlobImageSrcs,
   uploadDiaryPhoto,
   type DiaryPhotoRef,
 } from "../lib/diaryPhotos.ts";
@@ -199,7 +200,7 @@ export function DiaryPage() {
       const encrypted = await encryptDiaryEntry({
         identity,
         diaryId: detail.id,
-        html: encodeDiaryPayload({ v: 1, html, photos }),
+        html: encodeDiaryPayload({ v: 1, html: stripBlobImageSrcs(html), photos }),
         devices,
         clientEntryId: draftId,
       });
@@ -284,7 +285,10 @@ export function DiaryPage() {
           url: await loadDiaryPhoto(photo).catch(() => ""),
         })),
       );
-      setOpenedPhotos(loaded.filter((photo) => photo.url.length > 0));
+      setOpenedPhotos((previous) => {
+        for (const item of previous) URL.revokeObjectURL(item.url);
+        return loaded.filter((photo) => photo.url.length > 0);
+      });
       const inlineUrls = new Map(loaded.map((photo) => [photo.id.toLowerCase(), photo.url]));
       setOpenedHtml(inlineDiaryPhotoUrls(plain.html, inlineUrls));
     } catch {

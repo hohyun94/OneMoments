@@ -79,8 +79,8 @@ export const signupInviteParamsSchema = z.object({
 /** 가입 신청(관리자 승인형). 비밀번호·기기 키는 승인 전에 받지 않는다. */
 export const signupRequestBodySchema = z.object({
   username: usernameSchema,
-  /** 선택: 관리자에게 보여줄 한 줄 소개. */
-  note: z.string().trim().max(200).optional(),
+  /** 가입 사유(필수) — 관리자가 승인 여부를 판단하는 근거다. */
+  note: z.string().trim().min(5).max(500),
 });
 
 /** 신청 상태 조회(신청 시 1회 발급한 토큰). */

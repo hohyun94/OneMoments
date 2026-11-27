@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+﻿import { createHash, randomBytes } from "node:crypto";
 import { and, desc, eq, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
@@ -77,7 +77,7 @@ function isInviteUsable(invite: SignupInviteRow | null): invite is SignupInviteR
  */
 export async function createSignupRequest(
   db: Database,
-  input: { username: string; note?: string },
+  input: { username: string; note: string },
 ): Promise<{ token: string; request: SignupRequestRow }> {
   const username = input.username.trim();
   const normalized = normalizeUsername(username);
@@ -109,12 +109,12 @@ export async function createSignupRequest(
   }
 
   const token = randomBytes(SIGNUP_REQUEST_TOKEN_BYTES).toString("base64url");
-  const note = input.note?.trim() ?? "";
+  const note = input.note.trim();
   const [row] = await db
     .insert(signupRequests)
     .values({
       username,
-      note: note.length > 0 ? note : null,
+      note,
       tokenHash: hashSignupRequestToken(token),
     })
     .returning();

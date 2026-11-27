@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+﻿import { sql } from "drizzle-orm";
 import type { DevicePlatform } from "../types/protocol.js";
 import {
   check,
@@ -842,7 +842,7 @@ export const signupRequests = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     /** 신청한 아이디(가입 시점에 다시 검증한다). */
     username: text("username").notNull(),
-    /** 신청자가 남긴 한 줄 소개(선택, 평문 메타데이터). */
+    /** 신청자가 남긴 가입 사유(평문 메타데이터, 5~500자). 관리자 승인 판단 근거. */
     note: text("note"),
     /** pending | approved | rejected */
     status: text("status").notNull().default("pending"),

@@ -8,6 +8,7 @@ import { api } from "../lib/api.ts";
 import { decryptDiaryEntry, encryptDiaryEntry } from "../lib/diary.ts";
 import {
   encodeDiaryPayload,
+  inlineDiaryPhotoUrls,
   loadDiaryPhoto,
   parseDiaryPayload,
   uploadDiaryPhoto,
@@ -264,7 +265,6 @@ export function DiaryPage() {
       const body = await api<EntryBody>(`/api/diaries/entries/${entryId}`);
       const plain = parseDiaryPayload(await decryptDiaryEntry(identity, body));
       setOpenedId(entryId);
-      setOpenedHtml(plain.html);
       setOpenedPhotos([]);
       const loaded = await Promise.all(
         plain.photos.map(async (photo) => ({
@@ -273,6 +273,8 @@ export function DiaryPage() {
         })),
       );
       setOpenedPhotos(loaded.filter((photo) => photo.url.length > 0));
+      const inlineUrls = new Map(loaded.map((photo) => [photo.id.toLowerCase(), photo.url]));
+      setOpenedHtml(inlineDiaryPhotoUrls(plain.html, inlineUrls));
     } catch {
       setError(t("diary.openFailed"));
     } finally {

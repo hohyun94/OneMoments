@@ -16,7 +16,7 @@ import {
 import { isDiaryHtmlEmpty, sanitizeDiaryHtml } from "../lib/richTextSanitize.ts";
 import { useSession } from "../session.tsx";
 
-type DiarySummary = { id: string; label: string | null; keyEpoch: number; ownerUsername: string };
+type DiarySummary = { id: string; label: string | null; keyEpoch: number; ownerUsername: string; updatedAt: string };
 type DiaryDevice = {
   id: string;
   identityPublicKey: string;
@@ -96,6 +96,24 @@ export function DiaryPage() {
       })
       .catch(() => setError(t("diary.loadFailed")));
   }, [openDiary, t]);
+
+  /** 일기장 목록 검색·정렬. */
+  const [diaryQuery, setDiaryQuery] = useState("");
+  const [diarySort, setDiarySort] = useState<"recent" | "name">("recent");
+
+  /** 검색어·정렬을 적용한 목록. */
+  const visibleDiaries = useMemo(() => {
+    const query = diaryQuery.trim().toLowerCase();
+    const labelOf = (diary: DiarySummary) => diary.label ?? t("diary.untitled");
+    const filtered = query
+      ? diaries.filter((diary) => labelOf(diary).toLowerCase().includes(query))
+      : diaries;
+    return [...filtered].sort((a, b) =>
+      diarySort === "name"
+        ? labelOf(a).localeCompare(labelOf(b), locale)
+        : b.updatedAt.localeCompare(a.updatedAt),
+    );
+  }, [diaries, diaryQuery, diarySort, locale, t]);
 
   const devices = useMemo(
     () => (detail?.members ?? []).flatMap((member) => member.devices),
@@ -478,24 +496,57 @@ export function DiaryPage() {
         </Card>
       ) : null}
 
-      {diaries.length > 1 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {diaries.map((diary) => (
-            <button
-              key={diary.id}
-              type="button"
-              onClick={() => void openDiary(diary.id)}
-              aria-pressed={detail?.id === diary.id}
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-xs",
-                detail?.id === diary.id
-                  ? "border-accent-300 bg-accent-50 text-accent-700"
-                  : "border-zinc-200 text-zinc-600 hover:bg-zinc-50",
-              )}
-            >
-              {diary.label ?? t("diary.untitled")}
-            </button>
-          ))}
+      {diaries.length > 0 ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={diaryQuery}
+              onChange={(event) => setDiaryQuery(event.target.value)}
+              placeholder={t("diary.searchPlaceholder")}
+              aria-label={t("diary.searchPlaceholder")}
+              className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"
+            />
+            <div className="flex gap-1" role="group" aria-label={t("diary.sortLabel")}>
+              <Button
+                size="sm"
+                variant={diarySort === "recent" ? "default" : "outline"}
+                aria-pressed={diarySort === "recent"}
+                onClick={() => setDiarySort("recent")}
+              >
+                {t("diary.sortRecent")}
+              </Button>
+              <Button
+                size="sm"
+                variant={diarySort === "name" ? "default" : "outline"}
+                aria-pressed={diarySort === "name"}
+                onClick={() => setDiarySort("name")}
+              >
+                {t("diary.sortName")}
+              </Button>
+            </div>
+          </div>
+          {visibleDiaries.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-zinc-500">{t("diary.searchEmpty")}</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {visibleDiaries.map((diary) => (
+                <button
+                  key={diary.id}
+                  type="button"
+                  onClick={() => void openDiary(diary.id)}
+                  aria-pressed={detail?.id === diary.id}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs",
+                    detail?.id === diary.id
+                      ? "border-accent-300 bg-accent-50 text-accent-700"
+                      : "border-zinc-200 text-zinc-600 hover:bg-zinc-50",
+                  )}
+                >
+                  {diary.label ?? t("diary.untitled")}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
 

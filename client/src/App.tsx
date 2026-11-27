@@ -1,4 +1,4 @@
-import { KeyRound, Lock, LogOut } from "lucide-react";
+﻿import { KeyRound, Lock, LogOut } from "lucide-react";
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 
@@ -16,6 +16,12 @@ const AdminPage = lazy(() =>
   import("./pages/AdminPage.tsx").then((module) => ({ default: module.AdminPage })),
 );
 
+// Moments 화면도 필요할 때만 로드한다.
+const DiaryPage = lazy(() =>
+  import("./pages/DiaryPage.tsx").then((module) => ({
+    default: module.DiaryPage,
+  })),
+);
 // Moments 화면도 필요할 때만 로드한다.
 const MomentsPage = lazy(() =>
   import("./pages/MomentsPage.tsx").then((module) => ({
@@ -94,6 +100,14 @@ export function App() {
           element={
             <Suspense fallback={<Splash />}>
               <MomentsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/diary"
+          element={
+            <Suspense fallback={<Splash />}>
+              <DiaryPage />
             </Suspense>
           }
         />

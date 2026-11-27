@@ -1,5 +1,6 @@
 ﻿import {
   BellOff,
+  BookOpen,
   Bookmark,
   Contact,
   LogOut,
@@ -333,6 +334,14 @@ export function ConversationSidebar({
         >
           <Sparkles className="h-4 w-4" aria-hidden />
           {t("nav.moments")}
+        </Button>
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => { window.location.href = "/diary"; }}
+        >
+          <BookOpen className="h-4 w-4" aria-hidden />
+          {t("nav.diary")}
         </Button>
         {isAdmin ? (
           <Button variant="ghost" className="w-full justify-start" onClick={onOpenAdmin}>

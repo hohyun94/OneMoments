@@ -871,6 +871,115 @@ export const signupRequests = pgTable(
   ],
 );
 
+/**
+ * 일기장 — 24시간 만료가 없는 공유 공간. 지정한 대상에게만 공개한다.
+ *
+ * E2E 규칙: 글 본문·제목은 **암호문만** 저장하고, 서버는 메타데이터(작성자·대상·날짜·크기)만 안다.
+ * 대상이 바뀌면 `keyEpoch` 를 올려 **새 키로만 새 글을 쓰게** 한다(정책 B). 과거 글은 그 시점
+ * 봉투를 가진 사람만 열 수 있으므로, 새로 추가된 대상자는 과거 글을 볼 수 없다.
+ * (일기장 이름은 프로필 상태처럼 공개 메타데이터로 취급한다 — 최대 40자 평문.)
+ */
+export const diaries = pgTable(
+  "diaries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerUserId: uuid("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 일기장 이름(선택, 평문 메타데이터). */
+    label: text("label"),
+    /** 현재 키 세대. 대상이 바뀔 때마다 +1 한다. */
+    keyEpoch: integer("key_epoch").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("diaries_owner_idx").on(table.ownerUserId),
+    check("diaries_key_epoch_chk", sql`${table.keyEpoch} >= 1`),
+  ],
+);
+
+/** 일기장 공유 대상. `joinedEpoch` 이후 세대의 글에만 봉투가 배포된다. */
+export const diaryAudience = pgTable(
+  "diary_audience",
+  {
+    diaryId: uuid("diary_id")
+      .notNull()
+      .references(() => diaries.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 합류 시점의 키 세대(이 세대 이전 글은 열 수 없다). */
+    joinedEpoch: integer("joined_epoch").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.diaryId, table.userId] }),
+    index("diary_audience_user_idx").on(table.userId),
+  ],
+);
+
+/** 일기 글 1건. 본문·제목은 ciphertext 안에만 있다. */
+export const diaryEntries = pgTable(
+  "diary_entries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    diaryId: uuid("diary_id")
+      .notNull()
+      .references(() => diaries.id, { onDelete: "cascade" }),
+    authorUserId: uuid("author_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    authorDeviceId: uuid("author_device_id")
+      .notNull()
+      .references(() => devices.id),
+    /** 기기 폐기 후에도 서명을 검증할 수 있도록 스냅샷을 남긴다. */
+    authorSigningPublicKey: text("author_signing_public_key").notNull(),
+    /** 이 글이 암호화된 키 세대. 대상 변경 이후 글은 더 큰 값을 가진다. */
+    keyEpoch: integer("key_epoch").notNull(),
+    /** 클라이언트가 만든 멱등 키(재전송 중복 방지). */
+    clientEntryId: uuid("client_entry_id").notNull(),
+    ciphertext: text("ciphertext").notNull(),
+    nonce: text("nonce").notNull(),
+    signature: text("signature").notNull(),
+    /** 작성 시점 대상자 수(감사·표시용 메타데이터). */
+    recipientCount: integer("recipient_count").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("diary_entries_client_uq").on(table.authorUserId, table.clientEntryId),
+    index("diary_entries_diary_created_idx").on(table.diaryId, table.createdAt),
+  ],
+);
+
+/** 글 1건의 수신 기기별 봉투(메시지와 동일한 v1/v2 형식). */
+export const diaryEntryKeys = pgTable(
+  "diary_entry_keys",
+  {
+    entryId: uuid("entry_id")
+      .notNull()
+      .references(() => diaryEntries.id, { onDelete: "cascade" }),
+    recipientDeviceId: uuid("recipient_device_id")
+      .notNull()
+      .references(() => devices.id),
+    ephemeralPublicKey: text("ephemeral_public_key"),
+    ratchetPublicKey: text("ratchet_public_key"),
+    previousChainLength: integer("previous_chain_length"),
+    messageNumber: integer("message_number"),
+    senderIdentityPublicKey: text("sender_identity_public_key"),
+    signedPreKeyId: text("signed_pre_key_id"),
+    oneTimePreKeyId: text("one_time_pre_key_id"),
+    wrappedKey: text("wrapped_key"),
+    wrapNonce: text("wrap_nonce"),
+    version: integer("version").notNull().default(1),
+  },
+  (table) => [
+    primaryKey({ columns: [table.entryId, table.recipientDeviceId] }),
+    index("diary_entry_keys_device_idx").on(table.recipientDeviceId),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
@@ -890,6 +999,10 @@ export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
 export type AuthEventRow = typeof authEvents.$inferSelect;
 export type SignupInviteRow = typeof signupInvites.$inferSelect;
 export type SignupRequestRow = typeof signupRequests.$inferSelect;
+export type DiaryRow = typeof diaries.$inferSelect;
+export type DiaryAudienceRow = typeof diaryAudience.$inferSelect;
+export type DiaryEntryRow = typeof diaryEntries.$inferSelect;
+export type DiaryEntryKeyRow = typeof diaryEntryKeys.$inferSelect;
 export type OAuthStateRow = typeof oauthStates.$inferSelect;
 export type OAuthTicketRow = typeof oauthTickets.$inferSelect;
 export type CallLogRow = typeof callLogs.$inferSelect;

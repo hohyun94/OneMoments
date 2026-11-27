@@ -73,7 +73,25 @@ export async function uploadDiaryPhoto(input: {
   };
 }
 
-/** 사진 1장 내려받아 복호화하고 표시용 blob URL 을 만든다. */
+/**
+ * 본문 HTML 의 `data-diary-photo` 참조를 실제 blob URL 로 치환한다.
+ *
+ * 반드시 **새니타이즈 전에** 호출해야 한다(새니타이저는 src 없는 img 를 제거하고,
+ * blob: 만 허용하므로 순서를 바꾸면 사진이 사라진다).
+ */
+export function inlineDiaryPhotoUrls(html: string, urls: Map<string, string>): string {
+  return html.replace(
+    /<img([^>]*?)data-diary-photo="([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"([^>]*?)>/gi,
+    (match, before: string, id: string, after: string) => {
+      const url = urls.get(id.toLowerCase());
+      if (!url) return "";
+      const head = before.replace(/\s*src="[^"]*"/gi, "");
+      const tail = after.replace(/\s*src="[^"]*"/gi, "");
+      return `<img${head} src="${url}"${tail}>`;
+    },
+  );
+}
+
 export async function loadDiaryPhoto(ref: DiaryPhotoRef): Promise<string> {
   const response = await fetch(`/api/diaries/attachments/${ref.id}`, {
     credentials: "same-origin",

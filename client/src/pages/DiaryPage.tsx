@@ -8,6 +8,7 @@ import { api } from "../lib/api.ts";
 import { decryptDiaryEntry, encryptDiaryEntry } from "../lib/diary.ts";
 import {
   encodeDiaryPayload,
+  inlineDiaryPhotoUrls,
   loadDiaryPhoto,
   parseDiaryPayload,
   uploadDiaryPhoto,
@@ -149,6 +150,18 @@ export function DiaryPage() {
     }
   }
 
+  /** 파일 선택 대화상자를 띄워 이미지 1장을 고른다. */
+  function pickImageFile(): Promise<File | null> {
+    return new Promise((resolve) => {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.onchange = () => resolve(input.files?.[0] ?? null);
+      input.oncancel = () => resolve(null);
+      input.click();
+    });
+  }
+
   /** 작성자가 나인 글을 편집 모드로 연다(사진은 기존 참조 유지). */
   async function startEdit(entryId: string) {
     if (!identity) return;
@@ -264,7 +277,6 @@ export function DiaryPage() {
       const body = await api<EntryBody>(`/api/diaries/entries/${entryId}`);
       const plain = parseDiaryPayload(await decryptDiaryEntry(identity, body));
       setOpenedId(entryId);
-      setOpenedHtml(plain.html);
       setOpenedPhotos([]);
       const loaded = await Promise.all(
         plain.photos.map(async (photo) => ({
@@ -273,6 +285,8 @@ export function DiaryPage() {
         })),
       );
       setOpenedPhotos(loaded.filter((photo) => photo.url.length > 0));
+      const inlineUrls = new Map(loaded.map((photo) => [photo.id.toLowerCase(), photo.url]));
+      setOpenedHtml(inlineDiaryPhotoUrls(plain.html, inlineUrls));
     } catch {
       setError(t("diary.openFailed"));
     } finally {
@@ -666,7 +680,18 @@ export function DiaryPage() {
 
           <Card className="space-y-2 p-4">
             <p className="text-sm font-medium text-zinc-900">{t("diary.write")}</p>
-            <RichTextEditor value={html} onChange={setHtml} />
+            <RichTextEditor
+              value={html}
+              onChange={setHtml}
+              onInsertPhoto={async () => {
+                const file = await pickImageFile();
+                if (!file) return null;
+                const ref = await uploadDiaryPhoto({ file, clientEntryId: draftId });
+                setPhotos((current) => [...current, ref]);
+                const url = await loadDiaryPhoto(ref);
+                return { id: ref.id, url };
+              }}
+            />
             <div className="flex flex-wrap items-center gap-2">
               <label
                 className="cursor-pointer rounded-lg border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"

@@ -32,7 +32,13 @@ const ALLOWED_TAGS = new Set([
   "code",
   "hr",
   "a",
+  "img",
 ]);
+
+/** `img` 는 로컬에서 만든 blob: 또는 data:image 만 허용한다(외부 URL·스크립트 차단). */
+const SAFE_IMAGE_SRC = /^(blob:|data:image\/)/i;
+/** 본문에 심는 사진 참조 id(서버 첨부 id, UUID). */
+const DIARY_PHOTO_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const DROP_WITH_CONTENT = new Set([
   "script",
@@ -106,10 +112,25 @@ export function sanitizeDiaryHtml(html: string): string {
           continue;
         }
         if (tag === "a" && (name === "target" || name === "rel")) continue;
+        if (tag === "img") {
+          if (name === "src") {
+            const src = attribute.value.trim();
+            if (SAFE_IMAGE_SRC.test(src)) element.setAttribute("src", src);
+            else element.removeAttribute("src");
+            continue;
+          }
+          if (name === "alt") continue;
+          if (name === "data-diary-photo" && DIARY_PHOTO_ID.test(attribute.value.trim())) continue;
+        }
         if (name === "class" && attribute.value.split(/\s+/).every((token) => token.startsWith("diary-"))) {
           continue;
         }
         element.removeAttribute(attribute.name);
+      }
+      if (tag === "img" && !element.getAttribute("src")) {
+        // 출처가 없거나 안전하지 않은 이미지는 통째로 걷어낸다.
+        element.remove();
+        continue;
       }
       if (tag === "a" && element.getAttribute("href")) {
         element.setAttribute("rel", "noopener noreferrer");

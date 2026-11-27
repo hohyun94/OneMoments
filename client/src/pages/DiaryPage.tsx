@@ -28,7 +28,7 @@ type DiaryDevice = {
 };
 type DiaryMember = { userId: string; username: string; isOwner: boolean; devices: DiaryDevice[] };
 type DiaryDetail = { id: string; label: string | null; keyEpoch: number; isOwner: boolean; members: DiaryMember[] };
-type EntrySummary = { id: string; authorUsername: string; createdAt: string };
+type EntrySummary = { id: string; authorUserId: string; authorUsername: string; createdAt: string };
 type EntryBody = {
   id: string;
   diaryId: string;
@@ -49,7 +49,7 @@ function when(value: string, locale: string): string {
 /** 일기장 — 만료 없이 보관되고 지정한 대상에게만 공개. 글은 암호문으로만 저장한다. */
 export function DiaryPage() {
   const { t, locale } = useI18n();
-  const { identity } = useSession();
+  const { identity, session } = useSession();
   const [diaries, setDiaries] = useState<DiarySummary[]>([]);
   const [detail, setDetail] = useState<DiaryDetail | null>(null);
   const [entries, setEntries] = useState<EntrySummary[]>([]);
@@ -126,6 +126,8 @@ export function DiaryPage() {
   /** 작성 중인 글의 멱등 키 — 사진 업로드와 글 저장이 같은 값을 쓴다. */
   const [draftId, setDraftId] = useState<string>(() => crypto.randomUUID());
   /** 사진 미리보기(라이트박스): 현재 글의 사진 URL 목록과 선택 인덱스. */
+  /** 수정 중인 글 id(있으면 저장 시 PUT). */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ urls: string[]; index: number } | null>(null);
 
   /** 사진 선택 → 즉시 암호화 업로드. 글 저장 시 같은 clientEntryId 로 연결된다. */
@@ -147,6 +149,31 @@ export function DiaryPage() {
     }
   }
 
+  /** 작성자가 나인 글을 편집 모드로 연다(사진은 기존 참조 유지). */
+  async function startEdit(entryId: string) {
+    if (!identity) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const body = await api<EntryBody>(`/api/diaries/entries/${entryId}`);
+      const plain = parseDiaryPayload(await decryptDiaryEntry(identity, body));
+      setHtml(plain.html);
+      setPhotos(plain.photos);
+      setEditingId(entryId);
+    } catch {
+      setError(t("diary.openFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setHtml("");
+    setPhotos([]);
+    setDraftId(crypto.randomUUID());
+  }
+
   async function saveEntry() {
     if (!identity || !detail) return;
     if (isDiaryHtmlEmpty(html)) {
@@ -163,18 +190,24 @@ export function DiaryPage() {
         devices,
         clientEntryId: draftId,
       });
-      await api(`/api/diaries/${detail.id}/entries`, {
-        method: "POST",
-        body: {
-          clientEntryId: encrypted.clientEntryId,
-          ciphertext: encrypted.ciphertext,
-          nonce: encrypted.nonce,
-          signature: encrypted.signature,
-          keys: encrypted.keys,
+      await api(
+        editingId
+          ? `/api/diaries/entries/${editingId}`
+          : `/api/diaries/${detail.id}/entries`,
+        {
+          method: editingId ? "PUT" : "POST",
+          body: {
+            ...(editingId ? {} : { clientEntryId: encrypted.clientEntryId }),
+            ciphertext: encrypted.ciphertext,
+            nonce: encrypted.nonce,
+            signature: encrypted.signature,
+            keys: encrypted.keys,
+          },
         },
-      });
+      );
       setHtml("");
       setPhotos([]);
+      setEditingId(null);
       setDraftId(crypto.randomUUID());
       await openDiary(detail.id);
     } catch {
@@ -696,6 +729,15 @@ export function DiaryPage() {
                           {when(entry.createdAt, locale)}
                         </span>
                       </button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        aria-label={t("diary.edit")}
+                        disabled={entry.authorUserId !== session?.user.id}
+                        onClick={() => void startEdit(entry.id)}
+                      >
+                        {t("diary.edit")}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="sm"

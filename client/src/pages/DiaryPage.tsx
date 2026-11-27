@@ -107,6 +107,8 @@ export function DiaryPage() {
   const [photoBusy, setPhotoBusy] = useState(false);
   /** 작성 중인 글의 멱등 키 — 사진 업로드와 글 저장이 같은 값을 쓴다. */
   const [draftId, setDraftId] = useState<string>(() => crypto.randomUUID());
+  /** 사진 미리보기(라이트박스): 현재 글의 사진 URL 목록과 선택 인덱스. */
+  const [preview, setPreview] = useState<{ urls: string[]; index: number } | null>(null);
 
   /** 사진 선택 → 즉시 암호화 업로드. 글 저장 시 같은 clientEntryId 로 연결된다. */
   async function addPhotos(files: FileList | null) {
@@ -346,6 +348,71 @@ export function DiaryPage() {
 
       {error ? <Alert variant="error">{error}</Alert> : null}
       {notice ? <Alert>{notice}</Alert> : null}
+
+      {preview ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("diary.photo")}
+          onClick={() => setPreview(null)}
+        >
+          <img
+            src={preview.urls[preview.index]}
+            alt={t("diary.photo")}
+            className="max-h-full max-w-full rounded-lg"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setPreview(null)}
+            aria-label={t("lightbox.close")}
+            className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm text-zinc-800"
+          >
+            ×
+          </button>
+          {preview.urls.length > 1 ? (
+            <>
+              <button
+                type="button"
+                aria-label={t("diary.photoPrev")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreview((current) =>
+                    current
+                      ? {
+                          urls: current.urls,
+                          index: (current.index - 1 + current.urls.length) % current.urls.length,
+                        }
+                      : current,
+                  );
+                }}
+                className="absolute left-4 rounded-full bg-white/90 px-3 py-2 text-lg text-zinc-800"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                aria-label={t("diary.photoNext")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreview((current) =>
+                    current
+                      ? { urls: current.urls, index: (current.index + 1) % current.urls.length }
+                      : current,
+                  );
+                }}
+                className="absolute right-4 rounded-full bg-white/90 px-3 py-2 text-lg text-zinc-800"
+              >
+                ›
+              </button>
+              <span className="absolute bottom-6 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white">
+                {preview.index + 1} / {preview.urls.length}
+              </span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       {creating ? (
         <Card className="space-y-3 p-4">
@@ -603,10 +670,18 @@ export function DiaryPage() {
                             alt={t("diary.photo")}
                             role="button"
                             tabIndex={0}
-                            onClick={() => window.open(photo.url, "_blank", "noopener,noreferrer")}
+                            onClick={() =>
+                              setPreview({
+                                urls: openedPhotos.map((item) => item.url),
+                                index: openedPhotos.findIndex((item) => item.id === photo.id),
+                              })
+                            }
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
-                                window.open(photo.url, "_blank", "noopener,noreferrer");
+                                setPreview({
+                                  urls: openedPhotos.map((item) => item.url),
+                                  index: openedPhotos.findIndex((item) => item.id === photo.id),
+                                });
                               }
                             }}
                             className="h-24 w-24 cursor-pointer rounded-lg border border-zinc-200 object-cover"

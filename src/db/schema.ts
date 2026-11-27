@@ -856,6 +856,8 @@ export const signupRequests = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     /** 거절 사유(관리자 메모). 승인 시에는 비운다. */
     reviewNote: text("review_note"),
+    /** 신청자가 승인 후 실제로 가입을 마친 시각(1회용). */
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

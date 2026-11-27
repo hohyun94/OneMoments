@@ -69,7 +69,12 @@ interface SessionContextValue {
   identity: StoredIdentity | null;
   lastUsername: string;
   /** 가입. `SIGNUP_MODE=invite` 면 초대 코드가 필요하다. */
-  register: (username: string, password: string, inviteCode?: string) => Promise<void>;
+  register: (
+    username: string,
+    password: string,
+    inviteCode?: string,
+    signupRequestToken?: string,
+  ) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
   recover: (username: string, passphrase: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -335,7 +340,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const register = useCallback(async (username: string, password: string, inviteCode?: string) => {
+  const register = useCallback(
+    async (
+      username: string,
+      password: string,
+      inviteCode?: string,
+      signupRequestToken?: string,
+    ) => {
     const generated = await createIdentity();
     const response = await api<AuthResponse>("/api/auth/register", {
       method: "POST",
@@ -344,6 +355,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         username,
         password,
         ...(inviteCode ? { inviteCode } : {}),
+        ...(signupRequestToken ? { signupRequestToken } : {}),
         device: {
           name: deviceName(),
           platform: currentPlatform(),

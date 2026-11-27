@@ -63,6 +63,8 @@ export const registerBodySchema = z.object({
   device: deviceKeysSchema,
   /** `SIGNUP_MODE=invite` 일 때 필수(서버가 정규화해 검증). */
   inviteCode: z.string().trim().max(64).optional(),
+  /** 승인된 가입 신청 토큰(있으면 초대 코드 없이 가입). */
+  signupRequestToken: z.string().trim().min(20).max(200).optional(),
 });
 
 /** 관리자: 가입 초대 코드 발급. */

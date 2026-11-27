@@ -13,8 +13,8 @@ type StatusView = {
   username: string;
   requestedAt: string;
   decidedAt: string | null;
-  inviteCode: string | null;
   completed: boolean;
+  completedAt: string | null;
   reviewNote: string | null;
 };
 
@@ -39,14 +39,14 @@ function storeToken(token: string | null): void {
  * 가입 신청서 — 아이디와 한 줄 소개만 보낸다.
  *
  * 비밀번호·기기 키는 **승인 후** 가입 단계에서 입력한다(서버는 승인 전 비밀 정보를 받지 않는다).
- * 승인되면 1회용 초대 코드가 내려오고, `onUseCode` 로 가입 폼에 그 코드를 채워 준다.
+ * 승인되면 `approved` 가 되고, `onContinue` 로 신청 토큰을 넘겨 곧바로 가입을 마치게 한다(코드 교환 없음).
  */
 export function SignupRequestForm({
   defaultUsername,
-  onUseCode,
+  onContinue,
 }: {
   defaultUsername: string;
-  onUseCode: (code: string) => void;
+  onContinue: (token: string) => void;
 }) {
   const { t } = useI18n();
   const [username, setUsername] = useState(defaultUsername);
@@ -55,7 +55,6 @@ export function SignupRequestForm({
   const [view, setView] = useState<StatusView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
   async function refresh(current: string) {
     setBusy(true);
@@ -119,17 +118,6 @@ export function SignupRequestForm({
     setView(null);
     setNote("");
     setError(null);
-    setCopied(false);
-  }
-
-  async function copyCode(code: string) {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1_500);
-    } catch {
-      setCopied(false);
-    }
   }
 
   // 신청 전 — 신청서.
@@ -181,7 +169,7 @@ export function SignupRequestForm({
   }
 
 
-  const approved = view.status === "approved" && view.inviteCode !== null;
+  const approved = view.status === "approved" && !view.completed;
 
   return (
     <div className="space-y-4">
@@ -215,24 +203,9 @@ export function SignupRequestForm({
       </div>
 
       {approved ? (
-        <div className="space-y-2">
-          <code className="block rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-center font-mono text-sm tracking-widest text-emerald-900">
-            {view.inviteCode}
-          </code>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              className="flex-1"
-              onClick={() => void copyCode(view.inviteCode ?? "")}
-            >
-              {copied ? t("signup.request.copied") : t("signup.request.copy")}
-            </Button>
-            <Button type="button" className="flex-1" onClick={() => onUseCode(view.inviteCode ?? "")}>
-              {t("signup.request.useCode")}
-            </Button>
-          </div>
-        </div>
+        <Button type="button" className="w-full" onClick={() => onContinue(token)}>
+          {t("signup.request.continue")}
+        </Button>
       ) : null}
 
       {view.status === "pending" ? (

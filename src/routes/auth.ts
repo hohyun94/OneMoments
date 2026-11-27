@@ -126,7 +126,16 @@ export function createAuthRouter(db: Database, config: Config): Router {
       // invite 모드에서는 초대 코드가 필수이며, 계정 생성과 같은 트랜잭션에서 소모된다.
       const inviteCode =
         config.signupMode === "invite" ? body.inviteCode : undefined;
-      if (config.signupMode === "invite" && normalizeInviteCode(inviteCode ?? "").length === 0) {
+      // 승인된 가입 신청 토큰이 있으면 초대 코드 없이 가입할 수 있다(승인 = 가입 권한).
+      const hasApprovedRequest = Boolean(body.signupRequestToken);
+      if (hasApprovedRequest && !config.signupRequestEnabled) {
+        throw AppError.forbidden("가입 신청이 비활성화되어 있습니다.");
+      }
+      if (
+        config.signupMode === "invite" &&
+        !hasApprovedRequest &&
+        normalizeInviteCode(inviteCode ?? "").length === 0
+      ) {
         throw AppError.badRequest("INVITE_REQUIRED", "초대 코드가 필요합니다.");
       }
       const keys = normalizeDeviceKeys(body.device);
@@ -136,6 +145,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         deviceName: body.device.name,
         platform: body.device.platform,
         inviteCode,
+        signupRequestToken: body.signupRequestToken,
         ...keys,
       });
 

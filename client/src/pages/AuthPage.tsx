@@ -67,6 +67,8 @@ export function AuthPage() {
   const [inviteCode, setInviteCode] = useState("");
   /** 가입 경로: 초대 코드 / 가입 신청(관리자 승인). */
   const [signupPath, setSignupPath] = useState<"invite" | "request">("invite");
+  /** 승인된 가입 신청 토큰(있으면 초대 코드 없이 가입). */
+  const [signupRequestToken, setSignupRequestToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -83,7 +85,12 @@ export function AuthPage() {
     try {
       if (mode === "login") await login(username, password);
       else if (mode === "register")
-        await register(username, password, inviteCode.trim() || undefined);
+        await register(
+          username,
+          password,
+          inviteCode.trim() || undefined,
+          signupRequestToken ?? undefined,
+        );
       else await recover(username, password);
     } catch (caught) {
       if (
@@ -204,8 +211,8 @@ export function AuthPage() {
           {mode === "register" && signupRequestEnabled && signupMode !== "open" && signupPath === "request" ? (
             <SignupRequestForm
               defaultUsername={username}
-              onUseCode={(code) => {
-                setInviteCode(code);
+              onContinue={(next) => {
+                setSignupRequestToken(next);
                 setSignupPath("invite");
               }}
             />
@@ -271,7 +278,13 @@ export function AuthPage() {
               </div>
             ) : null}
 
-            {mode === "register" && signupMode === "invite" ? (
+            {mode === "register" && signupRequestToken ? (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs leading-relaxed text-emerald-800">
+                {t("signup.request.approvedNote")}
+              </p>
+            ) : null}
+
+            {mode === "register" && signupMode === "invite" && !signupRequestToken ? (
               <div className="space-y-1.5">
                 <Label htmlFor="invite-code">{t("auth.invite.code")}</Label>
                 <Input

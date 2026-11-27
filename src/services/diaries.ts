@@ -26,6 +26,8 @@ import { AppError } from "../http/errors.js";
 export const MAX_DIARY_AUDIENCE = 20;
 export const MAX_DIARY_LABEL = 40;
 export const DEFAULT_ENTRY_LIMIT = 30;
+/** 일기 본문 상한(기본 64KB). 메시지(16KB)보다 길게 쓰는 글을 허용한다. */
+export const DIARY_MAX_CIPHERTEXT_BYTES = 64 * 1024;
 
 export interface DiaryDevice {
   id: string;
@@ -376,7 +378,10 @@ export async function createDiaryEntry(
       signature: input.signature,
       keys: input.keys as never,
     },
-    { maxCiphertextBytes: config.maxCiphertextBytes, maxEnvelopes: config.maxEnvelopes },
+    {
+      maxCiphertextBytes: Math.max(config.maxCiphertextBytes, DIARY_MAX_CIPHERTEXT_BYTES),
+      maxEnvelopes: config.maxEnvelopes,
+    },
   );
   if (payload.keys.length === 0) {
     throw AppError.badRequest("INVALID_ENVELOPE", "At least one device envelope is required");
@@ -644,7 +649,10 @@ export async function updateDiaryEntry(
       signature: input.signature,
       keys: input.keys as never,
     },
-    { maxCiphertextBytes: config.maxCiphertextBytes, maxEnvelopes: config.maxEnvelopes },
+    {
+      maxCiphertextBytes: Math.max(config.maxCiphertextBytes, DIARY_MAX_CIPHERTEXT_BYTES),
+      maxEnvelopes: config.maxEnvelopes,
+    },
   );
   if (payload.keys.length === 0) {
     throw AppError.badRequest("INVALID_ENVELOPE", "At least one device envelope is required");

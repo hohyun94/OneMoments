@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RichTextEditor } from "../components/RichTextEditor.tsx";
 import { Alert, Button, Card, Spinner, cn } from "../components/ui.tsx";
 import { useI18n } from "../i18n.tsx";
-import { api } from "../lib/api.ts";
+import { ApiError, api } from "../lib/api.ts";
 import { decryptDiaryEntry, encryptDiaryEntry } from "../lib/diary.ts";
 import {
   encodeDiaryPayload,
@@ -226,8 +226,9 @@ export function DiaryPage() {
       setEditingId(null);
       setDraftId(crypto.randomUUID());
       await openDiary(detail.id);
-    } catch {
-      setError(t("diary.saveFailed"));
+    } catch (caught) {
+      const code = caught instanceof ApiError ? caught.code : "";
+      setError(code ? `${t("diary.saveFailed")} (${code})` : t("diary.saveFailed"));
     } finally {
       setBusy(false);
     }

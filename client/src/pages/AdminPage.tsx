@@ -1,10 +1,11 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+﻿import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, KeyRound, RefreshCw, Search, ShieldAlert, Smartphone } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AdminDecoyPanel } from "../components/AdminDecoyPanel.tsx";
 import { AdminSignupInvitesPanel } from "../components/AdminSignupInvitesPanel.tsx";
+import { AdminSignupRequestsPanel } from "../components/AdminSignupRequestsPanel.tsx";
 import { AdminDevicesPanel } from "../components/AdminDevicesPanel.tsx";
 import { Alert, Avatar, Button, Card, Dialog, Input, Label, Spinner } from "../components/ui.tsx";
 import { api } from "../lib/api.ts";
@@ -26,6 +27,7 @@ const TABS = [
   { id: "devices", label: "admin.tab.devices" },
   { id: "decoy", label: "admin.tab.decoy" },
   { id: "invites", label: "admin.tab.invites" },
+  { id: "requests", label: "admin.tab.requests" },
   { id: "audit", label: "admin.tab.audit" },
 ] as const;
 
@@ -40,6 +42,8 @@ const AUTH_EVENT_LABELS: Record<string, string> = {
   device_revoked: "admin.event.deviceRevoked",
   recover: "admin.event.recover",
   admin_sessions_revoked: "admin.event.adminSessionsRevoked",
+  admin_signup_invite_created: "admin.event.signupInviteCreated",
+  admin_signup_invite_revoked: "admin.event.signupInviteRevoked",
 };
 
 const ACTION_LABELS: Record<string, string> = {
@@ -48,6 +52,8 @@ const ACTION_LABELS: Record<string, string> = {
   "decoy.password.rotated": "admin.action.decoyRotated",
   "decoy.disabled": "admin.action.decoyDisabled",
   "decoy.enabled": "admin.action.decoyEnabled",
+  "signup.request.approved": "admin.action.signupRequestApproved",
+  "signup.request.rejected": "admin.action.signupRequestRejected",
 };
 
 function formatDateTime(value: string | null, locale: string = "ko"): string {
@@ -161,6 +167,7 @@ export function AdminPage() {
         {tab === "devices" ? <AdminDevicesPanel /> : null}
         {tab === "decoy" ? <AdminDecoyPanel /> : null}
       {tab === "invites" ? <AdminSignupInvitesPanel /> : null}
+      {tab === "requests" ? <AdminSignupRequestsPanel /> : null}
         {tab === "audit" ? <AuditTab /> : null}
       </main>
     </div>

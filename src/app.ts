@@ -23,6 +23,7 @@ import { createDevicesRouter, createUsersRouter } from "./routes/devices.js";
 import { createLinkPreviewRouter } from "./routes/linkPreview.js";
 import { createPushRouter } from "./routes/push.js";
 import { createInvitesRouter } from "./routes/invites.js";
+import { createSignupRequestsRouter } from "./routes/signupRequests.js";
 import { createMomentsRouter } from "./routes/moments.js";
 
 export interface AppOptions {
@@ -127,6 +128,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/auth/google", createGoogleOAuthRouter(db, config));
   app.use("/api/auth", createAuthRouter(db, config));
   app.use("/api/admin", createAdminRouter(db, config));
+  app.use("/api/signup-requests", createSignupRequestsRouter(db, config));
   app.use("/api/devices", createDevicesRouter(db, config));
   app.use("/api/users", createUsersRouter(db, config));
   app.use("/api/push", createPushRouter(db, config));

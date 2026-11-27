@@ -5,6 +5,7 @@ import { ApiError } from "../lib/api.ts";
 import { BackupError } from "../lib/crypto/index.ts";
 import { GoogleButton } from "../components/GoogleButton.tsx";
 import { LanguageToggle } from "../components/LanguageToggle.tsx";
+import { SignupRequestForm } from "../components/SignupRequestForm.tsx";
 import { Alert, Button, Card, Input, Label, PasswordInput, Spinner, cn } from "../components/ui.tsx";
 import { useI18n } from "../i18n.tsx";
 import { useSession } from "../session.tsx";
@@ -47,8 +48,16 @@ function messageOf(
 }
 
 export function AuthPage() {
-  const { login, register, recover, lastUsername, oauthEnabled, startGoogle, signupMode } =
-    useSession();
+  const {
+    login,
+    register,
+    recover,
+    lastUsername,
+    oauthEnabled,
+    startGoogle,
+    signupMode,
+    signupRequestEnabled,
+  } = useSession();
   const { t } = useI18n();
   const [mode, setMode] = useState<"login" | "register" | "recover">("login");
   const [username, setUsername] = useState(lastUsername);
@@ -56,6 +65,8 @@ export function AuthPage() {
   const [confirm, setConfirm] = useState("");
   /** 초대제(invite)에서만 사용하는 가입 코드. */
   const [inviteCode, setInviteCode] = useState("");
+  /** 가입 경로: 초대 코드 / 가입 신청(관리자 승인). */
+  const [signupPath, setSignupPath] = useState<"invite" | "request">("invite");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -162,6 +173,43 @@ export function AuthPage() {
             </div>
           ) : null}
 
+          {mode === "register" && signupRequestEnabled && signupMode !== "open" ? (
+            <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-zinc-100 p-1">
+              {(
+                [
+                  { value: "invite", label: t("signup.path.invite") },
+                  { value: "request", label: t("signup.path.request") },
+                ] as const
+              ).map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => {
+                    setSignupPath(item.value);
+                    setError(null);
+                  }}
+                  className={
+                    signupPath === item.value
+                      ? "rounded-md bg-white px-3 py-2 text-sm font-medium text-zinc-900 shadow-sm"
+                      : "rounded-md px-3 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-700"
+                  }
+                  aria-pressed={signupPath === item.value}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {mode === "register" && signupRequestEnabled && signupMode !== "open" && signupPath === "request" ? (
+            <SignupRequestForm
+              defaultUsername={username}
+              onUseCode={(code) => {
+                setInviteCode(code);
+                setSignupPath("invite");
+              }}
+            />
+          ) : (
           <form className="space-y-4" onSubmit={onSubmit}>
             <div className="space-y-1.5">
               <Label htmlFor="username">{t("auth.username.label")}</Label>
@@ -225,7 +273,7 @@ export function AuthPage() {
 
             {mode === "register" && signupMode === "invite" ? (
               <div className="space-y-1.5">
-                <Label htmlFor="invite-code">초대 코드</Label>
+                <Label htmlFor="invite-code">{t("auth.invite.code")}</Label>
                 <Input
                   id="invite-code"
                   name="inviteCode"
@@ -236,10 +284,10 @@ export function AuthPage() {
                   maxLength={32}
                   value={inviteCode}
                   onChange={(event) => setInviteCode(event.target.value)}
-                  placeholder="관리자에게 받은 코드"
+                  placeholder={t("auth.invite.placeholder")}
                 />
                 <p className="text-[11px] text-zinc-400">
-                  현재는 초대받은 사람만 가입할 수 있습니다.
+                  {t("auth.invite.note")}
                 </p>
               </div>
             ) : null}
@@ -267,6 +315,7 @@ export function AuthPage() {
                   : t("auth.submit.recover")}
             </Button>
           </form>
+          )}
         </Card>
 
         <p className="mt-5 text-center text-xs leading-relaxed text-zinc-500">

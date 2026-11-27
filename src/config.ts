@@ -108,6 +108,11 @@ const envSchema = z.object({
   OAUTH_TICKET_TTL_SECONDS: z.coerce.number().int().min(60).max(1800).default(600),
   // 가입 정책: open(누구나) / invite(초대 코드 필요) / closed(가입 중지)
   SIGNUP_MODE: z.enum(["open", "invite", "closed"]).default("open"),
+  /**
+   * 가입 신청(관리자 승인형) 허용 여부. 초대 코드 경로와 **함께** 켤 수 있다.
+   * 승인되면 1회용 초대 코드가 발급되고, 신청자는 그 코드로 가입을 완료한다.
+   */
+  SIGNUP_REQUEST_ENABLED: z.enum(["true", "false"]).default("false"),
   // 링크 미리보기: 서버가 외부 OG 메타데이터를 대신 가져온다(SSRF 방어 적용).
   LINK_PREVIEW_ENABLED: z.enum(["true", "false"]).default("true"),
   // 지도 타일 템플릿(예: https://tile.openstreetmap.org/{z}/{x}/{y}.png).
@@ -145,6 +150,8 @@ export interface Config {
   adminUsernames: string[];
   /** 가입 정책(open/invite/closed). invite 면 관리자 발급 초대 코드가 필요하다. */
   signupMode: "open" | "invite" | "closed";
+  /** 가입 신청(관리자 승인형) 허용 여부. 승인 시 1회용 초대 코드를 발급한다. */
+  signupRequestEnabled: boolean;
   /** 링크 미리보기(서버가 외부 OG 메타데이터를 대신 가져옴) */
   linkPreviewEnabled: boolean;
   /** 지도 타일 템플릿(없으면 지도 이미지 기능 비활성). */
@@ -316,6 +323,7 @@ export function loadConfig(env: Env = process.env): Config {
       .map((username) => username.trim().toLowerCase())
       .filter((username) => username.length > 0),
     signupMode: value.SIGNUP_MODE,
+    signupRequestEnabled: value.SIGNUP_REQUEST_ENABLED === "true",
     linkPreviewEnabled: value.LINK_PREVIEW_ENABLED === "true",
     mapTileUrl: value.MAP_TILE_URL.trim() === "" ? null : value.MAP_TILE_URL.trim(),
     mapTileOrigin: tileOriginOf(value.MAP_TILE_URL.trim()),

@@ -76,6 +76,27 @@ export const signupInviteParamsSchema = z.object({
   inviteId: z.string().uuid(),
 });
 
+/** 가입 신청(관리자 승인형). 비밀번호·기기 키는 승인 전에 받지 않는다. */
+export const signupRequestBodySchema = z.object({
+  username: usernameSchema,
+  /** 선택: 관리자에게 보여줄 한 줄 소개. */
+  note: z.string().trim().max(200).optional(),
+});
+
+/** 신청 상태 조회(신청 시 1회 발급한 토큰). */
+export const signupRequestStatusQuerySchema = z.object({
+  token: z.string().trim().min(20).max(200),
+});
+
+export const signupRequestParamsSchema = z.object({
+  requestId: z.string().uuid(),
+});
+
+/** 관리자: 가입 신청 거절(사유 선택). */
+export const rejectSignupRequestBodySchema = z.object({
+  note: z.string().trim().max(200).optional(),
+});
+
 export const signedPreKeyBodySchema = z.object({
   signedPreKey: signedPreKeySchema,
 });

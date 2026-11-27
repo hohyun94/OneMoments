@@ -1,4 +1,4 @@
-import { Router } from "express";
+﻿import { Router } from "express";
 
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
@@ -21,7 +21,9 @@ import {
   decoyDisabledBodySchema,
   decoyPasswordBodySchema,
   decoyProfileParamsSchema,
+  rejectSignupRequestBodySchema,
   signupInviteParamsSchema,
+  signupRequestParamsSchema,
 } from "../http/validation.js";
 import {
   getAdminDeviceSessions,
@@ -34,6 +36,11 @@ import {
   revokeDeviceSessions,
   revokeUserSessions,
 } from "../services/admin.js";
+import {
+  approveSignupRequest,
+  listSignupRequests,
+  rejectSignupRequest,
+} from "../services/signupRequests.js";
 import {
   createDecoyProfile,
   listDecoyProfiles,
@@ -138,6 +145,73 @@ export function createAdminRouter(db: Database, config: Config): Router {
         userAgent: null,
       });
       res.json({ revoked });
+    }),
+  );
+
+  /** 가입 신청 목록(관리자 승인 대기 포함). */
+  router.get(
+    "/signup-requests",
+    asyncHandler(async (_req, res) => {
+      const requests = await listSignupRequests(db);
+      res.json({ requests, signupRequestEnabled: config.signupRequestEnabled });
+    }),
+  );
+
+  /** 승인 — 1회용 초대 코드를 발급하고, 그 코드를 응답에 담아 관리자가 신청자에게 전달한다. */
+  router.post(
+    "/signup-requests/:requestId/approve",
+    csrf,
+    decoyLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { requestId } = signupRequestParamsSchema.parse(req.params);
+      const { request, invite } = await approveSignupRequest(db, {
+        requestId,
+        adminUserId: auth.userId,
+        adminUsername: auth.username,
+      });
+      res.json({
+        request: {
+          id: request.id,
+          username: request.username,
+          status: request.status,
+          decidedAt: request.decidedAt?.toISOString() ?? null,
+        },
+        invite: {
+          id: invite.id,
+          code: invite.code,
+          maxUses: invite.maxUses,
+          usedCount: invite.usedCount,
+          expiresAt: invite.expiresAt?.toISOString() ?? null,
+        },
+      });
+    }),
+  );
+
+  /** 거절 — 사유(선택)를 남긴다. */
+  router.post(
+    "/signup-requests/:requestId/reject",
+    csrf,
+    decoyLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { requestId } = signupRequestParamsSchema.parse(req.params);
+      const body = rejectSignupRequestBodySchema.parse(req.body ?? {});
+      const request = await rejectSignupRequest(db, {
+        requestId,
+        adminUserId: auth.userId,
+        adminUsername: auth.username,
+        note: body.note,
+      });
+      res.json({
+        request: {
+          id: request.id,
+          username: request.username,
+          status: request.status,
+          decidedAt: request.decidedAt?.toISOString() ?? null,
+          reviewNote: request.reviewNote,
+        },
+      });
     }),
   );
 

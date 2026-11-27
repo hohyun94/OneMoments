@@ -110,6 +110,7 @@ export function createAuthRouter(db: Database, config: Config): Router {
         oauthEnabled: config.googleOAuth !== null,
         mapTileUrl: config.mapTileUrl,
         signupMode: config.signupMode,
+        signupRequestEnabled: config.signupRequestEnabled,
       });
     }),
   );

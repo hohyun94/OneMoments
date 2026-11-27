@@ -18,6 +18,7 @@
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
+import { useNavigate } from "react-router-dom";
 import { useI18n } from "../i18n.tsx";
 import { loadAliases, subscribeAliases } from "../lib/aliases.ts";
 import { listBookmarks, removeBookmark, type BookmarkRecord } from "../lib/bookmarks.ts";
@@ -62,6 +63,8 @@ export function ConversationSidebar({
   onOpenAdmin: () => void;
   onLogout: () => void;
 }) {
+  const navigate = useNavigate();
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchableMessage[]>([]);
   const { t, locale } = useI18n();
@@ -338,7 +341,7 @@ export function ConversationSidebar({
         <Button
           variant="ghost"
           className="w-full justify-start"
-          onClick={() => { window.location.href = "/diary"; }}
+          onClick={() => navigate("/diary")}
         >
           <BookOpen className="h-4 w-4" aria-hidden />
           {t("nav.diary")}

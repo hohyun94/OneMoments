@@ -1,4 +1,4 @@
-﻿import { BookOpen, RefreshCw, Trash2 } from "lucide-react";
+﻿import { BookOpen, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { RichTextEditor } from "../components/RichTextEditor.tsx";
@@ -55,6 +55,9 @@ export function DiaryPage() {
   const [audienceOpen, setAudienceOpen] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [contacts, setContacts] = useState<Array<{ id: string; username: string }>>([]);
+  const [creating, setCreating] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newAudience, setNewAudience] = useState<Set<string>>(new Set());
 
   const openDiary = useCallback(
     async (diaryId: string) => {
@@ -149,6 +152,41 @@ export function DiaryPage() {
     }
   }
 
+  /** 연락처 목록(대상 후보). 한 번만 불러온다. */
+  async function loadContacts() {
+    if (contacts.length > 0) return;
+    try {
+      const data = await api<{ contacts: Array<{ id: string; username: string }> }>(
+        "/api/moments/contacts",
+      );
+      setContacts(data.contacts);
+    } catch {
+      setContacts([]);
+    }
+  }
+
+  /** 새 일기장 만들기 — 이름과 초기 대상을 고른다(대상은 나중에 바꿀 수 있다). */
+  async function createDiary() {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api<{ diaryId: string }>("/api/diaries", {
+        method: "POST",
+        body: { label: newLabel.trim() || undefined, audienceUserIds: [...newAudience] },
+      });
+      const list = await api<{ diaries: DiarySummary[] }>("/api/diaries");
+      setDiaries(list.diaries);
+      setCreating(false);
+      setNewLabel("");
+      setNewAudience(new Set());
+      await openDiary(created.diaryId);
+    } catch {
+      setError(t("diary.createFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   /** 대상 관리 시트를 연다 — 현재 대상자를 선택 상태로 채우고 연락처를 로드한다. */
   async function openAudience() {
     if (!detail) return;
@@ -202,13 +240,88 @@ export function DiaryPage() {
             if (detail) void openDiary(detail.id);
           }}
         >
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden
+          />
           {t("diary.refresh")}
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => {
+            setCreating((value) => !value);
+            void loadContacts();
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          {t("diary.new")}
         </Button>
       </header>
 
       {error ? <Alert variant="error">{error}</Alert> : null}
       {notice ? <Alert>{notice}</Alert> : null}
+
+      {creating ? (
+        <Card className="space-y-3 p-4">
+          <div>
+            <label className="block text-sm font-medium text-zinc-700" htmlFor="diary-new-label">
+              {t("diary.labelLabel")}
+            </label>
+            <input
+              id="diary-new-label"
+              value={newLabel}
+              maxLength={40}
+              placeholder={t("diary.labelPlaceholder")}
+              onChange={(event) => setNewLabel(event.target.value)}
+              className="mt-1 h-10 w-full rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-zinc-700">
+              {t("diary.audience", { count: newAudience.size })}
+            </p>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {contacts.length === 0 ? (
+                <p className="text-xs text-zinc-400">{t("diary.noContacts")}</p>
+              ) : (
+                contacts.map((contact) => {
+                  const on = newAudience.has(contact.id);
+                  return (
+                    <button
+                      key={contact.id}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() =>
+                        setNewAudience((current) => {
+                          const next = new Set(current);
+                          if (next.has(contact.id)) next.delete(contact.id);
+                          else next.add(contact.id);
+                          return next;
+                        })
+                      }
+                      className={cn(
+                        "rounded-full border px-2.5 py-1 text-xs",
+                        on
+                          ? "border-accent-300 bg-accent-50 text-accent-700"
+                          : "border-zinc-200 text-zinc-600 hover:bg-zinc-50",
+                      )}
+                    >
+                      @{contact.username}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => setCreating(false)}>
+              {t("chat.cancel")}
+            </Button>
+            <Button size="sm" onClick={() => void createDiary()} disabled={busy}>
+              {busy ? <Spinner /> : null}
+              {t("diary.create")}
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       {diaries.length > 1 ? (
         <div className="flex flex-wrap gap-1.5">

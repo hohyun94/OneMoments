@@ -1,7 +1,9 @@
 ﻿import express, { Router } from "express";
+import { eq } from "drizzle-orm";
 
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
+import { diaryAttachments, diaryEntries } from "../db/schema.js";
 import { AppError, asyncHandler } from "../http/errors.js";
 import { createRateLimiter, getAuth, requireCsrf, requireSession } from "../http/middleware.js";
 import {
@@ -181,7 +183,17 @@ export function createDiariesRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       const { diaryId } = diaryIdParamsSchema.parse(req.params);
-      res.json(await deleteDiary(db, { diaryId, ownerUserId: auth.userId }));
+      // 일기장을 지우면 글·첨부 행이 cascade 로 사라진다. 블롭은 미리 모아 둔다.
+      const attachmentRows = await db
+        .select({ id: diaryAttachments.id })
+        .from(diaryAttachments)
+        .innerJoin(diaryEntries, eq(diaryEntries.id, diaryAttachments.entryId))
+        .where(eq(diaryEntries.diaryId, diaryId));
+      const result = await deleteDiary(db, { diaryId, ownerUserId: auth.userId });
+      for (const row of attachmentRows) {
+        await storage.delete(row.id).catch(() => undefined);
+      }
+      res.json(result);
     }),
   );
 
@@ -260,7 +272,16 @@ export function createDiariesRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       const { entryId } = diaryEntryParamsSchema.parse(req.params);
-      res.json(await deleteDiaryEntry(db, entryId, auth.userId));
+      // 행을 지우기 전에 첨부 id 를 모아 둔다(cascade 로 사라지면 알 수 없다).
+      const attachmentRows = await db
+        .select({ id: diaryAttachments.id })
+        .from(diaryAttachments)
+        .where(eq(diaryAttachments.entryId, entryId));
+      const result = await deleteDiaryEntry(db, entryId, auth.userId);
+      for (const row of attachmentRows) {
+        await storage.delete(row.id).catch(() => undefined);
+      }
+      res.json(result);
     }),
   );
 

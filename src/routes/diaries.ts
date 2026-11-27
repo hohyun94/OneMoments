@@ -13,6 +13,7 @@ import {
   diaryEntryParamsSchema,
   diaryIdParamsSchema,
   diaryListQuerySchema,
+  diaryVersionParamsSchema,
   renameDiaryBodySchema,
   updateDiaryAudienceBodySchema,
   updateDiaryEntryBodySchema,
@@ -27,6 +28,8 @@ import {
   deleteDiaryEntry,
   getDiaryDetail,
   getDiaryEntry,
+  getDiaryEntryVersion,
+  listDiaryEntryVersions,
   listDiaries,
   listDiaryEntries,
   renameDiary,
@@ -261,6 +264,27 @@ export function createDiariesRouter(db: Database, config: Config): Router {
           signature: body.signature,
           keys: body.keys,
         }),
+      );
+    }),
+  );
+
+  router.get(
+    "/entries/:entryId/versions",
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { entryId } = diaryEntryParamsSchema.parse(req.params);
+      res.json({ versions: await listDiaryEntryVersions(db, entryId, auth.userId) });
+    }),
+  );
+
+  router.get(
+    "/entries/:entryId/versions/:versionId",
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { entryId } = diaryEntryParamsSchema.parse(req.params);
+      const { versionId } = diaryVersionParamsSchema.parse(req.params);
+      res.json(
+        await getDiaryEntryVersion(db, { entryId, versionId, userId: auth.userId }),
       );
     }),
   );

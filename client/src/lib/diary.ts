@@ -1,4 +1,4 @@
-import { decryptMessage, encryptMessage, type StoredIdentity } from "./crypto/index.ts";
+﻿import { decryptMessage, encryptMessage, type StoredIdentity } from "./crypto/index.ts";
 
 /**
  * 일기장 암호화/복호화.
@@ -35,6 +35,8 @@ export interface DiaryEntryKey {
 export interface DiaryEntryCiphertext {
   diaryId: string;
   id: string;
+  /** 서명 검증에 쓰는 멱등 키(작성 시 사용한 값). 서버가 함께 내려준다. */
+  clientEntryId?: string | null;
   ciphertext: string;
   nonce: string;
   signature: string;
@@ -101,7 +103,7 @@ export async function decryptDiaryEntry(
     identity,
     message: {
       conversationId: entry.diaryId,
-      clientMessageId: entry.id,
+      clientMessageId: entry.clientEntryId ?? entry.id,
       ciphertext: entry.ciphertext,
       nonce: entry.nonce,
       signature: entry.signature,

@@ -322,6 +322,7 @@ export async function getDiaryEntry(db: Database, entryId: string, userId: strin
     authorUserId: row.authorUserId,
     authorDeviceId: row.authorDeviceId,
     authorSigningPublicKey: row.authorSigningPublicKey,
+    clientEntryId: row.clientEntryId,
     keyEpoch: row.keyEpoch,
     ciphertext: row.ciphertext,
     nonce: row.nonce,
@@ -769,7 +770,11 @@ export async function getDiaryEntryVersion(
   input: { entryId: string; versionId: string; userId: string },
 ) {
   const [entry] = await db
-    .select({ diaryId: diaryEntries.diaryId, authorSigningPublicKey: diaryEntries.authorSigningPublicKey })
+    .select({
+      diaryId: diaryEntries.diaryId,
+      authorSigningPublicKey: diaryEntries.authorSigningPublicKey,
+      clientEntryId: diaryEntries.clientEntryId,
+    })
     .from(diaryEntries)
     .where(eq(diaryEntries.id, input.entryId))
     .limit(1);
@@ -799,6 +804,7 @@ export async function getDiaryEntryVersion(
     entryId: version.entryId,
     versionNo: version.versionNo,
     authorSigningPublicKey: entry.authorSigningPublicKey,
+    clientEntryId: entry.clientEntryId,
     keyEpoch: version.keyEpoch,
     ciphertext: version.ciphertext,
     nonce: version.nonce,

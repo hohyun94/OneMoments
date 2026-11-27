@@ -34,6 +34,7 @@ type EntrySummary = { id: string; authorUserId: string; authorUsername: string; 
 type EntryBody = {
   id: string;
   diaryId: string;
+  clientEntryId: string | null;
   authorSigningPublicKey: string;
   ciphertext: string;
   nonce: string;
@@ -173,6 +174,7 @@ export function DiaryPage() {
       const plain = parseDiaryPayload(await decryptDiaryEntry(identity, body));
       setHtml(plain.html);
       setPhotos(plain.photos);
+      setDraftId(body.clientEntryId ?? crypto.randomUUID());
       setEditingId(entryId);
     } catch {
       setError(t("diary.openFailed"));

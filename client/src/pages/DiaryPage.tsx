@@ -16,7 +16,7 @@ import {
 import { isDiaryHtmlEmpty, sanitizeDiaryHtml } from "../lib/richTextSanitize.ts";
 import { useSession } from "../session.tsx";
 
-type DiarySummary = { id: string; label: string | null; keyEpoch: number; ownerUsername: string };
+type DiarySummary = { id: string; label: string | null; keyEpoch: number; ownerUsername: string; updatedAt: string };
 type DiaryDevice = {
   id: string;
   identityPublicKey: string;
@@ -97,6 +97,24 @@ export function DiaryPage() {
       .catch(() => setError(t("diary.loadFailed")));
   }, [openDiary, t]);
 
+  /** 일기장 목록 검색·정렬. */
+  const [diaryQuery, setDiaryQuery] = useState("");
+  const [diarySort, setDiarySort] = useState<"recent" | "name">("recent");
+
+  /** 검색어·정렬을 적용한 목록. */
+  const visibleDiaries = useMemo(() => {
+    const query = diaryQuery.trim().toLowerCase();
+    const labelOf = (diary: DiarySummary) => diary.label ?? t("diary.untitled");
+    const filtered = query
+      ? diaries.filter((diary) => labelOf(diary).toLowerCase().includes(query))
+      : diaries;
+    return [...filtered].sort((a, b) =>
+      diarySort === "name"
+        ? labelOf(a).localeCompare(labelOf(b), locale)
+        : b.updatedAt.localeCompare(a.updatedAt),
+    );
+  }, [diaries, diaryQuery, diarySort, locale, t]);
+
   const devices = useMemo(
     () => (detail?.members ?? []).flatMap((member) => member.devices),
     [detail],
@@ -107,6 +125,8 @@ export function DiaryPage() {
   const [photoBusy, setPhotoBusy] = useState(false);
   /** 작성 중인 글의 멱등 키 — 사진 업로드와 글 저장이 같은 값을 쓴다. */
   const [draftId, setDraftId] = useState<string>(() => crypto.randomUUID());
+  /** 사진 미리보기(라이트박스): 현재 글의 사진 URL 목록과 선택 인덱스. */
+  const [preview, setPreview] = useState<{ urls: string[]; index: number } | null>(null);
 
   /** 사진 선택 → 즉시 암호화 업로드. 글 저장 시 같은 clientEntryId 로 연결된다. */
   async function addPhotos(files: FileList | null) {
@@ -347,6 +367,71 @@ export function DiaryPage() {
       {error ? <Alert variant="error">{error}</Alert> : null}
       {notice ? <Alert>{notice}</Alert> : null}
 
+      {preview ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("diary.photo")}
+          onClick={() => setPreview(null)}
+        >
+          <img
+            src={preview.urls[preview.index]}
+            alt={t("diary.photo")}
+            className="max-h-full max-w-full rounded-lg"
+            onClick={(event) => event.stopPropagation()}
+          />
+          <button
+            type="button"
+            onClick={() => setPreview(null)}
+            aria-label={t("lightbox.close")}
+            className="absolute right-4 top-4 rounded-full bg-white/90 px-3 py-1 text-sm text-zinc-800"
+          >
+            ×
+          </button>
+          {preview.urls.length > 1 ? (
+            <>
+              <button
+                type="button"
+                aria-label={t("diary.photoPrev")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreview((current) =>
+                    current
+                      ? {
+                          urls: current.urls,
+                          index: (current.index - 1 + current.urls.length) % current.urls.length,
+                        }
+                      : current,
+                  );
+                }}
+                className="absolute left-4 rounded-full bg-white/90 px-3 py-2 text-lg text-zinc-800"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                aria-label={t("diary.photoNext")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreview((current) =>
+                    current
+                      ? { urls: current.urls, index: (current.index + 1) % current.urls.length }
+                      : current,
+                  );
+                }}
+                className="absolute right-4 rounded-full bg-white/90 px-3 py-2 text-lg text-zinc-800"
+              >
+                ›
+              </button>
+              <span className="absolute bottom-6 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white">
+                {preview.index + 1} / {preview.urls.length}
+              </span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {creating ? (
         <Card className="space-y-3 p-4">
           <div>
@@ -411,24 +496,57 @@ export function DiaryPage() {
         </Card>
       ) : null}
 
-      {diaries.length > 1 ? (
-        <div className="flex flex-wrap gap-1.5">
-          {diaries.map((diary) => (
-            <button
-              key={diary.id}
-              type="button"
-              onClick={() => void openDiary(diary.id)}
-              aria-pressed={detail?.id === diary.id}
-              className={cn(
-                "rounded-full border px-2.5 py-1 text-xs",
-                detail?.id === diary.id
-                  ? "border-accent-300 bg-accent-50 text-accent-700"
-                  : "border-zinc-200 text-zinc-600 hover:bg-zinc-50",
-              )}
-            >
-              {diary.label ?? t("diary.untitled")}
-            </button>
-          ))}
+      {diaries.length > 0 ? (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={diaryQuery}
+              onChange={(event) => setDiaryQuery(event.target.value)}
+              placeholder={t("diary.searchPlaceholder")}
+              aria-label={t("diary.searchPlaceholder")}
+              className="h-9 min-w-0 flex-1 rounded-lg border border-zinc-200 bg-white px-3 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-accent-400 focus:outline-none focus:ring-2 focus:ring-accent-100"
+            />
+            <div className="flex gap-1" role="group" aria-label={t("diary.sortLabel")}>
+              <Button
+                size="sm"
+                variant={diarySort === "recent" ? "default" : "outline"}
+                aria-pressed={diarySort === "recent"}
+                onClick={() => setDiarySort("recent")}
+              >
+                {t("diary.sortRecent")}
+              </Button>
+              <Button
+                size="sm"
+                variant={diarySort === "name" ? "default" : "outline"}
+                aria-pressed={diarySort === "name"}
+                onClick={() => setDiarySort("name")}
+              >
+                {t("diary.sortName")}
+              </Button>
+            </div>
+          </div>
+          {visibleDiaries.length === 0 ? (
+            <p className="px-1 py-2 text-xs text-zinc-500">{t("diary.searchEmpty")}</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {visibleDiaries.map((diary) => (
+                <button
+                  key={diary.id}
+                  type="button"
+                  onClick={() => void openDiary(diary.id)}
+                  aria-pressed={detail?.id === diary.id}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs",
+                    detail?.id === diary.id
+                      ? "border-accent-300 bg-accent-50 text-accent-700"
+                      : "border-zinc-200 text-zinc-600 hover:bg-zinc-50",
+                  )}
+                >
+                  {diary.label ?? t("diary.untitled")}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -603,10 +721,18 @@ export function DiaryPage() {
                             alt={t("diary.photo")}
                             role="button"
                             tabIndex={0}
-                            onClick={() => window.open(photo.url, "_blank", "noopener,noreferrer")}
+                            onClick={() =>
+                              setPreview({
+                                urls: openedPhotos.map((item) => item.url),
+                                index: openedPhotos.findIndex((item) => item.id === photo.id),
+                              })
+                            }
                             onKeyDown={(event) => {
                               if (event.key === "Enter") {
-                                window.open(photo.url, "_blank", "noopener,noreferrer");
+                                setPreview({
+                                  urls: openedPhotos.map((item) => item.url),
+                                  index: openedPhotos.findIndex((item) => item.id === photo.id),
+                                });
                               }
                             }}
                             className="h-24 w-24 cursor-pointer rounded-lg border border-zinc-200 object-cover"

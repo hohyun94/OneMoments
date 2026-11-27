@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "onemoments",
   "version": "0.1.0",
   "private": true,
@@ -27,6 +27,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.mjs",
     "db:backup": "node --env-file-if-exists=.env scripts/backup.mjs",
+    "diary:attachment-doctor": "node --env-file-if-exists=.env scripts/diary-attachment-doctor.mjs",
     "db:restore": "node --env-file-if-exists=.env scripts/restore.mjs",
     "db:load-test": "node --env-file-if-exists=.env scripts/load-test.mjs",
     "attachments:cleanup": "node --env-file-if-exists=.env scripts/cleanup-attachments.mjs",

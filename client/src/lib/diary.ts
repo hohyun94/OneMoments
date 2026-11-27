@@ -56,10 +56,14 @@ export async function encryptDiaryEntry(input: {
   signature: string;
   keys: DiaryEntryKey[];
 }> {
-  const devices = input.devices.filter((device) => device.identityPublicKey.length > 0);
-  if (devices.length === 0) {
+  const deduped = [
+    ...new Map(input.devices.filter((device) => device.identityPublicKey.length > 0).map((device) => [device.id, device])).values(),
+  ];
+  if (deduped.length === 0) {
     throw new Error("공유할 기기가 없습니다. 대상자의 기기 등록을 확인해 주세요.");
   }
+  // 서버 봉투 상한(기본 50)을 넘지 않도록 기기 수를 제한한다.
+  const devices = deduped.slice(0, 40);
   const clientEntryId = input.clientEntryId ?? crypto.randomUUID();
   const payload = await encryptMessage({
     identity: input.identity,

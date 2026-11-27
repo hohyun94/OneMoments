@@ -112,8 +112,7 @@ async function loadMembers(db: Database, diaryId: string, ownerUserId: string) {
     userId,
     username: people.find((person) => person.id === userId)?.username ?? "",
     isOwner: userId === ownerUserId,
-    devices: rows
-      .filter((row) => row.userId === userId)
+    devices: [...new Map(rows.filter((row) => row.userId === userId).map((row) => [row.id, row])).values()]
       .map((row) => ({
         id: row.id,
         name: row.name,

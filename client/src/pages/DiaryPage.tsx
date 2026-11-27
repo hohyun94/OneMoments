@@ -1,4 +1,4 @@
-import { BookOpen, RefreshCw, Trash2 } from "lucide-react";
+﻿import { BookOpen, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { RichTextEditor } from "../components/RichTextEditor.tsx";
@@ -20,7 +20,7 @@ type DiaryDevice = {
   oneTimePreKeyPublicKey: string | null;
 };
 type DiaryMember = { userId: string; username: string; isOwner: boolean; devices: DiaryDevice[] };
-type DiaryDetail = { id: string; label: string | null; keyEpoch: number; members: DiaryMember[] };
+type DiaryDetail = { id: string; label: string | null; keyEpoch: number; isOwner: boolean; members: DiaryMember[] };
 type EntrySummary = { id: string; authorUsername: string; createdAt: string };
 type EntryBody = {
   id: string;
@@ -51,6 +51,10 @@ export function DiaryPage() {
   const [openedHtml, setOpenedHtml] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [audienceOpen, setAudienceOpen] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [contacts, setContacts] = useState<Array<{ id: string; username: string }>>([]);
 
   const openDiary = useCallback(
     async (diaryId: string) => {
@@ -145,6 +149,44 @@ export function DiaryPage() {
     }
   }
 
+  /** 대상 관리 시트를 연다 — 현재 대상자를 선택 상태로 채우고 연락처를 로드한다. */
+  async function openAudience() {
+    if (!detail) return;
+    setAudienceOpen(true);
+    setNotice(null);
+    setPicked(new Set(detail.members.filter((member) => !member.isOwner).map((m) => m.userId)));
+    if (contacts.length === 0) {
+      try {
+        const data = await api<{ contacts: Array<{ id: string; username: string }> }>(
+          "/api/moments/contacts",
+        );
+        setContacts(data.contacts);
+      } catch {
+        setContacts([]);
+      }
+    }
+  }
+
+  /** 대상 저장 — 서버가 키 세대를 올리고, 새 대상자는 이후 글만 볼 수 있다. */
+  async function saveAudience() {
+    if (!detail) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api<{ keyEpoch: number }>(`/api/diaries/${detail.id}/audience`, {
+        method: "PUT",
+        body: { audienceUserIds: [...picked] },
+      });
+      await openDiary(detail.id);
+      setAudienceOpen(false);
+      setNotice(t("diary.audienceSaved", { epoch: result.keyEpoch }));
+    } catch {
+      setError(t("diary.audienceFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-3xl space-y-4 px-4 py-6">
       <header className="flex items-center justify-between gap-2">
@@ -166,6 +208,7 @@ export function DiaryPage() {
       </header>
 
       {error ? <Alert variant="error">{error}</Alert> : null}
+      {notice ? <Alert>{notice}</Alert> : null}
 
       {diaries.length > 1 ? (
         <div className="flex flex-wrap gap-1.5">
@@ -208,6 +251,59 @@ export function DiaryPage() {
                 </span>
               ))}
             </p>
+            {detail.isOwner ? (
+              <div className="mt-2 flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => void openAudience()}>
+                  {t("diary.manageAudience")}
+                </Button>
+              </div>
+            ) : null}
+            {audienceOpen ? (
+              <div className="mt-3 rounded-lg border border-zinc-200 p-3">
+                <p className="text-xs leading-relaxed text-zinc-500">{t("diary.audienceNote")}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {contacts.length === 0 ? (
+                    <p className="text-xs text-zinc-400">{t("diary.noContacts")}</p>
+                  ) : (
+                    contacts.map((contact) => {
+                      const on = picked.has(contact.id);
+                      return (
+                        <button
+                          key={contact.id}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() =>
+                            setPicked((current) => {
+                              const next = new Set(current);
+                              if (next.has(contact.id)) next.delete(contact.id);
+                              else next.add(contact.id);
+                              return next;
+                            })
+                          }
+                          className={cn(
+                            "rounded-full border px-2.5 py-1 text-xs",
+                            on
+                              ? "border-accent-300 bg-accent-50 text-accent-700"
+                              : "border-zinc-200 text-zinc-600 hover:bg-zinc-50",
+                          )}
+                        >
+                          @{contact.username}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+                <div className="mt-3 flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setAudienceOpen(false)}>
+                    {t("chat.cancel")}
+                  </Button>
+                  <Button size="sm" onClick={() => void saveAudience()} disabled={busy}>
+                    {busy ? <Spinner /> : null}
+                    {t("diary.saveAudience")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </Card>
 
           <Card className="space-y-2 p-4">

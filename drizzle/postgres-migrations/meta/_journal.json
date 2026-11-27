@@ -274,6 +274,13 @@
       "when": 1795794516884,
       "tag": "0038_deep_klaw",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795795586957,
+      "tag": "0039_perpetual_kate_bishop",
+      "breakpoints": true
     }
   ]
 }

@@ -999,7 +999,34 @@ export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
 export type AuthEventRow = typeof authEvents.$inferSelect;
 export type SignupInviteRow = typeof signupInvites.$inferSelect;
 export type SignupRequestRow = typeof signupRequests.$inferSelect;
+/**
+ * 일기 첨부(사진) — **암호문 블롭만** 저장한다.
+ *
+ * 업로드 시점에는 `clientEntryId` 로 예약만 하고, 글 저장 트랜잭션에서 `entryId` 로 연결한다.
+ * 서버는 파일 이름·MIME·키를 저장하지 않고 **암호문 크기만** 기록한다(불변식 11).
+ */
+export const diaryAttachments = pgTable(
+  "diary_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    uploaderUserId: uuid("uploader_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** 글 작성 시 클라이언트가 만든 멱등 키. 글 저장 시점에 entryId 로 연결된다. */
+    clientEntryId: uuid("client_entry_id"),
+    entryId: uuid("entry_id").references(() => diaryEntries.id, { onDelete: "cascade" }),
+    /** 암호문 크기만 저장한다(평문 크기·파일명 없음). */
+    size: integer("size").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("diary_attachments_entry_idx").on(table.entryId),
+    index("diary_attachments_client_idx").on(table.uploaderUserId, table.clientEntryId),
+  ],
+);
+
 export type DiaryRow = typeof diaries.$inferSelect;
+export type DiaryAttachmentRow = typeof diaryAttachments.$inferSelect;
 export type DiaryAudienceRow = typeof diaryAudience.$inferSelect;
 export type DiaryEntryRow = typeof diaryEntries.$inferSelect;
 export type DiaryEntryKeyRow = typeof diaryEntryKeys.$inferSelect;

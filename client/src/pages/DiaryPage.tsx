@@ -6,6 +6,13 @@ import { Alert, Button, Card, Spinner, cn } from "../components/ui.tsx";
 import { useI18n } from "../i18n.tsx";
 import { api } from "../lib/api.ts";
 import { decryptDiaryEntry, encryptDiaryEntry } from "../lib/diary.ts";
+import {
+  encodeDiaryPayload,
+  loadDiaryPhoto,
+  parseDiaryPayload,
+  uploadDiaryPhoto,
+  type DiaryPhotoRef,
+} from "../lib/diaryPhotos.ts";
 import { isDiaryHtmlEmpty, sanitizeDiaryHtml } from "../lib/richTextSanitize.ts";
 import { useSession } from "../session.tsx";
 
@@ -95,6 +102,31 @@ export function DiaryPage() {
     [detail],
   );
 
+  const [photos, setPhotos] = useState<DiaryPhotoRef[]>([]);
+  const [openedPhotos, setOpenedPhotos] = useState<Array<{ id: string; url: string }>>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  /** 작성 중인 글의 멱등 키 — 사진 업로드와 글 저장이 같은 값을 쓴다. */
+  const [draftId, setDraftId] = useState<string>(() => crypto.randomUUID());
+
+  /** 사진 선택 → 즉시 암호화 업로드. 글 저장 시 같은 clientEntryId 로 연결된다. */
+  async function addPhotos(files: FileList | null) {
+    if (!files || files.length === 0 || !identity) return;
+    setPhotoBusy(true);
+    setError(null);
+    try {
+      const clientEntryId = crypto.randomUUID();
+      const uploaded: DiaryPhotoRef[] = [];
+      for (const file of Array.from(files).slice(0, 4)) {
+        uploaded.push(await uploadDiaryPhoto({ file, clientEntryId }));
+      }
+      setPhotos((current) => [...current, ...uploaded]);
+    } catch {
+      setError(t("diary.photoFailed"));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
   async function saveEntry() {
     if (!identity || !detail) return;
     if (isDiaryHtmlEmpty(html)) {
@@ -104,7 +136,13 @@ export function DiaryPage() {
     setBusy(true);
     setError(null);
     try {
-      const encrypted = await encryptDiaryEntry({ identity, diaryId: detail.id, html, devices });
+      const encrypted = await encryptDiaryEntry({
+        identity,
+        diaryId: detail.id,
+        html: encodeDiaryPayload({ v: 1, html, photos }),
+        devices,
+        clientEntryId: draftId,
+      });
       await api(`/api/diaries/${detail.id}/entries`, {
         method: "POST",
         body: {
@@ -116,6 +154,8 @@ export function DiaryPage() {
         },
       });
       setHtml("");
+      setPhotos([]);
+      setDraftId(crypto.randomUUID());
       await openDiary(detail.id);
     } catch {
       setError(t("diary.saveFailed"));
@@ -130,8 +170,17 @@ export function DiaryPage() {
     setError(null);
     try {
       const body = await api<EntryBody>(`/api/diaries/entries/${entryId}`);
+      const plain = parseDiaryPayload(await decryptDiaryEntry(identity, body));
       setOpenedId(entryId);
-      setOpenedHtml(await decryptDiaryEntry(identity, body));
+      setOpenedHtml(plain.html);
+      setOpenedPhotos([]);
+      const loaded = await Promise.all(
+        plain.photos.map(async (photo) => ({
+          id: photo.id,
+          url: await loadDiaryPhoto(photo).catch(() => ""),
+        })),
+      );
+      setOpenedPhotos(loaded.filter((photo) => photo.url.length > 0));
     } catch {
       setError(t("diary.openFailed"));
     } finally {
@@ -422,6 +471,40 @@ export function DiaryPage() {
           <Card className="space-y-2 p-4">
             <p className="text-sm font-medium text-zinc-900">{t("diary.write")}</p>
             <RichTextEditor value={html} onChange={setHtml} />
+            <div className="flex flex-wrap items-center gap-2">
+              <label
+                className="cursor-pointer rounded-lg border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+                aria-label={t("diary.photoAdd")}
+              >
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="sr-only"
+                  onChange={(event) => {
+                    void addPhotos(event.target.files);
+                    event.target.value = "";
+                  }}
+                />
+                {photoBusy ? t("admin.loading") : t("diary.photoAdd")}
+              </label>
+              {photos.map((photo) => (
+                <span
+                  key={photo.id}
+                  className="flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] text-zinc-600"
+                >
+                  {t("diary.photo")}
+                  <button
+                    type="button"
+                    aria-label={t("diary.photoRemove")}
+                    onClick={() => setPhotos((current) => current.filter((item) => item.id !== photo.id))}
+                    className="text-zinc-400 hover:text-red-600"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
             <div className="flex justify-end">
               <Button onClick={() => void saveEntry()} disabled={busy}>
                 {busy ? <Spinner /> : null}
@@ -465,6 +548,18 @@ export function DiaryPage() {
                         aria-label={t("diary.entryBody")}
                         dangerouslySetInnerHTML={{ __html: sanitizeDiaryHtml(openedHtml) }}
                       />
+                    ) : null}
+                    {openedId === entry.id && openedPhotos.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {openedPhotos.map((photo) => (
+                          <img
+                            key={photo.id}
+                            src={photo.url}
+                            alt={t("diary.photo")}
+                            className="h-24 w-24 rounded-lg border border-zinc-200 object-cover"
+                          />
+                        ))}
+                      </div>
                     ) : null}
                   </li>
                 ))}

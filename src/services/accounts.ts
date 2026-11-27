@@ -25,6 +25,7 @@ import {
 } from "../db/schema.js";
 import { AppError } from "../http/errors.js";
 import { consumeSignupInvite } from "./signupInvites.js";
+import { consumeApprovedSignupRequest } from "./signupRequests.js";
 import type { DevicePlatform, ThemeMode } from "../types/protocol.js";
 
 export interface DeviceKeys {
@@ -45,6 +46,8 @@ export interface RegisterAccountInput extends DeviceKeys {
   platform: DevicePlatform;
   /** `SIGNUP_MODE=invite` 일 때 필수. 트랜잭션 안에서 원자적으로 소모된다. */
   inviteCode?: string | undefined;
+  /** 승인된 가입 신청 토큰. 있으면 초대 코드 없이 가입할 수 있고, 같은 트랜잭션에서 1회용으로 소모된다. */
+  signupRequestToken?: string | undefined;
 }
 
 export interface RegisterOAuthAccountInput extends DeviceKeys {
@@ -124,6 +127,12 @@ export async function registerAccount(
       // 초대 코드는 계정 생성과 같은 트랜잭션에서 소모한다(실패 시 사용 횟수도 롤백).
       if (input.inviteCode !== undefined) {
         await consumeSignupInvite(tx as unknown as Database, input.inviteCode);
+      }
+      if (input.signupRequestToken !== undefined) {
+        await consumeApprovedSignupRequest(tx as unknown as Database, {
+          token: input.signupRequestToken,
+          username: input.username,
+        });
       }
       const [user] = await tx
         .insert(users)

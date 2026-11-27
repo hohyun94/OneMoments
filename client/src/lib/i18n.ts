@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 경량 i18n(외부 라이브러리 없음).
  *
  * - 사전은 `ko`(기준)와 `en` 두 개이며, 키 누락 시 한국어로 폴백한다.
@@ -785,7 +785,9 @@ const ko: Dictionary = {
   "signup.request.noteRequired": "가입 사유를 5자 이상 적어 주세요.",
   "signup.request.submit": "가입 신청 보내기",
   "signup.request.pending": "관리자 승인을 기다리는 중입니다.",
-  "signup.request.approved": "승인되었습니다. 아래 1회용 코드로 가입을 마치세요.",
+  "signup.request.approved": "승인되었습니다. 아래 버튼으로 가입을 마저 진행하세요.",
+  "signup.request.continue": "가입 계속",
+  "signup.request.approvedNote": "관리자가 승인했습니다. 아래에서 비밀번호와 기기 키를 정해 가입을 마치세요.",
   "signup.request.rejected": "신청이 거절되었습니다.",
   "signup.request.completed": "이미 이 코드로 가입을 마쳤습니다.",
   "signup.request.reason": "사유: {note}",
@@ -821,6 +823,8 @@ const ko: Dictionary = {
   "admin.requests.rejectNotePlaceholder": "신청자에게 보일 한 줄 사유",
   "admin.requests.rejectReason": "거절 사유: {note}",
   "admin.requests.codeUsed": "사용 완료",
+  "admin.requests.completed": "가입 완료",
+  "admin.requests.approvedWaiting": "가입 대기",
   "admin.requests.copied": "복사됨",
   "admin.action.signupRequestApproved": "가입 신청 승인",
   "admin.action.signupRequestRejected": "가입 신청 거절",
@@ -1704,7 +1708,9 @@ const en: Dictionary = {
   "signup.request.noteRequired": "Please write at least 5 characters for the reason.",
   "signup.request.submit": "Send request",
   "signup.request.pending": "Waiting for admin approval.",
-  "signup.request.approved": "Approved. Finish signing up with the one-time code below.",
+  "signup.request.approved": "Approved. Continue below to finish signing up.",
+  "signup.request.continue": "Continue signup",
+  "signup.request.approvedNote": "Your request was approved. Set your password and device keys below to finish.",
   "signup.request.rejected": "Your request was rejected.",
   "signup.request.completed": "This code has already been used.",
   "signup.request.reason": "Reason: {note}",
@@ -1740,6 +1746,8 @@ const en: Dictionary = {
   "admin.requests.rejectNotePlaceholder": "One line the requester will see",
   "admin.requests.rejectReason": "Reason: {note}",
   "admin.requests.codeUsed": "Already used",
+  "admin.requests.completed": "Signed up",
+  "admin.requests.approvedWaiting": "Awaiting signup",
   "admin.requests.copied": "Copied",
   "admin.action.signupRequestApproved": "Signup request approved",
   "admin.action.signupRequestRejected": "Signup request rejected",

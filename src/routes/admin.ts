@@ -165,7 +165,7 @@ export function createAdminRouter(db: Database, config: Config): Router {
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
       const { requestId } = signupRequestParamsSchema.parse(req.params);
-      const { request, invite } = await approveSignupRequest(db, {
+      const request = await approveSignupRequest(db, {
         requestId,
         adminUserId: auth.userId,
         adminUsername: auth.username,
@@ -176,13 +176,6 @@ export function createAdminRouter(db: Database, config: Config): Router {
           username: request.username,
           status: request.status,
           decidedAt: request.decidedAt?.toISOString() ?? null,
-        },
-        invite: {
-          id: invite.id,
-          code: invite.code,
-          maxUses: invite.maxUses,
-          usedCount: invite.usedCount,
-          expiresAt: invite.expiresAt?.toISOString() ?? null,
         },
       });
     }),

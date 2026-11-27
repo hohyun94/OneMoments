@@ -1,5 +1,5 @@
 ﻿import { createHash, randomBytes } from "node:crypto";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { Database } from "../db/client.js";
 import {
@@ -32,9 +32,7 @@ export interface SignupRequestStatusView {
   username: string;
   requestedAt: string;
   decidedAt: string | null;
-  /** 승인 직후의 1회용 초대 코드(아직 사용 가능할 때만). */
-  inviteCode: string | null;
-  /** 승인된 코드를 이미 사용해 가입을 마쳤는지. */
+  /** 승인 후 이미 가입을 마쳤는지(토큰은 1회용). */
   completed: boolean;
   /** 거절 사유(거절된 경우에만). */
   reviewNote: string | null;
@@ -49,8 +47,8 @@ export interface SignupRequestListItem {
   decidedAt: string | null;
   decidedByUserId: string | null;
   reviewNote: string | null;
-  inviteCode: string | null;
-  inviteActive: boolean;
+  /** 승인 후 가입을 마친 시각(없으면 미완료). */
+  completedAt: string | null;
 }
 
 /** 상태 조회 토큰의 해시. 원문은 저장하지 않는다. */
@@ -147,8 +145,7 @@ export async function getSignupRequestStatus(
     username: request.username,
     requestedAt: request.createdAt.toISOString(),
     decidedAt: request.decidedAt?.toISOString() ?? null,
-    inviteCode: usable ? invite.code : null,
-    completed: status === "approved" && !usable,
+    completed: request.completedAt !== null,
     reviewNote: status === "rejected" ? request.reviewNote : null,
   };
 }
@@ -178,8 +175,7 @@ export async function listSignupRequests(
     decidedAt: request.decidedAt?.toISOString() ?? null,
     decidedByUserId: request.decidedByUserId,
     reviewNote: request.reviewNote,
-    inviteCode: invite?.code ?? null,
-    inviteActive: isInviteUsable(invite),
+    completedAt: request.completedAt?.toISOString() ?? null,
   }));
 }
 
@@ -190,7 +186,7 @@ export async function listSignupRequests(
 export async function approveSignupRequest(
   db: Database,
   input: { requestId: string; adminUserId: string; adminUsername: string },
-): Promise<{ request: SignupRequestRow; invite: SignupInviteRow }> {
+): Promise<SignupRequestRow> {
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select()
@@ -213,17 +209,10 @@ export async function approveSignupRequest(
       throw AppError.conflict("USERNAME_TAKEN", "Username is already taken");
     }
 
-    const invite = await createSignupInvite(tx, {
-      createdByUserId: input.adminUserId,
-      maxUses: 1,
-      expiresAt: new Date(Date.now() + APPROVED_INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
-    });
-
     const [updated] = await tx
       .update(signupRequests)
       .set({
         status: "approved",
-        inviteId: invite.id,
         decidedByUserId: input.adminUserId,
         decidedAt: sql`now()`,
         reviewNote: null,
@@ -239,9 +228,9 @@ export async function approveSignupRequest(
       adminUsername: input.adminUsername,
       action: "signup.request.approved",
       targetUsername: row.username,
-      detail: { requestId: row.id, inviteId: invite.id },
+      detail: { requestId: row.id },
     });
-    return { request: updated, invite };
+    return updated;
   });
 }
 
@@ -262,6 +251,7 @@ export async function rejectSignupRequest(
       })
       .where(and(eq(signupRequests.id, input.requestId), eq(signupRequests.status, "pending")))
       .returning();
+
     if (!row) {
       throw AppError.conflict("SIGNUP_REQUEST_DECIDED", "This request was already decided");
     }
@@ -274,4 +264,33 @@ export async function rejectSignupRequest(
     });
     return row;
   });
+}
+
+
+/**
+ * 승인된 신청 토큰을 **가입 트랜잭션 안에서** 1회용으로 소모한다.
+ *
+ * 승인 상태가 아니거나, 이미 가입에 쓴 토큰이거나, 아이디가 신청과 다르면 거부한다.
+ * 이 함수가 성공하면 계정 생성이 같은 트랜잭션에서 이어진다(실패 시 completedAt 도 롤백).
+ */
+export async function consumeApprovedSignupRequest(
+  db: Database,
+  input: { token: string; username: string },
+): Promise<void> {
+  const normalized = normalizeUsername(input.username);
+  const [row] = await db
+    .update(signupRequests)
+    .set({ completedAt: sql`now()` })
+    .where(
+      and(
+        eq(signupRequests.tokenHash, hashSignupRequestToken(input.token)),
+        eq(signupRequests.status, "approved"),
+        isNull(signupRequests.completedAt),
+        sql`lower(${signupRequests.username}) = ${normalized}`,
+      ),
+    )
+    .returning({ id: signupRequests.id });
+  if (!row) {
+    throw AppError.forbidden("승인된 가입 신청을 찾을 수 없습니다. 관리자에게 다시 확인해 주세요.");
+  }
 }

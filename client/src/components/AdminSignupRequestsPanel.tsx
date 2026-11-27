@@ -1,4 +1,4 @@
-﻿import { Check, Copy, ShieldCheck, X } from "lucide-react";
+﻿import { Check, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { useI18n } from "../i18n.tsx";
@@ -14,8 +14,7 @@ interface SignupRequestItem {
   status: RequestStatus;
   requestedAt: string;
   reviewNote: string | null;
-  inviteCode: string | null;
-  inviteActive: boolean;
+  completedAt: string | null;
 }
 
 function formatDateTime(value: string | null, locale: string = "ko"): string {
@@ -39,7 +38,6 @@ export function AdminSignupRequestsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [rejectTarget, setRejectTarget] = useState<SignupRequestItem | null>(null);
   const [rejectNote, setRejectNote] = useState("");
 
@@ -63,26 +61,12 @@ export function AdminSignupRequestsPanel() {
     void load();
   }, [load]);
 
-  async function copyCode(code: string, id: string) {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopiedId(id);
-      window.setTimeout(() => setCopiedId((value) => (value === id ? null : value)), 2_000);
-    } catch {
-      setCopiedId(null);
-    }
-  }
-
   async function approve(item: SignupRequestItem) {
     setBusyId(item.id);
     setError(null);
     try {
-      const result = await api<{ invite: { code: string } }>(
-        `/api/admin/signup-requests/${item.id}/approve`,
-        { method: "POST" },
-      );
+      await api(`/api/admin/signup-requests/${item.id}/approve`, { method: "POST" });
       await load();
-      void copyCode(result.invite.code, item.id);
     } catch {
       setError(t("admin.requestFailed"));
     } finally {
@@ -210,18 +194,10 @@ export function AdminSignupRequestsPanel() {
                       {t("admin.requests.reject")}
                     </Button>
                   </>
-                ) : item.inviteCode ? (
-                  <button
-                    type="button"
-                    onClick={() => void copyCode(item.inviteCode ?? "", item.id)}
-                    className="flex items-center gap-1 rounded-lg border border-zinc-200 px-2 py-1 font-mono text-[11px] tracking-widest text-zinc-600 hover:bg-zinc-50"
-                  >
-                    <Copy className="h-3 w-3" aria-hidden />
-                    {item.inviteCode}
-                    {copiedId === item.id ? ` · ${t("admin.requests.copied")}` : ""}
-                  </button>
                 ) : (
-                  <span className="text-[11px] text-zinc-400">{t("admin.requests.codeUsed")}</span>
+                  <span className="text-[11px] text-zinc-400">
+                    {item.completedAt ? t("admin.requests.completed") : t("admin.requests.approvedWaiting")}
+                  </span>
                 )}
               </li>
             ))}

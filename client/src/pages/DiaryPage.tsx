@@ -6,6 +6,13 @@ import { Alert, Button, Card, Spinner, cn } from "../components/ui.tsx";
 import { useI18n } from "../i18n.tsx";
 import { api } from "../lib/api.ts";
 import { decryptDiaryEntry, encryptDiaryEntry } from "../lib/diary.ts";
+import {
+  encodeDiaryPayload,
+  loadDiaryPhoto,
+  parseDiaryPayload,
+  uploadDiaryPhoto,
+  type DiaryPhotoRef,
+} from "../lib/diaryPhotos.ts";
 import { isDiaryHtmlEmpty, sanitizeDiaryHtml } from "../lib/richTextSanitize.ts";
 import { useSession } from "../session.tsx";
 
@@ -94,6 +101,29 @@ export function DiaryPage() {
     () => (detail?.members ?? []).flatMap((member) => member.devices),
     [detail],
   );
+
+  const [photos, setPhotos] = useState<DiaryPhotoRef[]>([]);
+  const [openedPhotos, setOpenedPhotos] = useState<Array<{ id: string; url: string }>>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  /** 사진 선택 → 즉시 암호화 업로드. 글 저장 시 같은 clientEntryId 로 연결된다. */
+  async function addPhotos(files: FileList | null) {
+    if (!files || files.length === 0 || !identity) return;
+    setPhotoBusy(true);
+    setError(null);
+    try {
+      const clientEntryId = crypto.randomUUID();
+      const uploaded: DiaryPhotoRef[] = [];
+      for (const file of Array.from(files).slice(0, 4)) {
+        uploaded.push(await uploadDiaryPhoto({ file, clientEntryId }));
+      }
+      setPhotos((current) => [...current, ...uploaded]);
+    } catch {
+      setError(t("diary.photoFailed"));
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
 
   async function saveEntry() {
     if (!identity || !detail) return;

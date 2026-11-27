@@ -1,4 +1,4 @@
-import { z } from "zod";
+﻿import { z } from "zod";
 
 import {
   MAX_IDLE_TIMEOUT_SECONDS,
@@ -438,3 +438,24 @@ export const attachmentIdParamsSchema = z.object({
 export type RegisterBody = z.infer<typeof registerBodySchema>;
 export type LoginBody = z.infer<typeof loginBodySchema>;
 export type SendMessageBody = z.infer<typeof sendMessageBodySchema>;
+
+/** 일기장: 생성·대상 변경·글 작성. */
+export const createDiaryBodySchema = z.object({
+  label: z.string().trim().max(40).optional(),
+  audienceUserIds: z.array(z.string().uuid()).max(20).default([]),
+});
+export const updateDiaryAudienceBodySchema = z.object({
+  audienceUserIds: z.array(z.string().uuid()).max(20),
+});
+export const diaryIdParamsSchema = z.object({ diaryId: z.string().uuid() });
+export const diaryEntryParamsSchema = z.object({ entryId: z.string().uuid() });
+export const diaryListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+export const createDiaryEntryBodySchema = z.object({
+  clientEntryId: z.string().uuid(),
+  ciphertext: z.string().min(1),
+  nonce: z.string().min(1),
+  signature: z.string().min(1),
+  keys: z.array(z.unknown()).min(1),
+});

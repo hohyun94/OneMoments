@@ -24,6 +24,7 @@ import { createLinkPreviewRouter } from "./routes/linkPreview.js";
 import { createPushRouter } from "./routes/push.js";
 import { createInvitesRouter } from "./routes/invites.js";
 import { createSignupRequestsRouter } from "./routes/signupRequests.js";
+import { createDiariesRouter } from "./routes/diaries.js";
 import { createMomentsRouter } from "./routes/moments.js";
 
 export interface AppOptions {
@@ -129,6 +130,7 @@ export function createApp(options: AppOptions): Express {
   app.use("/api/auth", createAuthRouter(db, config));
   app.use("/api/admin", createAdminRouter(db, config));
   app.use("/api/signup-requests", createSignupRequestsRouter(db, config));
+  app.use("/api/diaries", createDiariesRouter(db, config));
   app.use("/api/devices", createDevicesRouter(db, config));
   app.use("/api/users", createUsersRouter(db, config));
   app.use("/api/push", createPushRouter(db, config));

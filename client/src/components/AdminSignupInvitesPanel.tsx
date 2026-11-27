@@ -3,6 +3,7 @@ import { Copy, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 
 import { api } from "../lib/api.ts";
+import { useI18n } from "../i18n.tsx";
 import { Alert, Button, Card, Input, Label, Spinner, cn } from "./ui.tsx";
 
 interface SignupInvite {
@@ -17,10 +18,10 @@ interface SignupInvite {
 }
 
 function inviteStatus(invite: SignupInvite): string {
-  if (invite.revokedAt) return "폐기";
-  if (invite.usedCount >= invite.maxUses) return "소진";
-  if (invite.expiresAt && Date.parse(invite.expiresAt) <= Date.now()) return "만료";
-  return "활성";
+  if (invite.revokedAt) return "admin.invites.status.revoked";
+  if (invite.usedCount >= invite.maxUses) return "admin.invites.status.used";
+  if (invite.expiresAt && Date.parse(invite.expiresAt) <= Date.now()) return "admin.invites.status.expired";
+  return "admin.invites.status.active";
 }
 
 /**
@@ -30,6 +31,7 @@ function inviteStatus(invite: SignupInvite): string {
  * 코드는 서버에만 저장되고, 발급 직후 화면에서 복사해 전달한다.
  */
 export function AdminSignupInvitesPanel() {
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [maxUses, setMaxUses] = useState("1");
   const [expiresInDays, setExpiresInDays] = useState("");
@@ -54,7 +56,7 @@ export function AdminSignupInvitesPanel() {
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ["admin", "signup-invites"] });
     },
-    onError: () => setError("초대 코드를 발급하지 못했습니다."),
+    onError: () => setError(t("admin.invites.issueFailed")),
   });
 
   const revokeMutation = useMutation({
@@ -63,7 +65,7 @@ export function AdminSignupInvitesPanel() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin", "signup-invites"] });
     },
-    onError: () => setError("초대 코드를 폐기하지 못했습니다."),
+    onError: () => setError(t("admin.invites.revokeFailed")),
   });
 
   async function copy(code: string, id: string): Promise<void> {
@@ -72,7 +74,7 @@ export function AdminSignupInvitesPanel() {
       setCopiedId(id);
       window.setTimeout(() => setCopiedId((value) => (value === id ? null : value)), 1_500);
     } catch {
-      setError("클립보드에 복사하지 못했습니다. 코드를 직접 선택해 주세요.");
+      setError(t("admin.invites.copyFailed"));
     }
   }
 
@@ -83,7 +85,7 @@ export function AdminSignupInvitesPanel() {
     <div className="space-y-4">
       <Card className="p-4">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-sm font-semibold text-zinc-900">가입 초대 코드</h2>
+          <h2 className="text-sm font-semibold text-zinc-900">{t("admin.invites.title")}</h2>
           <span
             className={cn(
               "rounded-full px-2 py-0.5 text-[11px] font-medium",
@@ -94,18 +96,18 @@ export function AdminSignupInvitesPanel() {
                   : "bg-zinc-100 text-zinc-600",
             )}
           >
-            가입 정책: {signupMode}
+            {t("admin.invites.policy", { mode: signupMode })}
           </span>
         </div>
         <p className="mt-1 text-xs leading-relaxed text-zinc-500">
           {signupMode === "invite"
-            ? "현재는 초대 코드가 있어야 가입할 수 있습니다. 코드를 발급해 전달하세요."
-            : `현재 가입 정책은 ${signupMode} 입니다. 초대제로 바꾸려면 배포 환경변수 SIGNUP_MODE=invite 로 설정하세요.`}
+            ? t("admin.invites.hintInvite")
+            : t("admin.invites.hintOther", { mode: signupMode })}
         </p>
 
         <div className="mt-3 flex flex-wrap items-end gap-2">
           <div className="w-24">
-            <Label htmlFor="invite-max-uses">사용 횟수</Label>
+            <Label htmlFor="invite-max-uses">{t("admin.invites.maxUses")}</Label>
             <Input
               id="invite-max-uses"
               type="number"
@@ -116,17 +118,17 @@ export function AdminSignupInvitesPanel() {
             />
           </div>
           <div className="w-32">
-            <Label htmlFor="invite-expires">만료</Label>
+            <Label htmlFor="invite-expires">{t("admin.invites.expires")}</Label>
             <select
               id="invite-expires"
               value={expiresInDays}
               onChange={(event) => setExpiresInDays(event.target.value)}
               className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-2 text-sm text-zinc-800"
             >
-              <option value="">무기한</option>
-              <option value="1">1일</option>
-              <option value="7">7일</option>
-              <option value="30">30일</option>
+              <option value="">{t("admin.invites.expiry.never")}</option>
+              <option value="1">{t("admin.invites.expiry.days", { count: 1 })}</option>
+              <option value="7">{t("admin.invites.expiry.days", { count: 7 })}</option>
+              <option value="30">{t("admin.invites.expiry.days", { count: 30 })}</option>
             </select>
           </div>
           <Button
@@ -140,7 +142,7 @@ export function AdminSignupInvitesPanel() {
             disabled={createMutation.isPending}
           >
             {createMutation.isPending ? <Spinner /> : <Plus className="h-4 w-4" aria-hidden />}
-            코드 발급
+            {t("admin.invites.issue")}
           </Button>
         </div>
 
@@ -156,7 +158,7 @@ export function AdminSignupInvitesPanel() {
               onClick={() => void copy(createdCode, "created")}
             >
               <Copy className="h-3.5 w-3.5" aria-hidden />
-              {copiedId === "created" ? "복사됨" : "복사"}
+              {copiedId === "created" ? t("admin.invites.copied") : t("admin.invites.copy")}
             </Button>
           </div>
         ) : null}
@@ -168,13 +170,13 @@ export function AdminSignupInvitesPanel() {
       </Card>
 
       <Card className="p-4">
-        <h3 className="text-sm font-semibold text-zinc-900">발급 목록</h3>
+        <h3 className="text-sm font-semibold text-zinc-900">{t("admin.invites.list")}</h3>
         {query.isLoading ? (
           <p className="mt-2 flex items-center gap-2 text-sm text-zinc-500">
-            <Spinner /> 불러오는 중…
+            <Spinner /> {t("admin.invites.loading")}
           </p>
         ) : invites.length === 0 ? (
-          <p className="mt-2 text-sm text-zinc-500">발급된 코드가 없습니다.</p>
+          <p className="mt-2 text-sm text-zinc-500">{t("admin.invites.empty")}</p>
         ) : (
           <ul className="mt-2 divide-y divide-zinc-100">
             {invites.map((invite) => (
@@ -189,12 +191,16 @@ export function AdminSignupInvitesPanel() {
                     invite.active ? "bg-emerald-100 text-emerald-700" : "bg-zinc-100 text-zinc-500",
                   )}
                 >
-                  {inviteStatus(invite)}
+                  {t(inviteStatus(invite))}
                 </span>
                 <span className="text-zinc-400">
                   {invite.expiresAt
-                    ? `만료 ${new Date(invite.expiresAt).toLocaleDateString("ko-KR")}`
-                    : "무기한"}
+                    ? t("admin.invites.expiresAt", {
+                        date: new Date(invite.expiresAt).toLocaleDateString(
+                          locale === "en" ? "en-US" : "ko-KR",
+                        ),
+                      })
+                    : t("admin.invites.expiry.never")}
                 </span>
                 <span className="ml-auto flex items-center gap-1">
                   <Button
@@ -204,7 +210,7 @@ export function AdminSignupInvitesPanel() {
                     onClick={() => void copy(invite.code, invite.id)}
                   >
                     <Copy className="h-3.5 w-3.5" aria-hidden />
-                    {copiedId === invite.id ? "복사됨" : "복사"}
+                    {copiedId === invite.id ? t("admin.invites.copied") : t("admin.invites.copy")}
                   </Button>
                   <Button
                     type="button"
@@ -212,10 +218,10 @@ export function AdminSignupInvitesPanel() {
                     size="sm"
                     onClick={() => revokeMutation.mutate(invite.id)}
                     disabled={Boolean(invite.revokedAt) || revokeMutation.isPending}
-                    aria-label={`${invite.code} 폐기`}
+                    aria-label={t("admin.invites.revokeAria", { code: invite.code })}
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                    폐기
+                    {t("admin.invites.revoke")}
                   </Button>
                 </span>
               </li>

@@ -4,18 +4,19 @@ import { useState } from "react";
 
 import { Alert, Button, Card, Dialog, Spinner } from "./ui.tsx";
 import { api } from "../lib/api.ts";
+import { useI18n } from "../i18n.tsx";
 import type { AdminDeviceSessions } from "../types.ts";
 
-function formatDateTime(value: string | null): string {
+function formatDateTime(value: string | null, locale: string = "ko"): string {
   if (!value) return "-";
-  return new Date(value).toLocaleString("ko-KR", {
+  return new Date(value).toLocaleString(locale === "en" ? "en-US" : "ko-KR", {
     dateStyle: "short",
     timeStyle: "short",
   });
 }
 
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "요청이 실패했습니다.";
+  return error instanceof Error ? error.message : "admin.requestFailed";
 }
 
 /**
@@ -29,6 +30,7 @@ export function AdminDeviceSessionsPanel({
   deviceId: string;
   onClose: () => void;
 }) {
+  const { t, locale } = useI18n();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export function AdminDeviceSessionsPanel({
       }),
     onSuccess: (result) => {
       setConfirmOpen(false);
-      setNotice(`세션 ${result.revokedSessions}개를 종료했습니다.`);
+      setNotice(t("admin.sessionsRevoked", { count: result.revokedSessions }));
       void queryClient.invalidateQueries({ queryKey: ["admin"] });
     },
   });
@@ -62,10 +64,10 @@ export function AdminDeviceSessionsPanel({
   if (sessionsQuery.isError) {
     return (
       <Card className="p-4">
-        <Alert variant="error">{errorMessage(sessionsQuery.error)}</Alert>
+        <Alert variant="error">{t(errorMessage(sessionsQuery.error))}</Alert>
         <div className="mt-3 flex justify-end">
           <Button variant="outline" size="sm" onClick={onClose}>
-            닫기
+            {t("admin.close")}
           </Button>
         </div>
       </Card>
@@ -85,12 +87,16 @@ export function AdminDeviceSessionsPanel({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-zinc-900">{data.device.name}</p>
           <p className="text-xs text-zinc-500">
-            @{data.device.username} · 활성 세션 {activeCount}개 / 전체 {data.sessions.length}개
-            {data.device.revokedAt ? " · 폐기된 기기" : ""}
+            {t("admin.sessions.deviceHeader", {
+              username: data.device.username,
+              active: activeCount,
+              total: data.sessions.length,
+            })}
+            {data.device.revokedAt ? t("admin.sessions.deviceRevoked") : ""}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={onClose}>
-          닫기
+          {t("admin.close")}
         </Button>
         {data.device.revokedAt ? null : (
           <Button
@@ -100,7 +106,7 @@ export function AdminDeviceSessionsPanel({
             disabled={data.sessions.length === 0 || revoke.isPending}
           >
             <KeyRound className="h-4 w-4" aria-hidden />
-            세션 전체 종료
+            {t("admin.sessions.revokeAll")}
           </Button>
         )}
       </div>
@@ -112,7 +118,7 @@ export function AdminDeviceSessionsPanel({
       ) : null}
       {revoke.isError ? (
         <div className="mt-3">
-          <Alert variant="error">{errorMessage(revoke.error)}</Alert>
+          <Alert variant="error">{t(errorMessage(revoke.error))}</Alert>
         </div>
       ) : null}
 
@@ -123,23 +129,26 @@ export function AdminDeviceSessionsPanel({
             return (
               <li key={session.id} className="py-2">
                 <p className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
-                  <span className="font-medium text-zinc-700">세션 {session.id.slice(0, 8)}</span>
+                  <span className="font-medium text-zinc-700">{t("admin.sessions.label", { id: session.id.slice(0, 8) })}</span>
                   {expired ? (
                     <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500">
-                      만료
+                      {t("admin.sessions.expiresShort")}
                     </span>
                   ) : (
                     <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-                      활성
+                      {t("admin.sessions.active")}
                     </span>
                   )}
                 </p>
                 <p className="mt-0.5 text-xs text-zinc-500">
-                  생성 {formatDateTime(session.createdAt)} · 마지막{" "}
-                  {formatDateTime(session.lastSeenAt)} · 만료 {formatDateTime(session.expiresAt)}
+                  {t("admin.sessions.meta", {
+                    created: formatDateTime(session.createdAt, locale),
+                    lastSeen: formatDateTime(session.lastSeenAt, locale),
+                    expires: formatDateTime(session.expiresAt, locale),
+                  })}
                 </p>
                 <p className="mt-0.5 truncate text-xs text-zinc-400">
-                  {session.userAgent ?? "user-agent 없음"}
+                  {session.userAgent ?? t("admin.sessions.noUserAgent")}
                 </p>
               </li>
             );
@@ -147,15 +156,16 @@ export function AdminDeviceSessionsPanel({
         </ul>
       ) : (
         <p className="mt-4 border-t border-zinc-100 pt-4 text-sm text-zinc-500">
-          이 기기의 세션이 없습니다.
+          {t("admin.sessions.empty")}
         </p>
       )}
 
-      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title="기기 세션 전체 종료">
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} title={t("admin.sessions.revokeAllTitle")}>
         <p className="text-sm leading-relaxed text-zinc-600">
-          @{data.device.username} 의 &ldquo;{data.device.name}&rdquo; 기기 세션을 모두 종료합니다.
-          기기와 키는 유지되며, 다시 로그인하면 새 세션이 발급됩니다. 푸시 구독도 함께
-          삭제됩니다.
+          {t("admin.sessions.revokeAllNote", {
+            username: data.device.username,
+            name: data.device.name,
+          })}
         </p>
         <div className="mt-4 flex justify-end gap-2">
           <Button
@@ -163,14 +173,14 @@ export function AdminDeviceSessionsPanel({
             onClick={() => setConfirmOpen(false)}
             disabled={revoke.isPending}
           >
-            취소
+            {t("admin.cancel")}
           </Button>
           <Button
             variant="destructive"
             onClick={() => revoke.mutate()}
             disabled={revoke.isPending}
           >
-            {revoke.isPending ? "종료 중" : "종료"}
+            {revoke.isPending ? t("admin.sessions.revoking") : t("admin.revoke")}
           </Button>
         </div>
       </Dialog>

@@ -1,4 +1,15 @@
-import { Bold, Code, Italic, Link2, List, ListOrdered, Quote, Strikethrough, Underline } from "lucide-react";
+﻿import {
+  Bold,
+  Code,
+  ImagePlus,
+  Italic,
+  Link2,
+  List,
+  ListOrdered,
+  Quote,
+  Strikethrough,
+  Underline,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { cn } from "./ui.tsx";
@@ -18,12 +29,15 @@ export function RichTextEditor({
   placeholder,
   ariaLabel,
   className,
+  onInsertPhoto,
 }: {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
   ariaLabel?: string;
   className?: string;
+  /** 사진 삽입 요청. 반환값이 있으면 커서 위치에 <img data-diary-photo> 를 넣는다. */
+  onInsertPhoto?: () => Promise<{ id: string; url: string } | null>;
 }) {
   const { t } = useI18n();
   const editorRef = useRef<HTMLDivElement | null>(null);
@@ -102,6 +116,27 @@ export function RichTextEditor({
     { key: "code", label: t("diary.editor.code"), icon: Code, run: () => format("formatBlock", "pre") },
     { key: "link", label: t("diary.editor.link"), icon: Link2, run: addLink },
   ];
+
+  if (onInsertPhoto) {
+    tools.push({
+      key: "photo",
+      label: t("diary.editor.photo"),
+      icon: ImagePlus,
+      run: () => {
+        void (async () => {
+          const inserted = await onInsertPhoto();
+          if (!inserted) return;
+          editorRef.current?.focus();
+          document.execCommand(
+            "insertHTML",
+            false,
+            `<img src="${inserted.url}" data-diary-photo="${inserted.id}" alt="${t("diary.photo")}">`,
+          );
+          emit();
+        })();
+      },
+    });
+  }
 
   return (
     <div className={cn("rounded-lg border border-zinc-200 bg-white", className)}>

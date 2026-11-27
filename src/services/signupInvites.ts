@@ -27,9 +27,11 @@ function generateInviteCode(): string {
   return code;
 }
 
-/** 초대 코드를 발급한다(충돌 시 재시도). */
+export type SignupInviteStore = Pick<Database, "insert">;
+
+/** 초대 코드를 발급한다(충돌 시 재시도). 트랜잭션(tx)에서도 호출할 수 있다. */
 export async function createSignupInvite(
-  db: Database,
+  db: SignupInviteStore,
   input: { createdByUserId: string | null; maxUses: number; expiresAt: Date | null },
 ): Promise<SignupInviteRow> {
   for (let attempt = 0; attempt < 5; attempt += 1) {

@@ -85,6 +85,8 @@ interface SessionContextValue {
   updateSessionIdleTimeout: (seconds: number | null) => Promise<void>;
   /** 가입 정책. invite 면 초대 코드가 필요하고, closed 면 가입 탭을 숨긴다. */
   signupMode: "open" | "invite" | "closed";
+  /** 가입 신청(관리자 승인형) 허용 여부. */
+  signupRequestEnabled: boolean;
   /** 서버에 Google OAuth 설정이 있는지. */
   oauthEnabled: boolean;
   /** 지도 타일 템플릿(서버 설정). null 이면 위치 공유에서 지도 이미지를 쓰지 않는다. */
@@ -224,6 +226,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [mapTileUrl, setMapTileUrl] = useState<string | null>(null);
   /** 가입 정책(open/invite/closed). 로그인 전 공개 설정에서 읽는다. */
   const [signupMode, setSignupMode] = useState<"open" | "invite" | "closed">("open");
+  /** 가입 신청(관리자 승인형) 허용 여부. */
+  const [signupRequestEnabled, setSignupRequestEnabled] = useState(false);
   const [googleLinked, setGoogleLinked] = useState(false);
   const [hasPassword, setHasPassword] = useState(true);
   const idleTimeoutSeconds = effectiveIdleTimeoutSeconds(
@@ -249,12 +253,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 로그인 전에도 Google 버튼 노출 여부를 알 수 있게 공개 설정을 읽는다.
     let cancelled = false;
-    api<{ oauthEnabled: boolean; mapTileUrl: string | null; signupMode?: string }>(
+    api<{
+      oauthEnabled: boolean;
+      mapTileUrl: string | null;
+      signupMode?: string;
+      signupRequestEnabled?: boolean;
+    }>(
       "/api/auth/config",
     )
       .then((value) => {
         if (cancelled) return;
         setOauthEnabled(Boolean(value.oauthEnabled));
+        setSignupRequestEnabled(Boolean(value.signupRequestEnabled));
         setMapTileUrl(typeof value.mapTileUrl === "string" ? value.mapTileUrl : null);
         setSignupMode(
           value.signupMode === "invite" || value.signupMode === "closed"
@@ -797,6 +807,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       oauthEnabled,
       mapTileUrl,
       signupMode,
+      signupRequestEnabled,
       googleLinked,
       hasPassword,
       startGoogle,
@@ -828,6 +839,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       oauthEnabled,
       mapTileUrl,
       signupMode,
+      signupRequestEnabled,
       googleLinked,
       hasPassword,
       startGoogle,

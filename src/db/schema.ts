@@ -827,6 +827,48 @@ export const signupInvites = pgTable(
   ],
 );
 
+/**
+ * 가입 신청(관리자 승인형 가입).
+ *
+ * 초대 코드 경로와 **나란히** 쓰인다(`SIGNUP_REQUEST_ENABLED=true`). 신청 단계에서는
+ * 비밀번호·기기 키를 받지 않는다(E2E 불변식 — 승인 전 비밀 정보 미보관). 관리자가 승인하면
+ * **1회용 초대 코드**를 발급하고, 신청자는 그 코드로 `/api/auth/register` 를 완료한다.
+ *
+ * 상태 조회는 신청 시 1회 발급한 토큰의 **해시**로만 가능하다(원문은 저장하지 않는다).
+ */
+export const signupRequests = pgTable(
+  "signup_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    /** 신청한 아이디(가입 시점에 다시 검증한다). */
+    username: text("username").notNull(),
+    /** 신청자가 남긴 한 줄 소개(선택, 평문 메타데이터). */
+    note: text("note"),
+    /** pending | approved | rejected */
+    status: text("status").notNull().default("pending"),
+    /** 상태 조회 토큰의 SHA-256(hex). */
+    tokenHash: text("token_hash").notNull(),
+    /** 승인 시 발급한 1회용 초대 코드. */
+    inviteId: uuid("invite_id").references(() => signupInvites.id, { onDelete: "set null" }),
+    decidedByUserId: uuid("decided_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    /** 거절 사유(관리자 메모). 승인 시에는 비운다. */
+    reviewNote: text("review_note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("signup_requests_token_uq").on(table.tokenHash),
+    index("signup_requests_status_created_idx").on(table.status, table.createdAt),
+    index("signup_requests_username_idx").on(table.username),
+    check(
+      "signup_requests_status_chk",
+      sql`${table.status} in ('pending', 'approved', 'rejected')`,
+    ),
+  ],
+);
+
 export type UserRow = typeof users.$inferSelect;
 export type SessionRow = typeof sessions.$inferSelect;
 export type DeviceRow = typeof devices.$inferSelect;
@@ -845,6 +887,7 @@ export type MomentAttachmentRow = typeof momentAttachments.$inferSelect;
 export type AdminAuditLogRow = typeof adminAuditLogs.$inferSelect;
 export type AuthEventRow = typeof authEvents.$inferSelect;
 export type SignupInviteRow = typeof signupInvites.$inferSelect;
+export type SignupRequestRow = typeof signupRequests.$inferSelect;
 export type OAuthStateRow = typeof oauthStates.$inferSelect;
 export type OAuthTicketRow = typeof oauthTickets.$inferSelect;
 export type CallLogRow = typeof callLogs.$inferSelect;

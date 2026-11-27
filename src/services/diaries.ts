@@ -480,6 +480,8 @@ export async function deleteDiaryEntry(db: Database, entryId: string, userId: st
   }
   await db.delete(diaryEntries).where(eq(diaryEntries.id, entryId));
   return { deleted: true };
+
+
 }
 
 
@@ -530,4 +532,65 @@ export async function requireDiaryAttachmentAccess(
   }
   await requireDiary(db, row.entry.diaryId, input.userId);
   return row.attachment;
+}
+
+/** 일기장 이름 변경(소유자). */
+export async function renameDiary(
+  db: Database,
+  input: { diaryId: string; ownerUserId: string; label?: string },
+) {
+  const diary = await requireDiary(db, input.diaryId, input.ownerUserId);
+  if (diary.ownerUserId !== input.ownerUserId) {
+    throw AppError.forbidden("Only the diary owner can rename this diary");
+  }
+  const label = input.label?.trim() ?? "";
+  if (label.length > MAX_DIARY_LABEL) {
+    throw AppError.badRequest("LABEL_TOO_LONG", "Diary label is too long");
+  }
+  await db
+    .update(diaries)
+    .set({ label: label.length > 0 ? label : null, updatedAt: sql`now()` })
+    .where(eq(diaries.id, input.diaryId));
+  return { diaryId: input.diaryId, label: label.length > 0 ? label : null };
+}
+
+/** 일기장 삭제(소유자). 글·대상·첨부 행은 cascade 로 함께 지워진다. */
+export async function deleteDiary(
+  db: Database,
+  input: { diaryId: string; ownerUserId: string },
+) {
+  const diary = await requireDiary(db, input.diaryId, input.ownerUserId);
+  if (diary.ownerUserId !== input.ownerUserId) {
+    throw AppError.forbidden("Only the diary owner can delete this diary");
+  }
+  await db.delete(diaries).where(eq(diaries.id, input.diaryId));
+  return { deleted: true };
+}
+
+/**
+ * 글에 연결되지 않은 채 남은 첨부(업로드만 하고 저장하지 않은 사진)를 정리한다.
+ *
+ * 서버는 첨부의 성격을 모르므로 **나이(기본 24시간)** 만 기준으로 지운다.
+ * 저장된 글의 첨부는 `entryId` 가 있어 대상이 아니다.
+ */
+export async function cleanupOrphanDiaryAttachments(
+  db: Database,
+  storage: AttachmentStorage,
+  olderThanHours = 24,
+): Promise<{ removed: number }> {
+  const rows = await db
+    .select({ id: diaryAttachments.id })
+    .from(diaryAttachments)
+    .where(
+      and(
+        isNull(diaryAttachments.entryId),
+        sql`${diaryAttachments.createdAt} < now() - (${olderThanHours} || ' hours')::interval`,
+      ),
+    )
+    .limit(200);
+  for (const row of rows) {
+    await db.delete(diaryAttachments).where(eq(diaryAttachments.id, row.id));
+    await storage.delete(row.id).catch(() => undefined);
+  }
+  return { removed: rows.length };
 }

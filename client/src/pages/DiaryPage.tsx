@@ -164,6 +164,45 @@ export function DiaryPage() {
     }
   }
 
+  /** 소유자: 이름 변경. */
+  async function renameCurrentDiary() {
+    if (!detail) return;
+    const next = window.prompt(t("diary.renamePrompt"), detail.label ?? "");
+    if (next === null) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/diaries/${detail.id}`, { method: "PUT", body: { label: next.trim() } });
+      const list = await api<{ diaries: DiarySummary[] }>("/api/diaries");
+      setDiaries(list.diaries);
+      await openDiary(detail.id);
+    } catch {
+      setError(t("diary.renameFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 소유자: 일기장 삭제(글·대상·첨부 행 cascade). */
+  async function deleteCurrentDiary() {
+    if (!detail) return;
+    if (!window.confirm(t("diary.deleteConfirm"))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/api/diaries/${detail.id}`, { method: "DELETE" });
+      setDetail(null);
+      setEntries([]);
+      const list = await api<{ diaries: DiarySummary[] }>("/api/diaries");
+      setDiaries(list.diaries);
+      if (list.diaries[0]) await openDiary(list.diaries[0].id);
+    } catch {
+      setError(t("diary.deleteDiaryFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function openEntry(entryId: string) {
     if (!identity) return;
     setBusy(true);
@@ -414,9 +453,15 @@ export function DiaryPage() {
               ))}
             </p>
             {detail.isOwner ? (
-              <div className="mt-2 flex justify-end">
+              <div className="mt-2 flex justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => void openAudience()}>
                   {t("diary.manageAudience")}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => void renameCurrentDiary()}>
+                  {t("diary.rename")}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void deleteCurrentDiary()}>
+                  {t("diary.deleteDiary")}
                 </Button>
               </div>
             ) : null}
@@ -556,7 +601,15 @@ export function DiaryPage() {
                             key={photo.id}
                             src={photo.url}
                             alt={t("diary.photo")}
-                            className="h-24 w-24 rounded-lg border border-zinc-200 object-cover"
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => window.open(photo.url, "_blank", "noopener,noreferrer")}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                window.open(photo.url, "_blank", "noopener,noreferrer");
+                              }
+                            }}
+                            className="h-24 w-24 cursor-pointer rounded-lg border border-zinc-200 object-cover"
                           />
                         ))}
                       </div>

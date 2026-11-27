@@ -1,4 +1,4 @@
-import express, { Router } from "express";
+﻿import express, { Router } from "express";
 
 import type { Config } from "../config.js";
 import type { Database } from "../db/client.js";
@@ -11,18 +11,22 @@ import {
   diaryEntryParamsSchema,
   diaryIdParamsSchema,
   diaryListQuerySchema,
+  renameDiaryBodySchema,
   updateDiaryAudienceBodySchema,
 } from "../http/validation.js";
 import { createAttachmentStorage } from "../services/attachments.js";
 import {
+  cleanupOrphanDiaryAttachments,
   createDiary,
   createDiaryAttachment,
   createDiaryEntry,
+  deleteDiary,
   deleteDiaryEntry,
   getDiaryDetail,
   getDiaryEntry,
   listDiaries,
   listDiaryEntries,
+  renameDiary,
   requireDiaryAttachmentAccess,
   updateDiaryAudience,
 } from "../services/diaries.js";
@@ -35,6 +39,8 @@ export function createDiariesRouter(db: Database, config: Config): Router {
   const router = Router();
   const session = requireSession(db);
   const storage = createAttachmentStorage(config);
+  /** 고아 첨부 정리 스로틀(1시간). */
+  let lastOrphanCleanupAt = 0;
   const csrf = requireCsrf(config);
   const writeLimiter = createRateLimiter({
     windowMs: 60_000,
@@ -103,6 +109,10 @@ export function createDiariesRouter(db: Database, config: Config): Router {
     "/",
     asyncHandler(async (req, res) => {
       const auth = getAuth(req);
+      if (Date.now() - lastOrphanCleanupAt > 60 * 60 * 1000) {
+        lastOrphanCleanupAt = Date.now();
+        void cleanupOrphanDiaryAttachments(db, storage, 24).catch(() => undefined);
+      }
       res.json({ diaries: await listDiaries(db, auth.userId) });
     }),
   );
@@ -147,6 +157,29 @@ export function createDiariesRouter(db: Database, config: Config): Router {
           audienceUserIds: body.audienceUserIds,
         }),
       );
+    }),
+  );
+
+  router.put(
+    "/:diaryId",
+    csrf,
+    writeLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { diaryId } = diaryIdParamsSchema.parse(req.params);
+      const body = renameDiaryBodySchema.parse(req.body);
+      res.json(await renameDiary(db, { diaryId, ownerUserId: auth.userId, label: body.label }));
+    }),
+  );
+
+  router.delete(
+    "/:diaryId",
+    csrf,
+    writeLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { diaryId } = diaryIdParamsSchema.parse(req.params);
+      res.json(await deleteDiary(db, { diaryId, ownerUserId: auth.userId }));
     }),
   );
 

@@ -13,6 +13,7 @@ import {
   diaryListQuerySchema,
   renameDiaryBodySchema,
   updateDiaryAudienceBodySchema,
+  updateDiaryEntryBodySchema,
 } from "../http/validation.js";
 import { createAttachmentStorage } from "../services/attachments.js";
 import {
@@ -29,6 +30,7 @@ import {
   renameDiary,
   requireDiaryAttachmentAccess,
   updateDiaryAudience,
+  updateDiaryEntry,
 } from "../services/diaries.js";
 
 /**
@@ -227,6 +229,27 @@ export function createDiariesRouter(db: Database, config: Config): Router {
       const auth = getAuth(req);
       const { entryId } = diaryEntryParamsSchema.parse(req.params);
       res.json(await getDiaryEntry(db, entryId, auth.userId));
+    }),
+  );
+
+  router.put(
+    "/entries/:entryId",
+    csrf,
+    writeLimiter,
+    asyncHandler(async (req, res) => {
+      const auth = getAuth(req);
+      const { entryId } = diaryEntryParamsSchema.parse(req.params);
+      const body = updateDiaryEntryBodySchema.parse(req.body);
+      res.json(
+        await updateDiaryEntry(db, config, {
+          entryId,
+          userId: auth.userId,
+          ciphertext: body.ciphertext,
+          nonce: body.nonce,
+          signature: body.signature,
+          keys: body.keys,
+        }),
+      );
     }),
   );
 

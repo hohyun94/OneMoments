@@ -594,3 +594,92 @@ export async function cleanupOrphanDiaryAttachments(
   }
   return { removed: rows.length };
 }
+
+/**
+ * 글 수정 — **작성자만**. 본문을 다시 암호화해 **봉투까지 함께 교체**한다.
+ *
+ * 글마다 새 콘텐츠 키를 쓰는 구조라, 본문만 바꾸면 기존 봉투로는 풀 수 없다.
+ * 그래서 생성과 같은 규칙(현재 참여자 활성 기기 검증)으로 봉투를 다시 받아
+ * `diary_entry_keys` 를 통째로 교체한다. 키 세대(`keyEpoch`)는 그대로 둔다.
+ */
+export async function updateDiaryEntry(
+  db: Database,
+  config: Config,
+  input: {
+    entryId: string;
+    userId: string;
+    ciphertext: string;
+    nonce: string;
+    signature: string;
+    keys: unknown;
+  },
+) {
+  const [row] = await db
+    .select({
+      id: diaryEntries.id,
+      diaryId: diaryEntries.diaryId,
+      authorUserId: diaryEntries.authorUserId,
+      keyEpoch: diaryEntries.keyEpoch,
+    })
+    .from(diaryEntries)
+    .where(eq(diaryEntries.id, input.entryId))
+    .limit(1);
+  if (!row) throw AppError.notFound("ENTRY_NOT_FOUND", "Entry not found");
+  const diary = await requireDiary(db, row.diaryId, input.userId);
+  if (row.authorUserId !== input.userId) {
+    throw AppError.forbidden("Only the author can edit this entry");
+  }
+
+  const members = await loadMembers(db, row.diaryId, diary.ownerUserId);
+  const deviceUser = new Map<string, string>();
+  for (const member of members) {
+    for (const device of member.devices) deviceUser.set(device.id, member.userId);
+  }
+  const payload = normalizeMessagePayload(
+    {
+      clientMessageId: input.entryId,
+      ciphertext: input.ciphertext,
+      nonce: input.nonce,
+      signature: input.signature,
+      keys: input.keys as never,
+    },
+    { maxCiphertextBytes: config.maxCiphertextBytes, maxEnvelopes: config.maxEnvelopes },
+  );
+  if (payload.keys.length === 0) {
+    throw AppError.badRequest("INVALID_ENVELOPE", "At least one device envelope is required");
+  }
+  if (payload.keys.some((key) => key.distribution || !deviceUser.has(key.deviceId))) {
+    throw AppError.badRequest("INVALID_ENVELOPE", "Envelope targets an unknown or inactive device");
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(diaryEntries)
+      .set({
+        ciphertext: payload.ciphertext,
+        nonce: payload.nonce,
+        signature: payload.signature,
+        recipientCount: new Set(payload.keys.map((key) => deviceUser.get(key.deviceId))).size,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(diaryEntries.id, input.entryId));
+    await tx.delete(diaryEntryKeys).where(eq(diaryEntryKeys.entryId, input.entryId));
+    await tx.insert(diaryEntryKeys).values(
+      payload.keys.map((key) => ({
+        entryId: input.entryId,
+        recipientDeviceId: key.deviceId,
+        ephemeralPublicKey: key.version === 1 ? key.ephemeralPublicKey : null,
+        ratchetPublicKey: key.version === 2 ? key.ratchetPublicKey : null,
+        previousChainLength: key.version === 2 ? key.previousChainLength : null,
+        messageNumber: key.version === 2 ? key.messageNumber : null,
+        senderIdentityPublicKey: key.version === 2 ? (key.senderIdentityPublicKey ?? null) : null,
+        signedPreKeyId: key.version === 2 ? (key.signedPreKeyId ?? null) : null,
+        oneTimePreKeyId: key.version === 2 ? (key.oneTimePreKeyId ?? null) : null,
+        wrappedKey: key.wrappedKey,
+        wrapNonce: key.wrapNonce,
+        version: key.version,
+      })),
+    );
+  });
+  return { entryId: input.entryId, keyEpoch: row.keyEpoch };
+}

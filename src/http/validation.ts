@@ -454,6 +454,13 @@ export const diaryAttachmentParamsSchema = z.object({ attachmentId: z.string().u
 export const diaryListQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).optional(),
 });
+export const updateDiaryEntryBodySchema = z.object({
+  ciphertext: z.string().min(1),
+  nonce: z.string().min(1),
+  signature: z.string().min(1),
+  keys: z.array(z.unknown()).min(1),
+});
+
 export const createDiaryEntryBodySchema = z.object({
   clientEntryId: z.string().uuid(),
   ciphertext: z.string().min(1),
